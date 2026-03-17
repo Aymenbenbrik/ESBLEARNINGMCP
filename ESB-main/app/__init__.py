@@ -129,7 +129,7 @@ def create_app(config_name=None):
     app.config['GOOGLE_API_KEY'] = os.environ.get('GOOGLE_API_KEY')
     if not app.config['GOOGLE_API_KEY']:
         # Fallback provided key if not in env (though env is preferred)
-        app.config['GOOGLE_API_KEY'] = "os.environ.get('GOOGLE_API_KEY', '')"
+        app.config['GOOGLE_API_KEY'] = ""  # Clé manquante — définir GOOGLE_API_KEY dans .env
     
     # SET FILE UPLOAD SIZE LIMITS
     # Maximum file size: 500MB (adjust based on your needs and server storage)
