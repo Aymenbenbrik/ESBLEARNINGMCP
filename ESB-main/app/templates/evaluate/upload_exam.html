@@ -1,0 +1,107 @@
+// {% extends "base.html" %}
+
+{% block title %}Upload Exam – Week {{ week_num }} – {{ course.title }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a>
+            </li>
+            <li class="breadcrumb-item active">Upload Exam - Week {{ week_num }}</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}
+<div class="week-header">
+    <div class="container">
+        <h1 class="week-title">Upload Exam for Week {{ week_num }}</h1>
+        <p class="week-topic">Course: {{ course.title }}</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Flash messages (for validation errors on POST) -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'error' else category }} flash-message" role="alert">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <i class="fas fa-file-upload me-2"></i>Upload Exam
+                </div>
+                <div class="card-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-3">
+                            {{ form.title.label(class="form-label") }}
+                            {{ form.title(class="form-control", placeholder="Optional title for the exam (e.g., 'Week 1 Midterm')") }}
+                            {% for error in form.title.errors %}
+                            <div class="text-danger small mt-1">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="mb-4">
+                            {{ form.file.label(class="form-label") }}
+                            <div class="input-group">
+                                {{ form.file(class="form-control", id="fileInput") }}
+                                <label class="input-group-text" for="fileInput">
+                                    <i class="fas fa-folder-open"></i> Browse
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">Allowed file types: PDF, DOC, DOCX </small>
+                            {% for error in form.file.errors %}
+                            <div class="text-danger small mt-1">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('evaluate.evaluate_exam', course_id=course.id, week_num=week_num) }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Evaluate Exam
+                            </a>
+                            {{ form.submit(class="btn btn-danger") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('fileInput');
+    const label = fileInput.parentElement.querySelector('.input-group-text');
+    
+    fileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            const fileName = this.files[0].name;
+            label.innerHTML = `<i class="fas fa-check"></i> ${fileName}`;
+            label.classList.add('bg-success', 'text-white');
+        } else {
+            label.innerHTML = '<i class="fas fa-folder-open"></i> Browse';
+            label.classList.remove('bg-success', 'text-white');
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,134 @@
+<!-- templates/superuser/users.html with class info -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>Users Management</h1>
+        <a href="{{ url_for('superuser.create_user') }}" class="btn btn-success">Create New User</a>
+    </div>
+    
+    <div class="mt-4">
+        <div class="btn-group mb-3" role="group">
+            <a href="{{ url_for('superuser.list_users') }}" class="btn btn-outline-primary {{ 'active' if not request.args.get('role') }}">All Users</a>
+            <a href="{{ url_for('superuser.list_users') }}?role=teacher" class="btn btn-outline-primary {{ 'active' if request.args.get('role') == 'teacher' }}">Teachers</a>
+            <a href="{{ url_for('superuser.list_users') }}?role=student" class="btn btn-outline-primary {{ 'active' if request.args.get('role') == 'student' }}">Students</a>
+            <a href="{{ url_for('superuser.list_users') }}?role=superuser" class="btn btn-outline-primary {{ 'active' if request.args.get('role') == 'superuser' }}">Superusers</a>
+        </div>
+        
+        <div class="input-group mb-3" style="width: 300px;">
+            <input type="text" class="form-control" id="user-search" placeholder="Search users...">
+            <button class="btn btn-outline-secondary" type="button">
+                <i class="fas fa-search"></i>
+            </button>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-striped" id="users-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Class</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    {% if (not request.args.get('role')) or 
+                          (request.args.get('role') == 'teacher' and user.is_teacher) or 
+                          (request.args.get('role') == 'student' and not user.is_teacher) or
+                          (request.args.get('role') == 'superuser' and user.is_superuser) %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.is_superuser %}
+                            <span class="badge bg-danger">Superuser</span>
+                            {% elif user.is_teacher %}
+                            <span class="badge bg-primary">Teacher</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Student</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not user.is_teacher and user.class %}
+                            <span class="badge bg-info text-dark">{{ user.classe.name }}</span>
+                            {% elif not user.is_teacher %}
+                            <span class="badge bg-light text-dark">No Class</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('superuser.edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteUserModal{{ user.id }}">
+                                    Delete
+                                </button>
+                            </div>
+                            
+                            <!-- Delete User Modal -->
+                            <div class="modal fade" id="deleteUserModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Confirm Deletion</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            Are you sure you want to delete the user <strong>{{ user.username }}</strong>?
+                                            This action cannot be undone.
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <form action="{{ url_for('superuser.delete_user', user_id=user.id) }}" method="post">
+                                                <!-- CSRF Token -->
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="btn btn-danger">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // User search functionality
+        const userSearch = document.getElementById('user-search');
+        const usersTable = document.getElementById('users-table');
+        
+        userSearch.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = usersTable.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
+{% endblock %}

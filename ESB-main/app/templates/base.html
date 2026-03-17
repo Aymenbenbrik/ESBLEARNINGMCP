@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{% endblock %} - ESB Platform</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/esprit_logo.png') }}" type="image/png">
+
+  <!-- Font (Bolt-like) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap (grid/utilities) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+  <!-- KaTeX (Math Rendering) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/esb.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/bolt_exact.css') }}">
+  {% block styles %}{% endblock %}
+</head>
+
+<body class="bolt-body">
+
+  <!-- Top App Bar (radical, Bolt-like) -->
+  <header class="bolt-topbar">
+    <div class="bolt-topbar-inner">
+
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn bolt-icon-btn d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#boltNav" aria-controls="boltNav" aria-label="Menu">
+          <i class="fas fa-bars"></i>
+        </button>
+
+        <a class="bolt-brand" href="{{ url_for('courses.index') }}">
+          <img src="{{ url_for('static', filename='img/esprit_logo.png') }}" alt="ESPRIT" class="bolt-brand-logo">
+          <div class="bolt-brand-text">
+            <div class="bolt-brand-title">ESB Platform</div>
+            <div class="bolt-brand-sub">Adaptive Learning</div>
+          </div>
+        </a>
+      </div>
+
+      <!-- Primary navigation (desktop) -->
+      <nav class="bolt-nav d-none d-lg-flex" aria-label="Primary">
+        {% if current_user.is_authenticated %}
+
+          {% if current_user.is_superuser %}
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}active{% endif %}" href="{{ url_for('admin.index') }}">
+              Admin
+            </a>
+          {% elif current_user.is_teacher %}
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('courses.') %}active{% endif %}" href="{{ url_for('courses.index') }}">
+              Modules
+            </a>
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('question_bank.') %}active{% endif %}" href="{{ url_for('question_bank.index') }}">
+              Banque de questions
+            </a>
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('insights.') %}active{% endif %}" href="{{ url_for('insights.teacher_insights_dashboard') }}">
+              Dashboards
+            </a>
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('tn_syllabus.') %}active{% endif %}" href="{{ url_for('tn_syllabus.index') }}">
+              Syllabus TN
+            </a>
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('evaluate.') %}active{% endif %}" href="{{ url_for('evaluate.tn_exams_home') }}">
+              Examens TN
+            </a>
+            <a class="bolt-nav-link {% if request.endpoint=='auth.manage_students' %}active{% endif %}" href="{{ url_for('auth.manage_students') }}">
+              Étudiants
+            </a>
+          {% else %}
+            <a class="bolt-nav-link {% if request.endpoint and request.endpoint.startswith('courses.') %}active{% endif %}" href="{{ url_for('courses.index') }}">
+              Mes modules
+            </a>
+            <a class="bolt-nav-link {% if request.endpoint=='insights.student_dashboard' %}active{% endif %}" href="{{ url_for('insights.student_dashboard') }}">
+              Mon dashboard
+            </a>
+          {% endif %}
+
+        {% endif %}
+      </nav>
+
+      <!-- Right actions -->
+      <div class="d-flex align-items-center gap-2">
+        {% if current_user.is_authenticated %}
+
+          {% if current_user.is_teacher and not current_user.is_superuser %}
+            <a class="btn bolt-btn bolt-btn-ghost d-none d-md-inline-flex" href="{{ url_for('courses.create') }}">
+              <i class="fas fa-plus me-2"></i>Nouveau module
+            </a>
+          {% endif %}
+
+          <div class="dropdown">
+            <button class="btn bolt-btn bolt-btn-ghost dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-user-circle me-2"></i>{{ current_user.username }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end bolt-dropdown">
+              <li><a class="dropdown-item" href="{{ url_for('auth.profile') }}">Profil</a></li>
+              {% if current_user.is_teacher and not current_user.is_superuser %}
+                <li><a class="dropdown-item" href="{{ url_for('auth.update_api_key') }}">API Key</a></li>
+              {% endif %}
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="{{ url_for('auth.logout') }}">Déconnexion</a></li>
+            </ul>
+          </div>
+        {% else %}
+          <a class="btn bolt-btn bolt-btn-primary" href="{{ url_for('auth.login') }}">Se connecter</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile nav drawer -->
+  <div class="offcanvas offcanvas-start" tabindex="-1" id="boltNav" aria-labelledby="boltNavLabel">
+    <div class="offcanvas-header">
+      <div class="d-flex align-items-center gap-2">
+        <img src="{{ url_for('static', filename='img/esprit_logo.png') }}" alt="ESPRIT" style="height:28px; width:auto;">
+        <div>
+          <div class="fw-bold">ESB Platform</div>
+          <div class="text-muted" style="font-size:.85rem;">Menu</div>
+        </div>
+      </div>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+      {% if current_user.is_authenticated %}
+        <div class="d-grid gap-2">
+          <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('courses.index') }}"><i class="fas fa-book me-2"></i>Modules</a>
+          {% if current_user.is_teacher and not current_user.is_superuser %}
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('insights.teacher_insights_dashboard') }}"><i class="fas fa-chart-line me-2"></i>Dashboards</a>
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('tn_syllabus.index') }}"><i class="fas fa-file-lines me-2"></i>Syllabus TN</a>
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('evaluate.tn_exams_home') }}"><i class="fas fa-clipboard-list me-2"></i>Examens TN</a>
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('auth.manage_students') }}"><i class="fas fa-users me-2"></i>Étudiants</a>
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('courses.create') }}"><i class="fas fa-plus me-2"></i>Nouveau module</a>
+          {% else %}
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('insights.student_dashboard') }}"><i class="fas fa-tachometer-alt me-2"></i>Mon dashboard</a>
+          {% endif %}
+          {% if current_user.is_superuser %}
+            <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('admin.index') }}"><i class="fas fa-user-shield me-2"></i>Admin</a>
+          {% endif %}
+          <hr>
+          <a class="btn bolt-btn bolt-btn-ghost text-start" href="{{ url_for('auth.profile') }}"><i class="fas fa-user me-2"></i>Profil</a>
+          <a class="btn bolt-btn bolt-btn-ghost text-start text-danger" href="{{ url_for('auth.logout') }}"><i class="fas fa-right-from-bracket me-2"></i>Déconnexion</a>
+        </div>
+      {% else %}
+        <a class="btn bolt-btn bolt-btn-primary w-100" href="{{ url_for('auth.login') }}">Se connecter</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Page content -->
+  <main class="bolt-main">
+    <div class="bolt-container">
+
+      {% block breadcrumbs %}{% endblock %}
+
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="bolt-flashes">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show bolt-alert" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% endwith %}
+
+      <div class="bolt-page-header">
+        <div>
+          <h1 class="bolt-page-title">{% block heading %}{% endblock %}</h1>
+          {% block subheading %}{% endblock %}
+        </div>
+        {% block page_actions %}{% endblock %}
+      </div>
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+  <!-- Render LaTeX math ($...$ or $$...$$) using KaTeX -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      if (typeof renderMathInElement !== 'function') return;
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false }
+        ],
+        throwOnError: false
+      });
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

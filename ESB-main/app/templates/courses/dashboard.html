@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="fas fa-chart-column me-2"></i>Dashboard module</h1>
+      <div class="text-muted">{{ course.title }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('courses.view', course_id=course.id) }}">
+        <i class="fas fa-arrow-left me-1"></i>Retour module
+      </a>
+      <a class="btn btn-outline-primary" href="{{ url_for('question_bank.index', course_id=course.id) }}">
+        <i class="fas fa-database me-1"></i>Banque de questions
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-3 col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Étudiants inscrits</div>
+          <div class="display-6">{{ total_students }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Chapitres</div>
+          <div class="display-6">{{ total_chapters }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Questions banque (approuvées)</div>
+          <div class="display-6">{{ qb_approved }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Pending approval</div>
+          <div class="display-6">{{ qb_pending }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">Répartition Bloom (questions approuvées)</div>
+          <canvas id="bloomChart" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">Répartition Difficulté (questions approuvées)</div>
+          <canvas id="diffChart" height="140"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mt-3">
+    <div class="card-body">
+      <div class="fw-semibold mb-2">Interprétation (assistant)</div>
+      <div class="text-muted small mb-2">
+        Pose une question sur les graphiques. L’assistant utilise le chat du chapitre (coin en bas).
+      </div>
+      {% if first_chapter_id %}
+        <button class="btn btn-outline-primary btn-sm" type="button" onclick="openDashAgent()">
+          <i class="fas fa-robot me-1"></i>Ouvrir assistant
+        </button>
+      {% else %}
+        <div class="text-muted">Ajoute au moins un chapitre pour activer l’assistant.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Floating dashboard agent -->
+{% if first_chapter_id %}
+<div id="dashAgent" style="position:fixed; right:18px; bottom:18px; width:340px; max-width:90vw; display:none; z-index:1050;">
+  <div class="card shadow-lg border-0">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="fw-semibold"><i class="fas fa-robot me-2"></i>Dashboard Agent</div>
+      <button class="btn btn-sm btn-light" onclick="toggleDashAgent()"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div class="card-body" style="height:280px; overflow:auto;" id="dashAgentLog">
+      <div class="text-muted small">Je peux interpréter: Bloom, difficulté, volume de questions, pending…</div>
+    </div>
+    <div class="card-footer">
+      <div class="input-group">
+        <input class="form-control" id="dashAgentInput" placeholder="Ex: où sont les lacunes Bloom ?">
+        <button class="btn btn-primary" onclick="sendDashAgent()"><i class="fas fa-paper-plane"></i></button>
+      </div>
+      <div class="small text-muted mt-1">Utilise l’API chapter-chat.</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const DATA = {{ chart_data|safe }};
+  function makeChart(canvasId, labels, values, type){
+    const ctx = document.getElementById(canvasId);
+    if(!ctx) return;
+    new Chart(ctx, {
+      type: type,
+      data: { labels: labels, datasets: [{ label: '', data: values }] },
+      options: { responsive:true, plugins:{ legend:{ display:false } } }
+    });
+  }
+  makeChart('bloomChart', DATA.bloom.labels, DATA.bloom.values, 'bar');
+  makeChart('diffChart', DATA.difficulty.labels, DATA.difficulty.values, 'doughnut');
+
+  function toggleDashAgent(){ 
+    const el=document.getElementById('dashAgent'); 
+    if(!el) return; 
+    el.style.display = (el.style.display==='none' || !el.style.display) ? 'block' : 'none';
+  }
+  function openDashAgent(){ 
+    const el=document.getElementById('dashAgent'); 
+    if(!el) return; 
+    el.style.display='block';
+    // seed message
+    const log=document.getElementById('dashAgentLog');
+    if(log && !log.dataset.seeded){
+      log.dataset.seeded = '1';
+      appendMsg('assistant', `Je vois: {{ qb_approved }} questions approuvées, {{ qb_pending }} pending. Dis-moi ce que tu veux analyser.`);
+    }
+  }
+  function appendMsg(role, text){
+    const log=document.getElementById('dashAgentLog');
+    const div=document.createElement('div');
+    div.className='mb-2';
+    div.innerHTML = role==='user'
+      ? `<div class="text-end"><span class="badge bg-primary">You</span></div><div class="border rounded p-2">${text}</div>`
+      : `<div><span class="badge bg-secondary">Agent</span></div><div class="border rounded p-2 bg-light">${text}</div>`;
+    log.appendChild(div); log.scrollTop = log.scrollHeight;
+  }
+  async function sendDashAgent(){
+    const input=document.getElementById('dashAgentInput');
+    if(!input) return;
+    const msg=input.value.trim();
+    if(!msg) return;
+    input.value='';
+    appendMsg('user', msg);
+
+    const context = `Dashboard module "{{ course.title }}". Bloom: ${DATA.bloom.labels.map((l,i)=>l+':'+DATA.bloom.values[i]).join(', ')}. Difficulty: ${DATA.difficulty.labels.map((l,i)=>l+':'+DATA.difficulty.values[i]).join(', ')}. Approved={{ qb_approved }}, Pending={{ qb_pending }}.`;
+    const payload = { message: msg + "\n\n" + context };
+
+    try{
+      const r = await fetch("{{ url_for('ai.api_chapter_chat', chapter_id=first_chapter_id) }}", {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json();
+      appendMsg('assistant', data.response || data.message || 'OK');
+    }catch(e){
+      appendMsg('assistant', 'Erreur: impossible de contacter l’agent.');
+    }
+  }
+</script>
+{% endblock %}

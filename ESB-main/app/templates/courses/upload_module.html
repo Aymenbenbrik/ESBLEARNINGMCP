@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Module File{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+  <div class="container">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+      <li class="breadcrumb-item active">Upload Module File</li>
+    </ol>
+  </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Upload a file to {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header">
+        <i class="fas fa-file-upload me-2"></i>Module Attachment
+      </div>
+      <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+          {{ form.hidden_tag() }}
+
+          <div class="mb-3">
+            {{ form.title.label(class="form-label") }}
+            {{ form.title(class="form-control", placeholder="Ex: Slides du module / Support général") }}
+            {% for error in form.title.errors %}
+              <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+          </div>
+
+          <div class="mb-4">
+            {{ form.file.label(class="form-label") }}
+            <div class="input-group mb-2">
+              {{ form.file(class="form-control", id="fileInput") }}
+              <label class="input-group-text" for="fileInput">Browse</label>
+            </div>
+            <small class="form-text text-muted">PDF, DOCX, PPTX, XLSX, CSV, TXT, ZIP, MP4, etc.</small>
+            {% for error in form.file.errors %}
+              <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{{ url_for('courses.view', course_id=course.id) }}" class="btn btn-secondary">
+              <i class="fas fa-arrow-left me-2"></i>Back
+            </a>
+            <button type="submit" class="btn btn-danger">
+              <i class="fas fa-upload me-2"></i>Upload
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const fileInput = document.getElementById('fileInput');
+  if (!fileInput) return;
+  fileInput.addEventListener('change', function() {
+    const fileName = this.files[0]?.name || 'Browse';
+    this.nextElementSibling.textContent = fileName;
+  });
+});
+</script>
+{% endblock %}

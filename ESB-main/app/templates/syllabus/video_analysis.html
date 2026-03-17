@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+
+{% block title %}Video Analysis - {{ document.title }}{% endblock %}
+
+{% block styles %}
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    .analysis-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+    
+    /* Header Styles */
+    .video-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2.5rem;
+        border-radius: 0.75rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+    
+    .video-title {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+        font-weight: 700;
+    }
+    
+    .video-meta {
+        display: flex;
+        gap: 2.5rem;
+        margin-top: 1.5rem;
+        font-size: 0.95rem;
+        opacity: 0.95;
+        flex-wrap: wrap;
+    }
+    
+    .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .btn-analyze {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 0.85rem 1.75rem;
+        border-radius: 0.35rem;
+        border: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        transition: all 0.3s ease;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(0,123,255,0.3);
+    }
+    
+    .btn-analyze:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,123,255,0.4);
+    }
+    
+    .btn-analyze:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+    
+    .btn-download {
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
+        padding: 0.85rem 1.75rem;
+        border-radius: 0.35rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        transition: all 0.3s ease;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(40,167,69,0.3);
+    }
+    
+    .btn-download:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(40,167,69,0.4);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        border-radius: 0.35rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    
+    .status-processing {
+        background: #fff3cd;
+        color: #856404;
+        box-shadow: 0 2px 4px rgba(255,193,7,0.3);
+    }
+    
+    .status-completed {
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
+        box-shadow: 0 2px 4px rgba(40,167,69,0.3);
+    }
+    
+    .status-not-started {
+        background: #6c757d;
+        color: white;
+        box-shadow: 0 2px 4px rgba(108,117,125,0.3);
+    }
+    
+    .status-failed {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        box-shadow: 0 2px 4px rgba(220,53,69,0.3);
+    }
+
+    /* Section Styles */
+    .content-section {
+        background: white;
+        border-radius: 0.75rem;
+        padding: 2.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+        border-top: 4px solid #667eea;
+    }
+
+    .section-title {
+        font-size: 1.6rem;
+        margin-bottom: 1.5rem;
+        color: #333;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    /* Audio Transcription */
+    .audio-section {
+        background: linear-gradient(135deg, #f0f8ff 0%, #e6f2ff 100%);
+        border-left: 5px solid #007bff;
+        padding: 2rem;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .transcription-text {
+        background: white;
+        padding: 1.75rem;
+        border-radius: 0.5rem;
+        line-height: 1.8;
+        color: #444;
+        font-size: 1rem;
+        margin: 1rem 0;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .transcription-note {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #e7f3ff;
+        border-radius: 0.35rem;
+        font-size: 0.9rem;
+        color: #004085;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    /* Summary Section */
+    .summary-text {
+        font-size: 1.05rem;
+        line-height: 1.9;
+        color: #555;
+        text-align: justify;
+    }
+
+    /* Timeline */
+    .timeline-entry {
+        margin-bottom: 3rem;
+        padding-bottom: 2rem;
+        border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .timeline-entry:last-child {
+        border-bottom: none;
+    }
+    
+    .timestamp-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.35rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        font-size: 1.1rem;
+        box-shadow: 0 2px 8px rgba(102,126,234,0.3);
+    }
+    
+    .content-block {
+        margin-bottom: 1.75rem;
+    }
+    
+    .content-label {
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 0.75rem;
+        font-size: 1.05rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .visual-text {
+        background: #fafafa;
+        padding: 1.5rem;
+        border-left: 4px solid #667eea;
+        border-radius: 0.35rem;
+        line-height: 1.75;
+        color: #555;
+        font-size: 0.95rem;
+    }
+    
+    .screenshot-container {
+        margin-top: 1.5rem;
+        text-align: center;
+    }
+    
+    .screenshot-img {
+        max-width: 100%;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 1px solid #e0e0e0;
+    }
+    
+    .screenshot-img:hover {
+        transform: scale(1.03);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    }
+
+    .screenshot-caption {
+        margin-top: 0.75rem;
+        color: #666;
+        font-size: 0.9rem;
+        font-style: italic;
+    }
+
+    /* Alert Styles */
+    .info-alert {
+        background: #e7f3ff;
+        border-left: 4px solid #007bff;
+        padding: 1.5rem;
+        border-radius: 0.35rem;
+        color: #004085;
+        margin-bottom: 2rem;
+    }
+
+    .info-alert h4 {
+        margin-bottom: 1rem;
+        font-weight: 700;
+    }
+
+    .info-alert ul {
+        margin-left: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .info-alert li {
+        margin-bottom: 0.5rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .analysis-container {
+            padding: 1rem;
+        }
+
+        .video-title {
+            font-size: 1.75rem;
+        }
+
+        .video-meta {
+            gap: 1.5rem;
+            flex-direction: column;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .btn-analyze, .btn-download {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .section-title {
+            font-size: 1.35rem;
+        }
+
+        .content-section {
+            padding: 1.5rem;
+        }
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .content-section, .timeline-entry {
+        animation: fadeIn 0.5s ease-out;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('syllabus.view_course', course_id=course.id) }}">{{ course.title }}</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}">Week {{ week_num }}</a></li>
+            <li class="breadcrumb-item active">Video Analysis</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="analysis-container">
+    <!-- Video Header -->
+    <div class="video-header">
+        <h1 class="video-title">📹 {{ document.title }}</h1>
+        {% if metadata and metadata.duration %}
+        <div class="video-meta">
+            <div class="meta-item">
+                <i class="fas fa-clock"></i>
+                <span>Duration: {{ metadata.duration|int // 60 }}:{{ '%02d'|format(metadata.duration|int % 60) }}</span>
+            </div>
+            {% if metadata.visual_analysis %}
+            <div class="meta-item">
+                <i class="fas fa-images"></i>
+                <span>{{ metadata.visual_analysis|length }} Frames Analyzed</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        {% if pdf_available %}
+            <a href="{{ url_for('syllabus.download_video_report', document_id=document.id) }}" class="btn-download">
+                <i class="fas fa-file-pdf"></i>
+                Download Full PDF Report
+            </a>
+            <span class="status-badge status-completed">
+                <i class="fas fa-check-circle"></i> Analysis Complete
+            </span>
+        {% elif analysis_status == 'failed' %}
+            <button id="analyzeBtn" class="btn-analyze" onclick="startAnalysis()">
+                <i class="fas fa-redo"></i>
+                Retry Analysis
+            </button>
+            <span class="status-badge status-failed" id="statusBadge">
+                <i class="fas fa-exclamation-circle"></i> Analysis Failed
+            </span>
+        {% elif analysis_status == 'processing' %}
+            <button id="analyzeBtn" class="btn-analyze" disabled>
+                <i class="fas fa-spinner fa-spin"></i>
+                Analysis in Progress...
+            </button>
+            <span class="status-badge status-processing" id="statusBadge">
+                <i class="fas fa-spinner fa-spin"></i> Processing...
+            </span>
+        {% else %}
+            {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+                <button id="analyzeBtn" class="btn-analyze" onclick="startAnalysis()">
+                    <i class="fas fa-cog"></i>
+                    Start Video Analysis
+                </button>
+                <span class="status-badge status-not-started" id="statusBadge">
+                    <i class="fas fa-clock"></i> Not Analyzed
+                </span>
+            {% else %}
+                <div class="info-alert">
+                    <i class="fas fa-info-circle"></i>
+                    This video has not been analyzed yet. Please ask your teacher to analyze it.
+                </div>
+            {% endif %}
+        {% endif %}
+        
+        <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Week
+        </a>
+    </div>
+    
+    <!-- Audio Transcription Section -->
+    {% if metadata and metadata.audio_transcription %}
+    <div class="audio-section">
+        <h2 class="section-title">
+            <i class="fas fa-microphone"></i> Audio Transcription
+        </h2>
+        
+        <div class="transcription-text">
+            {{ metadata.audio_transcription }}
+        </div>
+        
+        <div class="transcription-note">
+            <i class="fas fa-info-circle"></i>
+            <span>Complete audio transcription from the video generated using AI speech recognition technology.</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Learning Summary Section -->
+    {% if metadata and metadata.timeline %}
+    <div class="content-section">
+        <h2 class="section-title">
+            <i class="fas fa-lightbulb"></i> Learning Summary
+        </h2>
+        
+        <div class="summary-text">
+            {% if summary %}
+                {{ summary | safe }}
+            {% else %}
+                <p>This video provides comprehensive educational content designed to enhance your learning experience. The material combines visual demonstrations with audio explanations to ensure thorough understanding of the concepts presented.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Timeline Section -->
+    {% if metadata and metadata.timeline %}
+    <div class="content-section">
+        <h2 class="section-title">
+            <i class="fas fa-video"></i> Video Timeline & Analysis
+        </h2>
+        
+        {% for entry in metadata.timeline %}
+        <div class="timeline-entry">
+            <div class="timestamp-badge">
+                <i class="fas fa-clock"></i> {{ entry.time_formatted }}
+            </div>
+            
+            {% if entry.visual %}
+            <div class="content-block">
+                <div class="content-label">
+                    <i class="fas fa-eye"></i> Frame Analysis
+                </div>
+                <div class="visual-text">
+                    {{ entry.visual }}
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if entry.screenshot %}
+            <div class="screenshot-container">
+                {% if get_image_base64 %}
+                    <img src="data:image/jpeg;base64,{{ get_image_base64(entry.screenshot) }}" 
+                         class="screenshot-img" 
+                         alt="Frame at {{ entry.time_formatted }}"
+                         onclick="window.open(this.src, '_blank')">
+                {% else %}
+                    <img src="{{ entry.screenshot }}" 
+                         class="screenshot-img" 
+                         alt="Frame at {{ entry.time_formatted }}"
+                         onclick="window.open(this.src, '_blank')">
+                {% endif %}
+                <p class="screenshot-caption">
+                    <i class="fas fa-image"></i> Screenshot at {{ entry.time_formatted }}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    {% elif analysis_status == 'not_started' %}
+    <div class="content-section">
+        <div class="info-alert">
+            <h4><i class="fas fa-info-circle"></i> How Video Analysis Works</h4>
+            <p>This analysis will provide you with:</p>
+            <ul>
+                <li><strong>Frame Extraction:</strong> Key frames are extracted from the video at regular intervals to capture important content moments.</li>
+                <li><strong>Visual Analysis:</strong> Each frame is analyzed using advanced AI to identify and describe the educational content, visual elements, and teaching methodology.</li>
+                <li><strong>Audio Transcription:</strong> The complete audio is transcribed using speech recognition technology for easy reference.</li>
+                <li><strong>Comprehensive Timeline:</strong> All visual and audio content is synchronized into a complete timeline with detailed analysis.</li>
+                <li><strong>Learning Summary:</strong> An AI-generated summary highlighting key concepts, learning objectives, and educational value.</li>
+                <li><strong>PDF Report:</strong> A professional, downloadable PDF report containing all analysis results for your records.</li>
+            </ul>
+            <p><strong>Estimated Processing Time:</strong> 5-15 minutes depending on video length. You'll be notified when the analysis is complete.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let analysisCheckInterval;
+
+function startAnalysis() {
+    const btn = document.getElementById('analyzeBtn');
+    const badge = document.getElementById('statusBadge');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting Analysis...';
+    
+    badge.className = 'status-badge status-processing';
+    badge.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    
+    const url = '{{ url_for("syllabus.analyze_video", course_id=course.id, week_num=week_num, document_id=document.id) }}';
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || `HTTP ${response.status}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        showNotification(data.message || 'Video analysis started!', 'success');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        analysisCheckInterval = setInterval(checkAnalysisStatus, 5000);
+        setTimeout(checkAnalysisStatus, 2000);
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-cog"></i> Start Video Analysis';
+        badge.className = 'status-badge status-not-started';
+        badge.innerHTML = '<i class="fas fa-clock"></i> Not Analyzed';
+        showNotification('Error: ' + error.message, 'danger');
+    });
+}
+
+function checkAnalysisStatus() {
+    const url = '{{ url_for("syllabus.video_analysis_status", course_id=course.id, week_num=week_num, document_id=document.id) }}';
+    
+    fetch(url)
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            clearInterval(analysisCheckInterval);
+            showNotification('Video analysis complete! Reloading page...', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else if (data.status === 'failed') {
+            clearInterval(analysisCheckInterval);
+            showNotification('Analysis failed: ' + (data.error || 'Unknown error'), 'danger');
+            setTimeout(() => location.reload(), 2000);
+        }
+    })
+    .catch(error => console.error('Status check error:', error));
+}
+
+function showNotification(message, type) {
+    const alertType = type === 'error' ? 'danger' : type;
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${alertType} alert-dismissible fade show`;
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.minWidth = '300px';
+    notification.style.maxWidth = '500px';
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Auto-check status on page load if processing
+{% if analysis_status == 'processing' %}
+analysisCheckInterval = setInterval(checkAnalysisStatus, 5000);
+setTimeout(checkAnalysisStatus, 1000);
+{% endif %}
+</script>
+{% endblock %}

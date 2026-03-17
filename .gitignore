@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+*.db
+*.sqlite3
+instance/
+
+# Node
+node_modules/
+.next/
+.env.local
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads (runtime files)
+ESB-main/uploads/
+
+# Logs
+*.log

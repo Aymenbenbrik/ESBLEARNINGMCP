@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}TN Syllabi{% endblock %}
+{% block heading %}TN Syllabi{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div class="text-muted">Liste des modules (enseignant) avec état du syllabus TN.</div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('courses.index') }}">Retour courses</a>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th class="text-center">Fichier</th>
+                <th class="text-center">Extraction</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>
+                    <div class="fw-semibold">{{ r.course.title }}</div>
+                    <div class="text-muted small">{{ r.course.description or '' }}</div>
+                  </td>
+                  <td class="text-center">
+                    {% if r.has_file %}
+                      <span class="badge bg-success">OK</span>
+                      <div class="text-muted small">{{ r.syllabus.file_path }}</div>
+                    {% else %}
+                      <span class="badge bg-secondary">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    {% if r.is_extracted %}
+                      <span class="badge bg-danger">Extraite</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Non</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('tn_syllabus.course_home', course_id=r.course.id) }}">Gérer</a>
+                    {% if r.is_extracted %}
+                      <a class="btn btn-sm btn-danger" href="{{ url_for('tn_syllabus.viewer', course_id=r.course.id) }}">Viewer</a>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info mb-0">Aucun module trouvé pour cet enseignant.</div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

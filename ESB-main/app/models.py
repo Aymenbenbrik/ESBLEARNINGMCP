@@ -1,0 +1,943 @@
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from app import db, login_manager
+import os
+from flask import current_app, url_for
+from werkzeug.utils import secure_filename
+
+
+# ---------------------------
+# User Session Tracking
+# ---------------------------
+class UserSession(db.Model):
+    """Model to track user login/logout activities"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    login_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    logout_time = db.Column(db.DateTime, nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+
+    user = db.relationship('User', backref=db.backref('sessions', lazy=True))
+
+    def __init__(self, user_id, ip_address=None, user_agent=None):
+        self.user_id = user_id
+        self.ip_address = ip_address
+        self.user_agent = user_agent
+
+    def record_logout(self):
+        self.logout_time = datetime.utcnow()
+
+    @property
+    def duration(self):
+        if self.logout_time:
+            return round((self.logout_time - self.login_time).total_seconds() / 60, 1)
+        return None
+
+    @property
+    def is_active(self):
+        return self.logout_time is None
+
+    def __repr__(self):
+        return f'<UserSession {self.id} - User {self.user_id}>'
+
+
+# ---------------------------
+# Relations Teacher <-> Student
+# ---------------------------
+class TeacherStudent(db.Model):
+    __tablename__ = 'teacher_student'
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    teacher = db.relationship('User', foreign_keys=[teacher_id], backref='teacher_links')
+    student = db.relationship('User', foreign_keys=[student_id], backref='student_links')
+
+
+# ---------------------------
+# Program (Formation)
+# ---------------------------
+program_course = db.Table(
+    'program_course',
+    db.Column('program_id', db.Integer, db.ForeignKey('program.id'), primary_key=True),
+    db.Column('course_id', db.Integer, db.ForeignKey('course.id'), primary_key=True),
+)
+
+
+# ---------------------------
+# Classe ↔ Course ↔ Teacher (assignment per class)
+# ---------------------------
+class ClassCourseAssignment(db.Model):
+    __tablename__ = 'class_course_assignment'
+
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classe.id'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    # ensure one row per class-course
+    __table_args__ = (db.UniqueConstraint('class_id', 'course_id', name='uq_class_course'),)
+
+    classe = db.relationship('Classe', back_populates='course_assignments')
+    course = db.relationship('Course')
+    teacher = db.relationship('User')
+
+
+class Program(db.Model):
+    __tablename__ = 'program'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), unique=True, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    courses = db.relationship('Course', secondary=program_course, backref=db.backref('programs', lazy='dynamic'))
+    classes = db.relationship('Classe', backref='program', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Program {self.name}>'
+
+    @property
+    def courses_count(self) -> int:
+        """Safe course count for Program.courses (list relationship)."""
+        try:
+            return len(self.courses)
+        except Exception:
+            # fallback if relationship becomes dynamic in the future
+            try:
+                return self.courses.count()  # type: ignore[attr-defined]
+            except Exception:
+                return 0
+
+
+# ---------------------------
+# Classe
+# ---------------------------
+class Classe(db.Model):
+    __tablename__ = 'classe'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    # Academic year label (e.g., 2025-2026). Optional but useful for admin organization.
+    academic_year = db.Column(db.String(20), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # per-class teaching assignments (course -> teacher)
+    course_assignments = db.relationship(
+        'ClassCourseAssignment',
+        back_populates='classe',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
+    program_id = db.Column(db.Integer, db.ForeignKey('program.id'), nullable=True)
+
+    students = db.relationship('User', backref='classe', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Classe {self.name}>'
+
+
+# ---------------------------
+# User Model
+# ---------------------------
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128))
+    is_teacher = db.Column(db.Boolean, default=False)
+    is_superuser = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_first_login = db.Column(db.Boolean, default=False)
+
+    google_api_key = db.Column(db.String(255), nullable=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classe.id'), nullable=True)
+
+    courses_created = db.relationship('Course', backref='teacher', lazy='dynamic')
+    enrollments = db.relationship('Enrollment', backref='student', lazy='dynamic')
+
+    students = db.relationship(
+        'User',
+        secondary='teacher_student',
+        primaryjoin='User.id == TeacherStudent.teacher_id',
+        secondaryjoin='User.id == TeacherStudent.student_id',
+        backref=db.backref('teachers', lazy='dynamic', overlaps="teacher_links,student_links"),
+        lazy='dynamic',
+        overlaps="teacher_links,student_links"
+    )
+
+    # ---------------- Methods ----------------
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def add_student(self, student):
+        if not (self.is_teacher or self.is_superuser) or student.is_teacher or self.has_student(student):
+            return False
+        link = TeacherStudent(teacher=self, student=student)
+        db.session.add(link)
+        return True
+
+    def remove_student(self, student):
+        if not (self.is_teacher or self.is_superuser):
+            return False
+        link = TeacherStudent.query.filter_by(teacher_id=self.id, student_id=student.id).first()
+        if link:
+            db.session.delete(link)
+            return True
+        return False
+
+    def has_student(self, student):
+        return TeacherStudent.query.filter_by(teacher_id=self.id, student_id=student.id).count() > 0
+
+    def get_all_students(self):
+        return [link.student for link in self.teacher_links]
+
+    def create_user(self, username, email, password, is_teacher=False, is_superuser=False, class_id=None):
+        if not self.is_superuser:
+            return None
+        user = User(
+            username=username,
+            email=email,
+            is_teacher=is_teacher,
+            is_superuser=is_superuser,
+            class_id=class_id
+        )
+        user.set_password(password)
+        db.session.add(user)
+        return user
+
+    def link_teacher_student(self, teacher_id, student_id):
+        if not self.is_superuser:
+            return False
+        teacher = User.query.get(teacher_id)
+        student = User.query.get(student_id)
+        if not teacher or not student or not teacher.is_teacher or student.is_teacher:
+            return False
+        if TeacherStudent.query.filter_by(teacher_id=teacher_id, student_id=student_id).first():
+            return False
+        link = TeacherStudent(teacher_id=teacher_id, student_id=student_id)
+        db.session.add(link)
+        return True
+
+    def link_teacher_to_class(self, teacher_id, class_id):
+        if not self.is_superuser:
+            return False, "Superuser privileges required"
+        teacher = User.query.get(teacher_id)
+        class_obj = Classe.query.get(class_id)
+        if not teacher or not class_obj:
+            return False, "Teacher or class not found"
+        if not teacher.is_teacher:
+            return False, "Selected user is not a teacher"
+        students = User.query.filter_by(class_id=class_id, is_teacher=False).all()
+        success_count = 0
+        for student in students:
+            if not TeacherStudent.query.filter_by(teacher_id=teacher_id, student_id=student.id).first():
+                link = TeacherStudent(teacher_id=teacher_id, student_id=student.id)
+                db.session.add(link)
+                success_count += 1
+        return True, f"Added {success_count} students to teacher"
+
+    def unlink_teacher_student(self, teacher_id, student_id):
+        if not self.is_superuser:
+            return False
+        link = TeacherStudent.query.filter_by(teacher_id=teacher_id, student_id=student_id).first()
+        if link:
+            db.session.delete(link)
+            return True
+        return False
+
+    def promote_to_teacher(self, user_id):
+        if not self.is_superuser:
+            return False
+        user = User.query.get(user_id)
+        if user:
+            user.is_teacher = True
+            return True
+        return False
+
+    def demote_from_teacher(self, user_id):
+        if not self.is_superuser:
+            return False
+        user = User.query.get(user_id)
+        if user and user.is_teacher and not user.is_superuser:
+            user.is_teacher = False
+            return True
+        return False
+
+    def get_all_users(self):
+        if not self.is_superuser:
+            return []
+        return User.query.all()
+
+    def get_all_teachers(self):
+        if not self.is_superuser:
+            return []
+        return User.query.filter_by(is_teacher=True).all()
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
+
+@login_manager.user_loader
+def load_user(id):
+    return User.query.get(int(id))
+
+
+def create_superuser(username, email, password):
+    user = User.query.filter_by(username=username).first()
+    if user:
+        return False, "Username already exists"
+    user = User.query.filter_by(email=email).first()
+    if user:
+        return False, "Email already exists"
+    superuser = User(
+        username=username,
+        email=email,
+        is_teacher=True,
+        is_superuser=True
+    )
+    superuser.set_password(password)
+    db.session.add(superuser)
+    db.session.commit()
+    return True, f"Superuser {username} created successfully"
+
+
+# ---------------------------
+# Courses / Chapters / Enrollment
+# ---------------------------
+class Course(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    chapters = db.relationship('Chapter', backref='course', lazy='dynamic', cascade='all, delete-orphan')
+    enrollments = db.relationship('Enrollment', backref='course', lazy='dynamic', cascade='all, delete-orphan')
+    syllabus = db.relationship('Syllabus', backref='course', uselist=False, cascade='all, delete-orphan')
+    documents = db.relationship('Document', backref='course', lazy='dynamic', cascade='all, delete-orphan')
+
+    @property
+    def chapters_count(self) -> int:
+        """Safe chapter count for both lazy='dynamic' (query) and list relationships."""
+        try:
+            return self.chapters.count()  # dynamic relationship
+        except TypeError:
+            # In case relationship is configured as a list elsewhere
+            return len(self.chapters)  # type: ignore[arg-type]
+
+    def __repr__(self):
+        return f'<Course {self.title}>'
+
+
+class Chapter(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    order = db.Column(db.Integer, nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    summary = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    documents = db.relationship('Document', backref='chapter', lazy='dynamic', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<Chapter {self.title}>'
+
+    def has_summary(self):
+        return self.summary is not None and len(self.summary.strip()) > 0
+
+    def clear_summary(self):
+        self.summary = None
+
+    def get_document_count(self):
+        return self.documents.count()
+
+    def get_all_documents(self):
+        return self.documents.all()
+
+    def has_documents(self):
+        return self.get_document_count() > 0
+
+    @property
+    def truncated_summary(self, max_length=200):
+        if not self.summary:
+            return "No summary available."
+        if len(self.summary) <= max_length:
+            return self.summary
+        return self.summary[:max_length] + "..."
+
+
+class Enrollment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    enrolled_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'course_id', name='unique_enrollment'),
+    )
+
+    def __repr__(self):
+        return f'<Enrollment {self.student_id} - {self.course_id}>'
+
+
+# ---------------------------
+# Chat Session & Messages
+# ---------------------------
+class ChatSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=False)
+    chapter_id = db.Column(db.Integer, db.ForeignKey('chapter.id'), nullable=True)  # NULL for document-level chats
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    messages = db.relationship('ChatMessage', backref='session', lazy='dynamic', cascade='all, delete-orphan')
+    chapter = db.relationship('Chapter', backref='chat_sessions')
+
+    def __repr__(self):
+        chat_type = "Chapter" if self.chapter_id else "Document"
+        return f'<ChatSession {self.id} ({chat_type})>'
+
+
+class ChatMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    is_user = db.Column(db.Boolean, default=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<ChatMessage {self.id}>'
+
+
+# ---------------------------
+# Class Group Chat (per Classe)
+# ---------------------------
+class ClassChatRoom(db.Model):
+    __tablename__ = 'class_chat_room'
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classe.id'), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # One room per class, many messages
+    messages = db.relationship(
+        'ClassChatMessage',
+        backref='room',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f'<ClassChatRoom class_id={self.class_id}>'
+
+
+class ClassChatMessage(db.Model):
+    __tablename__ = 'class_chat_message'
+    id = db.Column(db.Integer, primary_key=True)
+    room_id = db.Column(db.Integer, db.ForeignKey('class_chat_room.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    content = db.Column(db.Text, nullable=False)
+    is_bot = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    sender = db.relationship('User', foreign_keys=[sender_id])
+
+    def __repr__(self):
+        return f'<ClassChatMessage {self.id} room={self.room_id} bot={self.is_bot}>'
+
+
+# ---------------------------
+# Documents & Notes
+# ---------------------------
+class Document(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    file_path = db.Column(db.String(255), nullable=True)  # Optional for quizzes (no file)
+    file_type = db.Column(db.String(10), nullable=True)   # Optional for quizzes
+    document_type = db.Column(db.String(50), nullable=False, server_default='general')  # 'quiz', 'pdf', etc.
+    summary = db.Column(db.Text, nullable=True)           # Reuse for quiz instructions if needed
+    quiz_data = db.Column(db.JSON, nullable=True)         # For quizzes - list of question dicts
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=True)
+    # Many parts of the app expect Document -> Chapter linkage (document.chapter_id).
+    # The database schema includes this column, and Chapter.documents relies on it.
+    chapter_id = db.Column(db.Integer, db.ForeignKey('chapter.id'), nullable=True)
+    week_number = db.Column(db.Integer, nullable=True)    # For week quizzes
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    notes = db.relationship('Note', backref='document', lazy=True, cascade="all, delete-orphan")
+    chat_sessions = db.relationship('ChatSession', backref='document', lazy='dynamic', cascade='all, delete-orphan')
+    quizzes = db.relationship('Quiz', backref='document', lazy='dynamic', cascade='all, delete-orphan')
+    analysis_results = db.Column(db.JSON, nullable=True)  # For exam analysis (CLO %, Bloom's balance)
+    analysis_report_path = db.Column(db.String(500), nullable=True)  # Path to generated PDF report
+    content_metadata = db.Column('metadata', db.JSON)
+
+    def __repr__(self):
+        return f'<Document {self.title} (Type: {self.document_type}, Week: {self.week_number})>'
+
+    def get_quiz_questions(self):
+        if self.document_type != 'quiz' or not self.quiz_data:
+            return []
+        return self.quiz_data
+
+    @property
+    def is_quiz(self):
+        return self.document_type == 'quiz'
+
+
+class Note(db.Model):
+    __tablename__ = 'notes'
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=True)
+    image_path = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=False)
+
+    user = db.relationship('User', backref=db.backref('notes', lazy=True))
+
+    def __init__(self, user_id, document_id, content=None, image_file=None):
+        self.user_id = user_id
+        self.document_id = document_id
+        self.content = content
+        if image_file:
+            filename = secure_filename(image_file.filename)
+            unique_filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{filename}"
+            self.image_path = os.path.join('notes_images', unique_filename)
+            upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'notes_images')
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir)
+            image_file.save(os.path.join(upload_dir, unique_filename))
+
+    def to_dict(self):
+        result = {
+            'id': self.id,
+            'content': self.content,
+            'created_at': self.created_at.strftime('%b %d, %Y, %I:%M %p'),
+            'user_id': self.user_id,
+            'document_id': self.document_id
+        }
+        if self.image_path:
+            result['image_path'] = self.image_path
+            result['image_url'] = url_for('notes.serve_note_image', filename=self.image_path)
+        return result
+
+    def delete_file(self):
+        if self.image_path:
+            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], self.image_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+
+# ---------------------------
+# Syllabus
+# ---------------------------
+class Syllabus(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False, unique=True)
+    syllabus_type = db.Column(db.String(10), nullable=True, default='bga')  # 'bga' or 'tn'
+    clo_data = db.Column(db.JSON, nullable=True)
+    clo_stats = db.Column(db.JSON, default=dict)
+    plo_data = db.Column(db.JSON, nullable=True)
+    weekly_plan = db.Column(db.JSON, nullable=True)
+    tn_data = db.Column(db.JSON, nullable=True)  # legacy TN blob
+    file_path = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # TN normalized relationships
+    tn_admin = db.relationship('TNSyllabusAdministrative', back_populates='syllabus', uselist=False, cascade='all, delete-orphan')
+    tn_aa = db.relationship('TNAA', back_populates='syllabus', cascade='all, delete-orphan')
+    tn_aap = db.relationship('TNAAP', back_populates='syllabus', cascade='all, delete-orphan')
+    tn_chapters = db.relationship('TNChapter', back_populates='syllabus', cascade='all, delete-orphan')
+    tn_evaluation = db.relationship('TNEvaluation', back_populates='syllabus', uselist=False, cascade='all, delete-orphan')
+    tn_bibliography = db.relationship('TNBibliography', back_populates='syllabus', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<Syllabus for Course {self.course_id} ({self.syllabus_type})>'
+
+
+# ---------------------------
+# TN Syllabus Models (AA, AAP, Chapters/Sections)
+# ---------------------------
+class TNSyllabusAdministrative(db.Model):
+    __tablename__ = 'tn_syllabus_admin'
+    id = db.Column(db.Integer, primary_key=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id'), nullable=False, unique=True)
+    module_name = db.Column(db.String(255))
+    code_ue = db.Column(db.String(50))
+    code_ecue = db.Column(db.String(50))
+    field = db.Column(db.String(255))
+    department = db.Column(db.String(255))
+    option = db.Column(db.String(255))
+    volume_presentiel = db.Column(db.String(50))
+    volume_personnel = db.Column(db.String(50))
+    coefficient = db.Column(db.Float)
+    credits = db.Column(db.Float)
+    responsible = db.Column(db.String(255))
+    teachers = db.Column(db.JSON)
+
+    syllabus = db.relationship('Syllabus', back_populates='tn_admin')
+
+
+class TNAAP(db.Model):
+    __tablename__ = 'tn_aap'
+    id = db.Column(db.Integer, primary_key=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id'), nullable=False)
+    number = db.Column(db.Integer, nullable=False)  # AAP#
+    selected = db.Column(db.Boolean, default=False)
+
+    syllabus = db.relationship('Syllabus', back_populates='tn_aap')
+
+    __table_args__ = (
+        db.UniqueConstraint('syllabus_id', 'number', name='uq_tn_aap_num'),
+    )
+
+
+class TNAA(db.Model):
+    __tablename__ = 'tn_aa'
+    id = db.Column(db.Integer, primary_key=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id'), nullable=False)
+    number = db.Column(db.Integer, nullable=False)  # AA#
+    description = db.Column(db.Text, nullable=False)
+
+    syllabus = db.relationship('Syllabus', back_populates='tn_aa')
+    chapter_links = db.relationship('TNChapterAAA', back_populates='aa', cascade='all, delete-orphan')
+    section_links = db.relationship('TNSectionAAA', back_populates='aa', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('syllabus_id', 'number', name='uq_tn_aa_num'),
+    )
+
+
+class TNChapter(db.Model):
+    __tablename__ = 'tn_chapter'
+    id = db.Column(db.Integer, primary_key=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id'), nullable=False)
+    index = db.Column(db.Integer, nullable=False)  # chapter_index
+    title = db.Column(db.Text, nullable=False)
+
+    syllabus = db.relationship('Syllabus', back_populates='tn_chapters')
+    sections = db.relationship('TNSection', back_populates='chapter', cascade='all, delete-orphan')
+    aa_links = db.relationship('TNChapterAAA', back_populates='chapter', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('syllabus_id', 'index', name='uq_tn_chapter_idx'),
+    )
+
+
+class TNSection(db.Model):
+    __tablename__ = 'tn_section'
+    id = db.Column(db.Integer, primary_key=True)
+    chapter_id = db.Column(db.Integer, db.ForeignKey('tn_chapter.id'), nullable=False)
+    index = db.Column(db.String(20), nullable=False)  # e.g. "1.1"
+    title = db.Column(db.Text, nullable=False)
+
+    chapter = db.relationship('TNChapter', back_populates='sections')
+    aa_links = db.relationship('TNSectionAAA', back_populates='section', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('chapter_id', 'index', name='uq_tn_section_idx'),
+    )
+
+
+class TNChapterAAA(db.Model):
+    __tablename__ = 'tn_chapter_aa'
+    chapter_id = db.Column(db.Integer, db.ForeignKey('tn_chapter.id'), primary_key=True)
+    aa_id = db.Column(db.Integer, db.ForeignKey('tn_aa.id'), primary_key=True)
+    description_override = db.Column(db.Text, nullable=True)
+
+    chapter = db.relationship('TNChapter', back_populates='aa_links')
+    aa = db.relationship('TNAA', back_populates='chapter_links')
+
+
+class TNSectionAAA(db.Model):
+    __tablename__ = 'tn_section_aa'
+    section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), primary_key=True)
+    aa_id = db.Column(db.Integer, db.ForeignKey('tn_aa.id'), primary_key=True)
+    description_override = db.Column(db.Text, nullable=True)
+
+    section = db.relationship('TNSection', back_populates='aa_links')
+    aa = db.relationship('TNAA', back_populates='section_links')
+
+
+class TNEvaluation(db.Model):
+    __tablename__ = 'tn_evaluation'
+    id = db.Column(db.Integer, primary_key=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id'), nullable=False, unique=True)
+    methods = db.Column(db.JSON)
+    criteria = db.Column(db.JSON)
+    measures = db.Column(db.JSON)
+    final_grade_formula = db.Column(db.Text)
+
+    syllabus = db.relationship('Syllabus', back_populates='tn_evaluation')
+
+
+class TNBibliography(db.Model):
+    __tablename__ = 'tn_bibliography'
+    id = db.Column(db.Integer, primary_key=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id'), nullable=False)
+    position = db.Column(db.Integer)
+    entry = db.Column(db.Text, nullable=False)
+
+    def __init__(self, *args, **kwargs):
+        # Backward/forward compatibility: some extraction workflows may send a 'reference' key.
+        kwargs.pop('reference', None)
+        super().__init__(*args, **kwargs)
+
+
+    syllabus = db.relationship('Syllabus', back_populates='tn_bibliography')
+
+
+# ---------------------------
+# Quiz Statistics
+# ---------------------------
+class QuizBloomStatistic(db.Model):
+    __tablename__ = 'quiz_bloom_statistic'
+
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    bloom_level = db.Column(db.String(50), nullable=False)  # remember, understand, apply, analyze, evaluate, create
+    total_questions = db.Column(db.Integer, default=0)
+    correct_answers = db.Column(db.Integer, default=0)
+    success_rate = db.Column(db.Float, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    quiz = db.relationship('Quiz', backref='bloom_statistics')
+
+    def __repr__(self):
+        return f'<QuizBloomStatistic quiz_id={self.quiz_id} bloom={self.bloom_level} success={self.success_rate}%>'
+
+
+class QuizCLOStatistic(db.Model):
+    __tablename__ = 'quiz_clo_statistic'
+
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    clo_name = db.Column(db.String(255), nullable=False)
+    total_questions = db.Column(db.Integer, default=0)
+    correct_answers = db.Column(db.Integer, default=0)
+    success_rate = db.Column(db.Float, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    quiz = db.relationship('Quiz', backref='clo_statistics')
+
+    def __repr__(self):
+        return f'<QuizCLOStatistic quiz_id={self.quiz_id} clo={self.clo_name} success={self.success_rate}%>'
+
+
+# ---------------------------
+# Quizzes
+# ---------------------------
+class Quiz(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    num_questions = db.Column(db.Integer, default=0)
+    score = db.Column(db.Float, nullable=True)
+    feedback = db.Column(db.Text, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True, default=None)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # NOTE: Some deployments of this project do NOT have proctoring/disqualification
+    # columns in the "quiz" table (is_disqualified/disqualified_at/violations_count).
+    # If we map them as DB columns while they don't exist, PostgreSQL will crash on any
+    # Quiz query because SQLAlchemy selects all mapped columns.
+    #
+    # We therefore keep them as *runtime-only* properties for backward compatibility.
+    # If you later add these columns via a migration, you can safely convert them back
+    # to db.Column definitions.
+    _is_disqualified = False
+    _disqualified_at = None
+    _violations_count = 0
+
+    @property
+    def is_disqualified(self):
+        return getattr(self, '_is_disqualified', False)
+
+    @is_disqualified.setter
+    def is_disqualified(self, value):
+        self._is_disqualified = bool(value)
+
+    @property
+    def disqualified_at(self):
+        return getattr(self, '_disqualified_at', None)
+
+    @disqualified_at.setter
+    def disqualified_at(self, value):
+        self._disqualified_at = value
+
+    @property
+    def violations_count(self):
+        return int(getattr(self, '_violations_count', 0) or 0)
+
+    @violations_count.setter
+    def violations_count(self, value):
+        self._violations_count = int(value or 0)
+
+    __table_args__ = (
+        db.UniqueConstraint('document_id', 'student_id', name='uq_one_completed_quiz_per_student'),
+    )
+
+    student = db.relationship('User', backref='quizzes')
+    questions = db.relationship('QuizQuestion', backref='quiz', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f'<Quiz {self.id}>'
+
+
+class QuizViolation(db.Model):
+    __tablename__ = 'quiz_violations'
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    violation_type = db.Column(db.String(50), nullable=False)  # fullscreen_exit, copy, paste, tab_switch, right_click, print_screen, select_all
+    occurred_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_warning = db.Column(db.Boolean, default=True)  # True=1st/warning, False=2nd/disqualified
+
+    quiz = db.relationship('Quiz', backref=db.backref('violations', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f'<QuizViolation {self.id} quiz={self.quiz_id} type={self.violation_type}>'
+
+
+class QuizQuestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    question_text = db.Column(db.Text, nullable=False)
+    choice_a = db.Column(db.Text, nullable=True)
+    choice_b = db.Column(db.Text, nullable=True)
+    choice_c = db.Column(db.Text, nullable=True)
+    correct_choice = db.Column(db.String(1), nullable=True)
+    student_choice = db.Column(db.Text, nullable=True)
+    is_correct = db.Column(db.Boolean, nullable=True)
+    explanation = db.Column(db.Text, nullable=True)
+
+    question_type = db.Column(db.String(20), default='mcq')  # 'mcq' or 'open_ended'
+    feedback = db.Column(db.Text, nullable=True)
+    score = db.Column(db.Float, nullable=True)
+
+    bloom_level = db.Column(db.String(50), nullable=True)
+    clo = db.Column(db.String(255), nullable=True)
+    difficulty = db.Column(db.String(20), nullable=True)
+
+    def __repr__(self):
+        return f'<QuizQuestion {self.id}>'
+
+
+# ---------------------------
+# Question Bank
+# ---------------------------
+class QuestionBankQuestion(db.Model):
+    __tablename__ = 'question_bank_question'
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    # Optional chapter association (used for chapter-scoped question banks).
+    # Even if the underlying DB column exists without an FK constraint, we
+    # declare it as a ForeignKey so SQLAlchemy can build relationships.
+    chapter_id = db.Column(db.Integer, db.ForeignKey('chapter.id'), nullable=True)
+    question_text = db.Column(db.Text, nullable=False)
+    choice_a = db.Column(db.Text, nullable=True)
+    choice_b = db.Column(db.Text, nullable=True)
+    choice_c = db.Column(db.Text, nullable=True)
+    correct_choice = db.Column(db.String(1), nullable=True)
+    explanation = db.Column(db.Text, nullable=True)
+
+    question_type = db.Column(db.String(20), default='mcq')
+    bloom_level = db.Column(db.String(50), nullable=True)
+    # IMPORTANT:
+    # - For BGA syllabi, this field stores a CLO tag (e.g. "CLO 1").
+    # - For Tunisian norms (TN), we store the AAA code here (e.g. "AAA 1").
+    # We keep the DB column name `clo` for backward-compatibility.
+    clo = db.Column(db.String(255), nullable=True)
+    difficulty = db.Column(db.String(20), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def aaa(self):
+        """Alias for TN usage: AAA code stored in `clo` column."""
+        return self.clo
+
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    # Relationships
+    course = db.relationship('Course', backref=db.backref('question_bank_questions', lazy='dynamic', cascade='all, delete-orphan'))
+    chapter = db.relationship(
+        'Chapter',
+        foreign_keys=[chapter_id],
+        backref=db.backref('question_bank_questions', lazy='dynamic', cascade='all, delete-orphan')
+    )
+    approved_by = db.relationship('User', foreign_keys=[approved_by_id])
+
+    @property
+    def is_approved(self):
+        return self.approved_at is not None
+
+    def __repr__(self):
+        return f'<QuestionBankQuestion {self.id} course={self.course_id} approved={self.is_approved}>'
+
+
+class PracticeQuiz(db.Model):
+    """
+    Practice quizzes for student self-study from approved Question Bank.
+    Separate from document-based course test quizzes.
+    """
+    __tablename__ = 'practice_quiz'
+
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    chapter_id = db.Column(db.Integer, db.ForeignKey('chapter.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    attempt_number = db.Column(db.Integer, default=1, nullable=False)
+    max_attempts = db.Column(db.Integer, default=3, nullable=False)
+    num_questions = db.Column(db.Integer, default=0)
+    score = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    course = db.relationship('Course', backref=db.backref('practice_quizzes', lazy='dynamic'))
+    chapter = db.relationship('Chapter', backref=db.backref('practice_quizzes', lazy='dynamic'))
+    student = db.relationship('User', backref=db.backref('practice_quizzes', lazy='dynamic'))
+    questions = db.relationship('PracticeQuizQuestion', backref='practice_quiz',
+                                cascade='all, delete-orphan', lazy='dynamic')
+
+    @property
+    def is_completed(self):
+        return self.completed_at is not None
+
+    def __repr__(self):
+        return f'<PracticeQuiz {self.id} student={self.student_id} chapter={self.chapter_id} attempt={self.attempt_number}>'
+
+
+class PracticeQuizQuestion(db.Model):
+    """Questions for practice quizzes - copied from QuestionBankQuestion."""
+    __tablename__ = 'practice_quiz_question'
+
+    id = db.Column(db.Integer, primary_key=True)
+    practice_quiz_id = db.Column(db.Integer, db.ForeignKey('practice_quiz.id'), nullable=False)
+    question_text = db.Column(db.Text, nullable=False)
+    choice_a = db.Column(db.Text, nullable=True)
+    choice_b = db.Column(db.Text, nullable=True)
+    choice_c = db.Column(db.Text, nullable=True)
+    correct_choice = db.Column(db.String(1), nullable=True)
+    explanation = db.Column(db.Text, nullable=True)
+    student_choice = db.Column(db.Text, nullable=True)
+    is_correct = db.Column(db.Boolean, nullable=True)
+    question_type = db.Column(db.String(20), default='mcq')
+    bloom_level = db.Column(db.String(50), nullable=True)
+    clo = db.Column(db.String(255), nullable=True)
+    difficulty = db.Column(db.String(20), nullable=True)
+    source_question_id = db.Column(db.Integer, db.ForeignKey('question_bank_question.id'), nullable=True)
+
+    def __repr__(self):
+        return f'<PracticeQuizQuestion {self.id} quiz={self.practice_quiz_id}>'
+

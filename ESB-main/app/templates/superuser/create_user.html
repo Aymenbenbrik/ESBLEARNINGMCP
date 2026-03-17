@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>Create New User</h1>
+        <a href="{{ url_for('superuser.list_users') }}" class="btn btn-outline-secondary">Back to Users</a>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="post">
+                        <!-- CSRF Token -->
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="is_teacher" name="is_teacher">
+                            <label class="form-check-label" for="is_teacher">Is Teacher</label>
+                        </div>
+                        
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="is_superuser" name="is_superuser">
+                            <label class="form-check-label" for="is_superuser">Is Superuser</label>
+                        </div>
+                        
+                        <div class="mb-3" id="class_selection">
+                            <label for="class_id" class="form-label">Class (for students only)</label>
+                            <select class="form-select" id="class_id" name="class_id">
+                                <option value="">No Class</option>
+                                {% for class_obj in classes %}
+                                <option value="{{ class_obj.id }}">{{ class_obj.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Create User</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Show/hide class selection based on teacher status
+        const teacherCheckbox = document.getElementById('is_teacher');
+        const classSelection = document.getElementById('class_selection');
+        
+        function updateClassVisibility() {
+            if (teacherCheckbox.checked) {
+                classSelection.style.display = 'none';
+            } else {
+                classSelection.style.display = 'block';
+            }
+        }
+        
+        // Initial update
+        updateClassVisibility();
+        
+        // Update on checkbox change
+        teacherCheckbox.addEventListener('change', updateClassVisibility);
+    });
+</script>
+{% endblock %}
+
+
+

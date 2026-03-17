@@ -1,0 +1,562 @@
+{% extends "base.html" %}
+
+{% block title %}TN Syllabus – {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+:root{
+  --brand: #d4181f;
+  --brand-700:#a90f15;
+  --brand-50:#fff1f2;
+
+  --ink:#111827;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --card:#ffffff;
+  --bg:#f8fafc;
+
+  --pill:#f3f4f6;
+  --shadow: 0 10px 25px rgba(17,24,39,.08);
+}
+
+.page-wrap{ background: var(--bg); }
+.hero{
+  background: linear-gradient(135deg, var(--brand) 0%, #ff3b30 45%, #ff6b6b 100%);
+  color: #fff;
+  border-radius: 18px;
+  padding: 22px 22px;
+  box-shadow: var(--shadow);
+}
+.hero h1{ font-size: 1.45rem; margin:0; font-weight:800; letter-spacing:.2px; }
+.hero .sub{ opacity:.92; margin-top:6px; font-size:.95rem; }
+
+.cardx{
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(17,24,39,.05);
+}
+.cardx-h{
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.cardx-h .t{
+  display:flex; align-items:center; gap:10px;
+  font-weight:800; color: var(--ink);
+}
+.badgex{
+  display:inline-flex; align-items:center; gap:6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight:700; font-size:.82rem;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  border: 1px solid rgba(212,24,31,.25);
+}
+.bodyx{ padding: 14px 16px; }
+
+.kv{ display:grid; grid-template-columns: 170px 1fr; gap:8px 14px; }
+.kv .k{ color: var(--muted); font-weight:700; }
+.kv .v{ color: var(--ink); }
+
+.pills{ display:flex; flex-wrap:wrap; gap:8px; }
+.pill{
+  background: var(--pill);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size:.88rem;
+}
+.pill strong{ color: var(--brand-700); margin-right:6px; }
+
+.aaa-item{
+  border:1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background:#fff;
+}
+.aaa-item .top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.aaa-code{
+  display:inline-flex; align-items:center;
+  font-weight:900;
+  color:#fff;
+  background: var(--brand);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size:.85rem;
+}
+.aaa-desc{ margin-top:8px; color: var(--ink); line-height:1.45; }
+
+.small-muted{ color: var(--muted); font-size:.9rem; }
+
+.btn-brand{
+  background: var(--brand);
+  border-color: var(--brand);
+  color:#fff;
+  font-weight:800;
+}
+.btn-brand:hover{ background: var(--brand-700); border-color: var(--brand-700); color:#fff; }
+
+.accordion-button:not(.collapsed){
+  background: rgba(212,24,31,.08);
+  color: var(--ink);
+}
+.accordion-button:focus{ box-shadow: 0 0 0 .25rem rgba(212,24,31,.18); }
+.ch-title{
+  display:flex; align-items:center; gap:10px;
+  font-weight:900;
+}
+.ch-index{
+  width:32px; height:32px;
+  border-radius: 10px;
+  background: var(--brand);
+  color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:900;
+}
+
+.aa-list{ display:flex; flex-wrap:wrap; gap:8px; margin: 10px 0 0 0; }
+.aa-chip{
+  display:inline-flex; align-items:center; gap:8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(212,24,31,.08);
+  border: 1px solid rgba(212,24,31,.18);
+  color: var(--ink);
+  font-size:.88rem;
+}
+.aa-chip b{
+  background: var(--brand);
+  color:#fff;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size:.82rem;
+}
+
+.sec{
+  border:1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background:#fff;
+  margin-top: 12px;
+}
+.sec .h{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+}
+.sec .name{ font-weight:800; color: var(--ink); }
+.sec .idx{
+  color: var(--muted);
+  font-weight:800;
+  font-size:.9rem;
+}
+
+hr.soft{ border:0; border-top:1px solid var(--line); margin: 14px 0; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+  <div class="container">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('courses.index') }}" class="text-decoration-none" style="color:var(--brand);font-weight:800;">Courses</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none" style="color:var(--brand);font-weight:800;">
+          {{ course.title }}
+        </a>
+      </li>
+      <li class="breadcrumb-item active">TN Syllabus</li>
+    </ol>
+  </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrap py-4">
+  <div class="container">
+
+    <div class="hero mb-4">
+      <h1>TN Syllabus • {{ course.title }}</h1>
+      <div class="sub">
+        Fichier: <strong>{{ filename }}</strong> • Extraction TN (AAA / AAP / Chapitres) • Affichage moderne
+      </div>
+    </div>
+
+    <div class="row g-3">
+
+      <!-- LEFT -->
+      <div class="col-lg-4">
+
+        <!-- Administrative -->
+        <div class="cardx mb-3">
+          <div class="cardx-h">
+            <div class="t">📌 Informations administratives</div>
+            <span class="badgex">TN Norm</span>
+          </div>
+          <div class="bodyx">
+            {% set a = extracted.get('administrative', {}) %}
+            <div class="kv">
+              <div class="k">Module</div><div class="v">{{ a.get('module_name','—') }}</div>
+              <div class="k">Code UE</div><div class="v">{{ a.get('code_ue','—') }}</div>
+              <div class="k">Code ECUE</div><div class="v">{{ a.get('code_ecue','—') }}</div>
+              <div class="k">Domaine</div><div class="v">{{ a.get('field','—') }}</div>
+              <div class="k">Département</div><div class="v">{{ a.get('department','—') }}</div>
+              <div class="k">Option</div><div class="v">{{ a.get('option','—') }}</div>
+              <div class="k">Crédits</div><div class="v">{{ a.get('credits','—') }}</div>
+              <div class="k">Coefficient</div><div class="v">{{ a.get('coefficient','—') }}</div>
+              <div class="k">Présentiel</div><div class="v">{{ a.get('volume_presentiel','—') }}</div>
+              <div class="k">Personnel</div><div class="v">{{ a.get('volume_personnel','—') }}</div>
+              <div class="k">Responsable</div><div class="v">{{ a.get('responsible','—') }}</div>
+            </div>
+
+            {% if a.get('teachers') %}
+              <hr class="soft">
+              <div class="small-muted fw-bold mb-2">Enseignants</div>
+              <div class="pills">
+                {% for t in a.get('teachers', []) %}
+                  <span class="pill">{{ t }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- AAP -->
+        <div class="cardx mb-3">
+          <div class="cardx-h">
+            <div class="t">✅ AAP (détectés)</div>
+            <span class="badgex" id="aapCount">—</span>
+          </div>
+          <div class="bodyx">
+            {% set aap = extracted.get('aap', []) %}
+            {% if aap %}
+              <div class="pills">
+                {% for it in aap %}
+                  {% if it.get('selected') %}
+                    <span class="pill"><strong>AAP{{ it.get('AAP#') }}</strong> sélectionné</span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="small-muted">Aucun AAP détecté (ou extraction AAP non disponible).</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="cardx">
+          <div class="cardx-h">
+            <div class="t">⚙️ Actions</div>
+          </div>
+          <div class="bodyx d-grid gap-2">
+            <a class="btn btn-outline-secondary" href="{{ url_for('syllabus.upload_syllabus_form', course_id=course.id) }}">
+              ← Retour upload
+            </a>
+
+            <button class="btn btn-brand" id="btnClassify">
+              🎯 Classify AAA (Chapters & Sections)
+            </button>
+
+            <div class="small-muted">
+              Le bouton lance la classification LLM vers ta route TN. Ensuite, l’affichage devient “Chapitre → AAA + Sections → AAA”.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT -->
+      <div class="col-lg-8">
+
+        <!-- AAA list -->
+        <div class="cardx mb-3">
+          <div class="cardx-h">
+            <div class="t">🎓 AAA (Acquis d’apprentissage)</div>
+            <span class="badgex">{{ (extracted.get('aaa', [])|length) }} items</span>
+          </div>
+          <div class="bodyx">
+            {% set aaa = extracted.get('aaa', []) %}
+            {% if aaa %}
+              <div class="row g-2">
+                {% for aa in aaa %}
+                  <div class="col-12">
+                    <div class="aaa-item">
+                      <div class="top">
+                        <span class="aaa-code">AA{{ aa.get('AA#','?') }}</span>
+                      </div>
+                      <div class="aaa-desc">{{ aa.get('description','') }}</div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="small-muted">Aucun AAA trouvé.</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Chapters + Classification -->
+        <div class="cardx">
+          <div class="cardx-h">
+            <div class="t">🧩 Plan + Classification AAA</div>
+            <span class="badgex" id="classifState">—</span>
+          </div>
+
+          <div class="bodyx">
+
+            <div id="noClassifHint" class="alert alert-info mb-3" style="border-radius:14px;">
+              <strong>Astuce :</strong> Clique sur <b>“Classify AAA”</b> pour générer automatiquement :
+              <ul class="mb-0">
+                <li>AAA du chapitre</li>
+                <li>AAA de chaque section</li>
+              </ul>
+            </div>
+
+            <div id="chaptersArea">
+              <!-- Will be filled by JS render (both pre-existing or after classify) -->
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script id="initialExtracted" type="application/json">
+{{ extracted | tojson }}
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const extracted = JSON.parse(document.getElementById('initialExtracted').textContent || "{}");
+
+  // AAP counter
+  const aap = extracted.aap || [];
+  const selected = aap.filter(x => x && x.selected).length;
+  const aapCount = document.getElementById("aapCount");
+  if(aapCount) aapCount.textContent = selected ? (selected + " selected") : "0 selected";
+
+  // Build AAA lookup
+  const aaaLookup = {};
+  (extracted.aaa || []).forEach(a=>{
+    const k = "AA" + String(a["AA#"] ?? a["AA#"] ?? "").replace("AA","").trim();
+    if(k && a.description) aaaLookup[k] = a.description;
+  });
+
+  const classif = extracted.aaa_classification || null;
+  const stateBadge = document.getElementById("classifState");
+  const hint = document.getElementById("noClassifHint");
+
+  function aaChips(aaNums, aaDescs){
+    const nums = Array.isArray(aaNums) ? aaNums : (aaNums ? [aaNums] : []);
+    const descs = Array.isArray(aaDescs) ? aaDescs : (aaDescs ? [aaDescs] : []);
+    if(!nums.length) return `<div class="small-muted">Aucun AAA.</div>`;
+
+    return `
+      <div class="aa-list">
+        ${nums.map((n,i)=>{
+          const key = "AA" + String(n).replace("AA","").trim();
+          const d = descs[i] || aaaLookup[key] || "";
+          return `<span class="aa-chip" title="${escapeHtml(d)}"><b>${key}</b><span>${escapeHtml(shorten(d, 110))}</span></span>`;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function renderFromClassification(classifObj){
+    const chapters = (classifObj && classifObj.chapters) ? classifObj.chapters : [];
+    if(!chapters.length){
+      return `<div class="small-muted">Classification vide.</div>`;
+    }
+
+    return `
+      <div class="accordion" id="chapAccordion">
+        ${chapters.map((ch, idx)=>{
+          const cid = "ch_" + (idx+1);
+          const title = ch.chapter_title || ("Chapter " + (idx+1));
+          const chapAA = ch["AA#"];
+          const chapDesc = ch["AADescription"];
+
+          const sections = Array.isArray(ch.sections) ? ch.sections : [];
+
+          return `
+            <div class="accordion-item" style="border-radius:14px; overflow:hidden; border:1px solid var(--line); margin-bottom:10px;">
+              <h2 class="accordion-header" id="h_${cid}">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c_${cid}">
+                  <div class="ch-title">
+                    <span class="ch-index">${ch.chapter_index || (idx+1)}</span>
+                    <span>${escapeHtml(title)}</span>
+                  </div>
+                </button>
+              </h2>
+              <div id="c_${cid}" class="accordion-collapse collapse" data-bs-parent="#chapAccordion">
+                <div class="accordion-body">
+
+                  <div class="small-muted fw-bold">AAA du chapitre</div>
+                  ${aaChips(chapAA, chapDesc)}
+
+                  <hr class="soft">
+
+                  <div class="small-muted fw-bold">Sections</div>
+
+                  ${sections.map(sec=>{
+                    const sTitle = sec.section_title || "";
+                    const sIdx = sec.section_index || "";
+                    return `
+                      <div class="sec">
+                        <div class="h">
+                          <div>
+                            <div class="idx">${escapeHtml(String(sIdx))}</div>
+                            <div class="name">${escapeHtml(String(sTitle))}</div>
+                          </div>
+                        </div>
+                        <div class="small-muted fw-bold mt-2">AAA de la section</div>
+                        ${aaChips(sec["AA#"], sec["AADescription"])}
+                      </div>
+                    `;
+                  }).join("")}
+
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function renderRawChapters(raw){
+    const chapters = raw.chapters || [];
+    if(!chapters.length){
+      return `<div class="small-muted">Aucun chapitre trouvé.</div>`;
+    }
+
+    return `
+      <div class="accordion" id="chapAccordion">
+        ${chapters.map((ch, idx)=>{
+          const cid = "raw_" + (idx+1);
+          let title = (ch.chapter || "").trim();
+          let secs = Array.isArray(ch.sections) ? [...ch.sections] : [];
+
+          // Fallbacks when chapter title extraction is missing (common in some TN PDFs)
+          if(!title){
+            const first = (secs[0] || "").trim();
+            if(/^chapitre\s+/i.test(first) || /^chapter\s+/i.test(first)){
+              title = first;
+              secs = secs.slice(1);
+            }else{
+              title = "Chapitre " + (idx+1);
+            }
+          }
+          return `
+            <div class="accordion-item" style="border-radius:14px; overflow:hidden; border:1px solid var(--line); margin-bottom:10px;">
+              <h2 class="accordion-header" id="h_${cid}">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c_${cid}">
+                  <div class="ch-title">
+                    <span class="ch-index">${idx+1}</span>
+                    <span>${escapeHtml(title)}</span>
+                  </div>
+                </button>
+              </h2>
+              <div id="c_${cid}" class="accordion-collapse collapse" data-bs-parent="#chapAccordion">
+                <div class="accordion-body">
+                  <div class="small-muted">Classification AAA non générée pour le moment.</div>
+                  <hr class="soft">
+                  <div class="small-muted fw-bold">Sections</div>
+                  ${secs.map((s, j)=>`
+                    <div class="sec">
+                      <div class="h">
+                        <div>
+                          <div class="idx">${(idx+1)}.${(j+1)}</div>
+                          <div class="name">${escapeHtml(String(s))}</div>
+                        </div>
+                      </div>
+                      <div class="small-muted mt-2">AAA: —</div>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function setState(){
+    const has = !!(extracted.aaa_classification && extracted.aaa_classification.chapters);
+    if(stateBadge) stateBadge.textContent = has ? "Classified" : "Not classified";
+    if(hint) hint.style.display = has ? "none" : "block";
+  }
+
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+  function shorten(s, n){
+    s = String(s ?? "");
+    return s.length > n ? (s.slice(0,n-1) + "…") : s;
+  }
+
+  const chaptersArea = document.getElementById("chaptersArea");
+  function render(){
+    setState();
+    if(!chaptersArea) return;
+    if(extracted.aaa_classification){
+      chaptersArea.innerHTML = renderFromClassification(extracted.aaa_classification);
+    }else{
+      chaptersArea.innerHTML = renderRawChapters(extracted);
+    }
+  }
+
+  // Initial render
+  render();
+
+  // Classify button
+  const btn = document.getElementById("btnClassify");
+  if(btn){
+    btn.addEventListener("click", async ()=>{
+      btn.disabled = true;
+      btn.innerHTML = "⏳ Classification en cours...";
+
+      try{
+        const res = await fetch("{{ url_for('syllabus.tn_classify_aaa', course_id=course.id) }}", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ extracted })
+        });
+
+        const data = await res.json();
+        if(!res.ok){
+          throw new Error(data.error || ("HTTP " + res.status));
+        }
+
+        extracted.aaa_classification = (data.extracted || {}).aaa_classification;
+        render();
+
+        btn.innerHTML = "✅ Classification terminée";
+        setTimeout(()=>{
+          btn.innerHTML = "🎯 Re-run Classification";
+          btn.disabled = false;
+        }, 1200);
+
+      }catch(e){
+        btn.disabled = false;
+        btn.innerHTML = "🎯 Classify AAA (Chapters & Sections)";
+        alert("TN AAA classification failed: " + e.message);
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

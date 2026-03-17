@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+
+{% block title %}Generate Week Quiz - {{ course.title }}{% endblock %}
+
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" class="text-decoration-none text-danger">Week {{ week_num }}</a></li>
+            <li class="breadcrumb-item active">Generate Quiz</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+
+{% block heading %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0"><i class="fas fa-question-circle text-danger me-2"></i>Generate Quiz for Week {{ week_num }}</h1>
+    <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Week Plan
+    </a>
+</div>
+{% endblock %}
+
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Week {{ week_num }} Content Preview</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-bullseye text-primary me-2"></i>Objectives</h6>
+                        <p class="text-muted">{{ week_data.get('Class Objectives', 'No objectives available.')[:300] }}{% if week_data.get('Class Objectives', '').__len__() > 300 %}...{% endif %}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-tasks text-success me-2"></i>Activities/Assessment</h6>
+                        <p class="text-muted">{{ week_data.get('Activities/Assessment', 'No activities available.')[:300] }}{% if week_data.get('Activities/Assessment', '').__len__() > 300 %}...{% endif %}</p>
+                    </div>
+                </div>
+                <hr>
+                <h6><i class="fas fa-graduation-cap text-warning me-2"></i>Related CLOs (Priority for Questions)</h6>
+                <p class="text-muted mb-0">Questions will focus on CLO descriptions like: {{ week_content.split('CLO Descriptions: ')[1][:200] if 'CLO Descriptions: ' in week_content else 'CLOs will be incorporated based on week data.' }}...</p>
+            </div>
+        </div>
+
+
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Quiz Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}  <!-- CSRF Token - Essential for POST -->
+
+
+                    <div class="mb-4">
+                        <label for="{{ form.num_questions.id }}" class="form-label fw-bold">Number of Questions</label>
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <!-- Range Slider (manual, synced with number input) -->
+                                <input type="range" class="form-range" min="3" max="20" step="1"
+                                       id="questionRange" value="{{ form.num_questions.data or 5 }}">
+                            </div>
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <span class="input-group-text">Questions:</span>
+                                    <!-- WTForms Number Field (manual rendering) -->
+                                    {{ form.num_questions(class="form-control text-center fw-bold", id="numQuestionsInput", placeholder="5") }}
+                                </div>
+                            </div>
+                        </div>
+                        <small class="form-text text-muted">3-20 questions (AI-generated based on CLOs, objectives, and activities).</small>
+                        <!-- Manual Error Handling -->
+                        {% for error in form.num_questions.errors %}
+                            <div class="alert alert-danger mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+
+                    <div class="mb-4">
+                        <label for="{{ form.difficulty.id }}" class="form-label fw-bold">Difficulty Level</label>
+                        <!-- WTForms Select Field (manual rendering) -->
+                        {{ form.difficulty(class="form-select") }}
+                        <small class="form-text text-muted">Focus on CLO understanding at the selected level.</small>
+                        <!-- Manual Error Handling -->
+                        {% for error in form.difficulty.errors %}
+                            <div class="alert alert-danger mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <!-- WTForms Submit Field (manual rendering) -->
+                        {{ form.submit(class="btn btn-danger btn-lg") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const rangeInput = document.getElementById('questionRange');
+        const numberInput = document.getElementById('numQuestionsInput');
+       
+        // Sync range slider with number input
+        function updateValue() {
+            numberInput.value = rangeInput.value;
+        }
+       
+        // Sync number input with range slider (with validation)
+        function updateRange() {
+            let value = parseInt(numberInput.value);
+            if (isNaN(value)) value = 5;
+            else if (value < 3) value = 3;
+            else if (value > 20) value = 20;
+            numberInput.value = value;
+            rangeInput.value = value;
+        }
+       
+        rangeInput.addEventListener('input', updateValue);
+        numberInput.addEventListener('input', updateRange);
+       
+        // Initial sync
+        updateValue();
+    });
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Update API Key{% endblock %}
+
+{% block heading %}Update Google API Key{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Google Gemini API Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <div class="d-flex">
+                            <div class="me-3">
+                                <i class="fas fa-info-circle fa-2x"></i>
+                            </div>
+                            <div>
+                                <h5 class="alert-heading">About Google Gemini API</h5>
+                                <p class="mb-0">The Google Gemini API key enables AI-powered features like document summaries, chat assistance, and intelligent quizzes. Your API key is securely stored and never shared.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <form method="post">
+                        {{ form.hidden_tag() }}
+                        
+                        <div class="form-group mb-3">
+                            {{ form.api_key.label(class_="form-label") }}
+                            {{ form.api_key(class_="form-control", placeholder="Enter your Google API key") }}
+                            {% for error in form.api_key.errors %}
+                                <span class="text-danger">{{ error }}</span>
+                            {% endfor %}
+                            <small class="form-text text-muted">
+                                You can get a Google Gemini API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-decoration-none">https://aistudio.google.com/app/apikey</a>
+                            </small>
+                            <br>
+                            <small class="form-text text-muted">
+                                Link to setup Google api <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank" class="text-decoration-none">Documentation</a>
+                            </small>
+                        </div>
+                        
+                        <div class="form-group d-flex">
+                            {{ form.submit(class_="btn btn-danger me-2") }}
+                            <a href="{{ url_for('auth.profile') }}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

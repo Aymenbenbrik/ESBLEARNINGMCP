@@ -1,0 +1,664 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if is_chapter_chat %}
+        Chat - Chapter: {{ chapter.title }}
+    {% else %}
+        Chat - {{ document.title }}
+    {% endif %}
+{% endblock %}
+
+{% block styles %}
+<style>
+    /* Enhanced Chat Container */
+    .chat-container {
+        height: 65vh;
+        overflow-y: auto;
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        scroll-behavior: smooth;
+        transition: all 0.3s ease;
+    }
+    
+    /* Improved Message Styling */
+    .chat-message {
+        padding: 0.75rem 1rem;
+        border-radius: 1rem;
+        max-width: 80%;
+        margin-bottom: 1rem;
+        position: relative;
+        animation: fadeIn 0.3s ease-out;
+        transform-origin: bottom;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+    
+    /* User Message Styling */
+    .user-message {
+        background-color: #e8f4ff;
+        margin-left: auto;
+        border-bottom-right-radius: 0;
+        border-left: 1px solid #d1e6ff;
+    }
+    
+    /* AI Message Styling */
+    .ai-message {
+        background-color: white;
+        margin-right: auto;
+        border-bottom-left-radius: 0;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        border-right: 1px solid #f0f0f0;
+    }
+    
+    .message-time {
+        font-size: 0.75rem;
+        color: #6c757d;
+        text-align: right;
+        margin-top: 0.25rem;
+    }
+    
+    /* Toggle-able Document Summary */
+    .document-summary {
+        background-color: #fcfcfc;
+        border-radius: 0.5rem;
+        border-left: 4px solid #ffc107;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+    
+    .summary-header {
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: #fffdf7;
+    }
+    
+    .summary-header h5 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    
+    .summary-content {
+        padding: 0 1rem 1rem 1rem;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+    
+    .summary-content.open {
+        max-height: 500px;
+        padding: 0 1rem 1rem 1rem;
+    }
+    
+    /* Markdown styling for the summary */
+    .markdown-content {
+        line-height: 1.5;
+    }
+    
+    .markdown-content h1, 
+    .markdown-content h2,
+    .markdown-content h3,
+    .markdown-content h4,
+    .markdown-content h5,
+    .markdown-content h6 {
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    
+    .markdown-content strong {
+        font-weight: 600;
+    }
+    
+    .markdown-content ul, 
+    .markdown-content ol {
+        padding-left: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .markdown-content p {
+        margin-bottom: 0.75rem;
+    }
+    
+    .chevron-icon {
+        transition: transform 0.3s ease;
+    }
+    
+    .chevron-icon.open {
+        transform: rotate(180deg);
+    }
+    
+    /* Loading Animation */
+    .loading-dots {
+        display: inline-flex;
+        align-items: center;
+    }
+    
+    .dot {
+        width: 8px;
+        height: 8px;
+        background-color: #dc3545;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 4px;
+        animation: pulse 1.4s infinite ease-in-out;
+    }
+    
+    .dot:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+    
+    .dot:nth-child(3) {
+        animation-delay: 0.4s;
+        margin-right: 0;
+    }
+    
+    /* Input Area Enhancements */
+    .input-area {
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    .message-input {
+        border-radius: 1.5rem;
+        padding-right: 60px;
+        resize: none;
+        transition: height 0.2s ease;
+        min-height: 50px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e0e0e0;
+    }
+    
+    .message-input:focus {
+        box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
+        border-color: #dc3545;
+    }
+    
+    .send-button {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+    
+    .send-button:hover {
+        transform: scale(1.05);
+    }
+    
+    .send-button:active {
+        transform: scale(0.95);
+    }
+    
+    /* Empty Chat State */
+    .empty-chat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #6c757d;
+        opacity: 0.8;
+        padding: 2rem;
+    }
+    
+    .empty-chat i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        color: #dc3545;
+        animation: pulse 2s infinite;
+    }
+    
+    .empty-chat p {
+        font-size: 1.1rem;
+        text-align: center;
+        max-width: 300px;
+    }
+    
+    /* Button to scroll to the bottom */
+    .scroll-bottom {
+        position: absolute;
+        right: 20px;
+        bottom: 70px;
+        background-color: rgba(255, 255, 255, 0.9);
+        border: 1px solid #e0e0e0;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all 0.3s ease;
+        z-index: 100;
+    }
+    
+    .scroll-bottom.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    
+    /* Card styling */
+    .chat-card {
+        border: none;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    .card-header {
+        border-bottom: none;
+    }
+    
+    /* Animations */
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 0.5;
+            transform: scale(0.8);
+        }
+        50% {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+    .summary-content.open {
+    max-height: 300px; /* Adjusted fixed height */
+    padding: 0 1rem 1rem 1rem;
+}
+
+.summary-scrollable {
+    max-height: 250px; /* Slightly less than the container */
+    overflow-y: auto;
+    padding-right: 10px; /* Gives some space for the scrollbar */
+}
+
+/* Custom scrollbar styling */
+.summary-scrollable::-webkit-scrollbar {
+    width: 8px;
+}
+
+.summary-scrollable::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.summary-scrollable::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 4px;
+}
+
+.summary-scrollable::-webkit-scrollbar-thumb:hover {
+    background: #ccc;
+}
+
+/* Citation Styling - Highlight section references in AI responses */
+.ai-message .markdown-content {
+    position: relative;
+}
+
+.ai-message strong:has-text("Section"),
+.ai-message em:contains("Section"),
+.ai-message code {
+    background-color: #fff3cd;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #856404;
+}
+
+/* Tool usage indicator */
+.tool-indicator {
+    display: inline-block;
+    margin-top: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    background-color: #e7f3ff;
+    color: #0056b3;
+    border-radius: 4px;
+    border-left: 3px solid #0056b3;
+}
+
+.tool-indicator i {
+    margin-right: 0.25rem;
+}
+
+/* RAG status indicator */
+.rag-status {
+    font-size: 0.7rem;
+    color: #28a745;
+    margin-top: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.rag-status i {
+    animation: pulse 2s infinite;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+            {% if is_chapter_chat %}
+                <li class="breadcrumb-item active">{{ chapter.title }} - Ask AI</li>
+            {% else %}
+                <li class="breadcrumb-item"><a href="{{ url_for('chapters.view', chapter_id=chapter.id) }}" class="text-decoration-none text-danger">{{ chapter.title }}</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('chapters.view_document', document_id=document.id) }}" class="text-decoration-none text-danger">{{ document.title }}</a></li>
+                <li class="breadcrumb-item active">Ask AI</li>
+            {% endif %}
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}
+    {% if is_chapter_chat %}
+        Chat about Chapter "{{ chapter.title }}"
+    {% else %}
+        Chat about "{{ document.title }}"
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        {% if summary %}
+        <div class="document-summary">
+            <div class="summary-header" id="summaryToggle">
+                <h5>
+                    <i class="fas fa-lightbulb me-2 text-warning"></i>
+                    {% if is_chapter_chat %}Chapter{% else %}Document{% endif %} Summary
+                </h5>
+                <i class="fas fa-chevron-down chevron-icon"></i>
+            </div>
+            <div class="summary-content" id="summaryContent">
+                <div class="markdown-content summary-scrollable">{{ summary|safe| markdown }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="card mb-4 chat-card">
+            <div class="card-header bg-danger text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fas fa-robot me-2"></i>AI Learning Assistant
+                    </div>
+                    <form action="{% if is_chapter_chat %}{{ url_for('ai.clear_chapter_chat', chapter_id=chapter.id) }}{% else %}{{ url_for('ai.clear_chat', document_id=document.id) }}{% endif %}" method="POST" class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-light">
+                            <i class="fas fa-trash me-1"></i>Clear Chat
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="chat-container position-relative" id="chatContainer">
+                    {% if not messages %}
+                    <div class="empty-chat">
+                        <i class="fas fa-robot"></i>
+                        <p>
+                            {% if is_chapter_chat %}
+                                Ask me anything about "{{ chapter.title }}" to help with your studies!
+                            {% else %}
+                                Ask me anything about "{{ document.title }}" to help with your studies!
+                            {% endif %}
+                        </p>
+                        <small class="text-muted">
+                            <i class="fas fa-search me-1"></i>
+                            Powered by RAG - I'll search the document and provide citations
+                        </small>
+                    </div>
+                    {% else %}
+                    {% for message in messages %}
+                    <div class="chat-message {% if message.is_user %}user-message{% else %}ai-message{% endif %}">
+                        {% if message.content %}
+                            {{ message.content|markdown }}
+                        {% endif %}
+                        <div class="message-time">
+                            {% if message.timestamp %}
+                                {{ message.timestamp.strftime('%H:%M') }}
+                            {% else %}
+                                {{ "now"|default('--:--') }}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                    
+                    <div class="scroll-bottom" id="scrollBottomBtn">
+                        <i class="fas fa-arrow-down"></i>
+                    </div>
+                </div>
+                
+                <div class="p-3 border-top">
+                    <form method="POST" id="chatForm">
+                        {{ form.hidden_tag() }}
+                        <div class="input-area">
+                            {{ form.message(class="form-control message-input", placeholder="Type your question here...", id="messageInput") }}
+                            <button type="submit" class="btn btn-danger send-button" id="sendButton">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Include Marked.js for Markdown parsing -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const chatContainer = document.getElementById('chatContainer');
+        const chatForm = document.getElementById('chatForm');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const scrollBottomBtn = document.getElementById('scrollBottomBtn');
+        const isChapterChat = {% if is_chapter_chat %}true{% else %}false{% endif %};
+        
+        // Summary toggle functionality
+        const summaryToggle = document.getElementById('summaryToggle');
+        const summaryContent = document.getElementById('summaryContent');
+        const chevronIcon = document.querySelector('.chevron-icon');
+        
+        if (summaryToggle) {
+            summaryToggle.addEventListener('click', function() {
+                summaryContent.classList.toggle('open');
+                chevronIcon.classList.toggle('open');
+                
+                // Store preference in localStorage
+                localStorage.setItem('summaryClosed', !summaryContent.classList.contains('open'));
+            });
+            
+            // Check localStorage for previous preference
+            if (localStorage.getItem('summaryClosed') !== 'true') {
+                summaryContent.classList.add('open');
+                chevronIcon.classList.add('open');
+            }
+        }
+        
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight < 120 ? this.scrollHeight : 120) + 'px';
+        });
+        
+        // Scroll to bottom function
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            scrollBottomBtn.classList.remove('visible');
+        }
+        
+        // Show/hide scroll to bottom button
+        chatContainer.addEventListener('scroll', function() {
+            const isScrolledUp = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight > 100;
+            
+            if (isScrolledUp) {
+                scrollBottomBtn.classList.add('visible');
+            } else {
+                scrollBottomBtn.classList.remove('visible');
+            }
+        });
+        
+        // Scroll to bottom button click
+        scrollBottomBtn.addEventListener('click', scrollToBottom);
+        
+        // Scroll to bottom initially
+        scrollToBottom();
+        
+        // Handle form submission
+        chatForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Disable input and button while sending
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            
+            // Reset textarea height
+            messageInput.style.height = 'auto';
+            
+            // Add user message to chat
+            const userMessage = document.createElement('div');
+            userMessage.className = 'chat-message user-message';
+            userMessage.innerHTML = `
+                ${message.replace(/\n/g, '<br>')}
+                <div class="message-time">
+                    ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+            `;
+            chatContainer.appendChild(userMessage);
+            
+            // Remove empty chat state if it exists
+            const emptyChat = document.querySelector('.empty-chat');
+            if (emptyChat) {
+                emptyChat.remove();
+            }
+            
+            scrollToBottom();
+            
+            // Add loading indicator
+            const loadingMessage = document.createElement('div');
+            loadingMessage.className = 'chat-message ai-message';
+            loadingMessage.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <span class="me-2">Thinking</span>
+                    <div class="loading-dots">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                </div>
+            `;
+            chatContainer.appendChild(loadingMessage);
+            scrollToBottom();
+            
+            // Determine API endpoint
+            let apiUrl;
+            {% if is_chapter_chat %}
+                apiUrl = '{{ url_for("ai.api_chapter_chat", chapter_id=chapter.id) }}';
+            {% else %}
+                apiUrl = '{{ url_for("ai.api_chat", document_id=document.id) }}';
+            {% endif %}
+            
+            // Send request to server
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove loading indicator
+                chatContainer.removeChild(loadingMessage);
+                
+                // Add AI response
+                if (data.success) {
+                    const aiMessage = document.createElement('div');
+                    aiMessage.className = 'chat-message ai-message';
+                    aiMessage.innerHTML = `
+                        ${data.response.replace(/\n/g, '<br>')}
+                        <div class="message-time">
+                            ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                    `;
+                    chatContainer.appendChild(aiMessage);
+                } else {
+                    const errorMessage = document.createElement('div');
+                    errorMessage.className = 'chat-message ai-message';
+                    errorMessage.innerHTML = `
+                        <div class="text-danger">Error: ${data.error || 'Failed to get response'}</div>
+                        <div class="message-time">
+                            ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                    `;
+                    chatContainer.appendChild(errorMessage);
+                }
+                
+                scrollToBottom();
+            })
+            .catch(error => {
+                // Remove loading indicator
+                chatContainer.removeChild(loadingMessage);
+                
+                // Add error message
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'chat-message ai-message';
+                errorMessage.innerHTML = `
+                    <div class="text-danger">Error: ${error.message || 'Something went wrong'}</div>
+                    <div class="message-time">
+                        ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                `;
+                chatContainer.appendChild(errorMessage);
+                
+                scrollToBottom();
+            })
+            .finally(() => {
+                // Re-enable input and button
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                messageInput.value = '';
+                messageInput.focus();
+            });
+        });
+    });
+</script>
+{% endblock %}

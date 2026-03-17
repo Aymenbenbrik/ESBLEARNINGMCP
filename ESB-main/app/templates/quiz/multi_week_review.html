@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+
+{% block title %}Review Multi-Week Quiz - {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+    .question-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .question-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #dc3545;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .question-number {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #dc3545;
+    }
+
+    .question-meta {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .clo-tag,
+    .bloom-tag,
+    .difficulty-tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: white;
+    }
+
+    .clo-tag {
+        background: #dc3545;
+    }
+
+    .bloom-tag {
+        background: #6c757d;
+        font-weight: 500;
+        text-transform: capitalize;
+    }
+
+    .difficulty-tag {
+        text-transform: capitalize;
+        font-weight: 600;
+    }
+
+    .difficulty-tag.easy {
+        background: #28a745;
+    }
+
+    .difficulty-tag.medium {
+        background: #ffc107;
+        color: #000;
+    }
+
+    .difficulty-tag.hard {
+        background: #dc3545;
+    }
+
+    /* ✅ Activity Alignment Badge */
+    .activity-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%);
+        border: 2px solid #ffc107;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #856404;
+    }
+
+    .activity-badge i {
+        font-size: 1rem;
+    }
+
+    /* ✅ Activity Alignment Info Box */
+    .activity-alignment-box {
+        background: linear-gradient(135deg, #fff8f0 0%, #fffbf0 100%);
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 6px;
+    }
+
+    .activity-alignment-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        font-weight: 600;
+        color: #856404;
+    }
+
+    .activity-alignment-title i {
+        font-size: 1.1rem;
+        color: #ffc107;
+    }
+
+    .alignment-score-badge {
+        background: #ffc107;
+        color: #000;
+        padding: 0.35rem 0.85rem;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.8rem;
+        margin-left: 0.5rem;
+    }
+
+    .alignment-details-list {
+        background: #fffbf0;
+        border: 1px solid #ffc107;
+        border-radius: 4px;
+        padding: 0.75rem;
+        font-size: 0.9rem;
+        color: #856404;
+        line-height: 1.6;
+    }
+
+    .alignment-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .alignment-check:last-child {
+        margin-bottom: 0;
+    }
+
+    .alignment-check.success i {
+        color: #28a745;
+        font-weight: bold;
+    }
+
+    .alignment-check.fail i {
+        color: #dc3545;
+    }
+
+    .alignment-check.partial i {
+        color: #ffc107;
+    }
+
+    /* Source Info */
+    .source-info {
+        background: #fff8e1;
+        border-left: 4px solid #ffa000;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 4px;
+    }
+
+    .source-title {
+        font-weight: 600;
+        color: #e65100;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .source-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+
+    .source-quote {
+        background: #fffbf0;
+        border-left: 3px solid #ffa000;
+        padding: 0.75rem;
+        margin-top: 0.5rem;
+        font-style: italic;
+        color: #333;
+        border-radius: 4px;
+    }
+
+    .highlight-text {
+        background-color: #ffeb3b;
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+    }
+
+    .correct-indicator {
+        display: inline-block;
+        margin-left: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        background: #28a745;
+        color: white;
+        border-radius: 15px;
+        font-size: 0.85rem;
+    }
+
+    .coverage-info {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .clo-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        background: #dc3545;
+        color: white;
+        border-radius: 15px;
+        font-size: 0.85rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .attachments-used {
+        background: #e7f3ff;
+        border-left: 4px solid #0066cc;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .attachment-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: white;
+        border: 1px solid #0066cc;
+        border-radius: 6px;
+        margin: 0.25rem;
+        font-size: 0.9rem;
+    }
+
+    .attachment-badge i {
+        color: #0066cc;
+        margin-right: 0.5rem;
+    }
+
+    .open-ended-section {
+        background: #f0f8f0;
+        border-left: 4px solid #28a745;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 4px;
+    }
+
+    .model-answer-box {
+        background: white;
+        border: 1px solid #28a745;
+        padding: 0.75rem;
+        border-radius: 4px;
+        margin-top: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}"
+                    class="text-decoration-none text-danger">{{ course.title }}</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.multi_week_quiz_setup', course_id=course.id) }}"
+                    class="text-decoration-none text-danger">Generate Quiz</a>
+            </li>
+            <li class="breadcrumb-item active">Review Questions</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Review Generated Quiz{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>Success!</strong> Generated {{ num_questions }} questions ({{ num_mcq }} MCQ + {{ num_open }}
+            Open-Ended) from {{ selected_weeks|length }} weeks.
+            Review and edit the questions below before approving.
+        </div>
+
+        {% if sources_map %}
+        <div class="attachments-used">
+            <h5 class="mb-3">
+                <i class="fas fa-paperclip me-2"></i>
+                Source Materials Used ({{ sources_map|length }} files)
+            </h5>
+            <div class="d-flex flex-wrap">
+                {% for source_id, source in sources_map.items() %}
+                <div class="attachment-badge">
+                    <i
+                        class="fas fa-file-{% if source.file_type == 'pdf' %}pdf{% elif source.file_type == 'docx' %}word{% elif source.file_type == 'pptx' %}powerpoint{% else %}alt{% endif %}"></i>
+                    <strong>{{ source.title }}</strong>
+                    <br>
+                    <small class="text-muted">{{ source_id }} • Week {{ source.week_num }} • {{ (source.text_length /
+                        1000)|round(1) }}K chars</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="coverage-info">
+            <h5 class="text-danger mb-3"><i class="fas fa-info-circle me-2"></i>Coverage Summary</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Selected Weeks:</strong>
+                    <div class="mt-2">
+                        {% for topic in (week_topics or selected_weeks) %}
+                        <div><i class="fas fa-calendar-day me-2"></i>{% if topic is string %}{{ topic }}{% else %}Week
+                            {{ topic }}{% endif %}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <strong>Covered CLOs:</strong>
+                    <div class="mt-2">
+                        {% for clo_key, clo_desc in all_clos.items() %}
+                        <span class="clo-badge">{{ clo_key }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('syllabus.approve_multi_week_quiz', course_id=course.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="num_questions" value="{{ num_questions }}">
+            <input type="hidden" name="selected_weeks" value="{{ selected_weeks|join(',') }}">
+
+            {% for question in questions %}
+            <div class="question-card">
+                <div class="question-header">
+                    <span class="question-number">Question {{ loop.index }}</span>
+                    <div class="question-meta">
+                        {% if question.question_type == 'open_ended' %}
+                        <span class="badge bg-success">
+                            <i class="fas fa-keyboard me-1"></i>
+                            Open-Ended ({{ question.open_ended_type|replace('_', ' ')|title }})
+                        </span>
+                        {% else %}
+                        <span class="badge bg-primary">
+                            <i class="fas fa-list me-1"></i>
+                            Multiple Choice
+                        </span>
+                        {% endif %}
+
+                        <span class="clo-tag">
+                            <i class="fas fa-bullseye me-1"></i>
+                            {{ question.clo or 'CLO 1' }}
+                        </span>
+                        <span class="bloom-tag">
+                            <i class="fas fa-layer-group me-1"></i>
+                            {{ question.bloom_level or 'understand' }}
+                        </span>
+                        <span class="difficulty-tag {{ question.difficulty_level or 'medium' }}">
+                            <i class="fas fa-signal me-1"></i>
+                            {{ question.difficulty_level or 'medium' }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- ✅ Activity Alignment Badge -->
+                {% if question.get('_activity_inspired') %}
+                <div class="mb-3">
+                    <span class="activity-badge">
+                        <i class="fas fa-check-circle"></i>
+                        Activity-Aligned ({{ question.get('_activity_alignment_score', 0)|round(1) }}%)
+                    </span>
+                </div>
+                {% endif %}
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Question Text</label>
+                    <textarea class="form-control" name="question_{{ loop.index }}" rows="4"
+                        required>{{ question.question }}</textarea>
+                </div>
+
+                <input type="hidden" name="question_type_{{ loop.index }}" value="{{ question.question_type }}">
+
+                {% if question.question_type == 'mcq' %}
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Choice A
+                                {% if question.correct_choice == 'A' %}
+                                <span class="correct-indicator">✓ Correct</span>
+                                {% endif %}
+                            </label>
+                            <input type="text" class="form-control" name="choice_a_{{ loop.index }}"
+                                value="{{ question.choice_a }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Choice B
+                                {% if question.correct_choice == 'B' %}
+                                <span class="correct-indicator">✓ Correct</span>
+                                {% endif %}
+                            </label>
+                            <input type="text" class="form-control" name="choice_b_{{ loop.index }}"
+                                value="{{ question.choice_b }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Choice C
+                                {% if question.correct_choice == 'C' %}
+                                <span class="correct-indicator">✓ Correct</span>
+                                {% endif %}
+                            </label>
+                            <input type="text" class="form-control" name="choice_c_{{ loop.index }}"
+                                value="{{ question.choice_c }}" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Correct Answer</label>
+                    <select class="form-select" name="correct_choice_{{ loop.index }}" required>
+                        <option value="A" {% if question.correct_choice=='A' %}selected{% endif %}>A</option>
+                        <option value="B" {% if question.correct_choice=='B' %}selected{% endif %}>B</option>
+                        <option value="C" {% if question.correct_choice=='C' %}selected{% endif %}>C</option>
+                    </select>
+                </div>
+
+                {% else %}
+                <div class="open-ended-section">
+                    <h6><i class="fas fa-keyboard me-2"></i>Open-Ended Question</h6>
+                    <p class="mb-0"><strong>Type:</strong> {{ question.open_ended_type|replace('_', ' ')|title }}</p>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-check-circle text-success me-1"></i>
+                        Model Answer (Correct/Expected Answer)
+                    </label>
+                    <textarea class="form-control model-answer-box" name="model_answer_{{ loop.index }}" rows="6"
+                        placeholder="Provide the complete correct answer for grading reference..."
+                        required>{{ question.model_answer }}</textarea>
+                    <small class="form-text text-muted">This will be used by AI to evaluate student answers</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="fas fa-list-check text-primary me-1"></i>
+                        Evaluation Criteria (Key Points)
+                    </label>
+                    <textarea class="form-control" name="evaluation_criteria_{{ loop.index }}" rows="3"
+                        placeholder="Enter key points (one per line)">{% if question.evaluation_criteria %}{% for criterion in question.evaluation_criteria %}{{ criterion }}
+                {% endfor %}{% endif %}</textarea>
+                    <small class="form-text text-muted">Key points that must be mentioned for full credit</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="fas fa-clipboard-list text-info me-1"></i>
+                        Grading Rubric
+                    </label>
+                    <textarea class="form-control" name="grading_rubric_{{ loop.index }}" rows="2"
+                        placeholder="How to evaluate this answer...">{{ question.grading_rubric }}</textarea>
+                    <small class="form-text text-muted">Instructions for grading this response</small>
+                </div>
+
+                <input type="hidden" name="open_ended_type_{{ loop.index }}" value="{{ question.open_ended_type }}">
+                {% endif %}
+
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="fas fa-lightbulb text-warning me-1"></i>
+                        Explanation / Grading Guidance
+                    </label>
+                    <textarea class="form-control" name="explanation_{{ loop.index }}" rows="2"
+                        placeholder="Provide explanation or additional grading notes...">{{ question.explanation or '' }}</textarea>
+                </div>
+
+                <!-- ✅ Source Information with sources_map lookup -->
+                {% if question.source_id and question.source_id != 'N/A' %}
+                <div class="source-info">
+                    <div class="source-title">
+                        <i class="fas fa-book-open"></i>
+                        Source Reference
+                    </div>
+
+                    {% if sources_map and question.source_id in sources_map %}
+                    {% set source = sources_map[question.source_id] %}
+
+                    <div class="source-meta">
+                        <span>
+                            <i class="fas fa-file me-1" style="color: #dc3545;"></i>
+                            <strong>{{ source.title }}</strong> ({{ source_id }}) | Week {{ source.week_num }}
+                        </span>
+                    </div>
+
+                    {% else %}
+                    <div class="source-meta">
+                        <span>
+                            <i class="fas fa-file me-1"></i>
+                            <strong>Source ID:</strong> {{ question.source_id }}
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    {% if question.source_page and question.source_page != 'N/A' %}
+                    <div class="source-meta">
+                        <span>
+                            <i class="fas fa-bookmark me-1" style="color: #ffc107;"></i>
+                            <strong>Location:</strong> {{ question.source_page }}
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    {% if question.source_text and question.source_text != 'N/A' %}
+                    <div>
+                        <i class="fas fa-quote-left me-1" style="color: #666;"></i>
+                        <strong>Referenced Text:</strong>
+                        <div class="source-quote">
+                            <span class="highlight-text">{{ question.source_text }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <input type="hidden" name="source_id_{{ loop.index }}" value="{{ question.source_id }}">
+                    <input type="hidden" name="source_page_{{ loop.index }}" value="{{ question.source_page }}">
+                    <input type="hidden" name="source_text_{{ loop.index }}" value="{{ question.source_text }}">
+                </div>
+                {% else %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <small>No source reference available for this question.</small>
+                </div>
+                {% endif %}
+
+                <!-- ✅ Activity Alignment Details -->
+                {% if question.get('_activity_inspired') and question.get('_activity_alignment_details') %}
+                <div class="activity-alignment-box">
+                    <div class="activity-alignment-title">
+                        <i class="fas fa-lightbulb"></i>
+                        Why This Question is Activity-Aligned
+                        <span class="alignment-score-badge">{{ question.get('_activity_alignment_score', 0)|round(1)
+                            }}%</span>
+                    </div>
+
+                    <div class="alignment-details-list">
+                        {% set details = question.get('_activity_alignment_details', '').split(';') %}
+                        {% for detail in details %}
+                        {% if detail.strip() %}
+                        <div
+                            class="alignment-check {% if '✓' in detail %}success{% elif '✗' in detail %}fail{% else %}partial{% endif %}">
+                            <i
+                                class="fas fa-{% if '✓' in detail %}check{% elif '✗' in detail %}times{% else %}minus{% endif %}-circle"></i>
+                            <span>{{ detail.strip() }}</span>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+
+                    <!-- ✅ Hidden fields to preserve alignment data on approval -->
+                    <input type="hidden" name="activity_inspired_{{ loop.index }}" value="true">
+                    <input type="hidden" name="activity_score_{{ loop.index }}"
+                        value="{{ question.get('_activity_alignment_score', 0) }}">
+                    <input type="hidden" name="activity_details_{{ loop.index }}"
+                        value="{{ question.get('_activity_alignment_details', '') }}">
+                </div>
+                {% endif %}
+
+                <input type="hidden" name="clo_{{ loop.index }}" value="{{ question.clo or 'CLO 1' }}">
+                <input type="hidden" name="bloom_level_{{ loop.index }}"
+                    value="{{ question.bloom_level or 'understand' }}">
+                <input type="hidden" name="difficulty_level_{{ loop.index }}"
+                    value="{{ question.difficulty_level or 'medium' }}">
+            </div>
+            {% endfor %}
+
+            <div class="d-flex justify-content-between align-items-center mt-4 mb-5">
+                <a href="{{ url_for('syllabus.multi_week_quiz_setup', course_id=course.id) }}"
+                    class="btn btn-outline-secondary btn-lg">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Setup
+                </a>
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="fas fa-check me-2"></i>Approve & Save Quiz ({{ num_mcq }} MCQ + {{ num_open }} Open-Ended)
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

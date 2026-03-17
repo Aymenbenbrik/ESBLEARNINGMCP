@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Classe{% endblock %}
+{% block heading %}Dashboard Classe — {{ class_obj.name }}{% endblock %}
+
+{% block content %}
+  {% set a = analytics or {} %}
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+      <div class="text-muted">{{ class_obj.description or '—' }}</div>
+      <div class="small text-muted">Les statistiques se basent sur les quiz complétés (tous modules).</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('insights.teacher_classes_list') }}">
+      <i class="fas fa-arrow-left me-1"></i>Retour
+    </a>
+  </div>
+
+  <div class="row g-3 mt-2">
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="small text-muted">Étudiants</div>
+          <div class="fs-2 fw-bold">{{ a.get('students',0) }}</div>
+          <hr/>
+          <div class="small text-muted">Quiz complétés</div>
+          <div class="fs-4 fw-bold">{{ a.get('completed_quiz_count',0) }}</div>
+          <hr/>
+          <div class="small text-muted">Score moyen</div>
+          <div class="fs-4 fw-bold">{{ a.get('avg_score',0) }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Succès par Bloom & difficulté</h5>
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <div class="border rounded p-3">
+                <div class="fw-semibold mb-2">Bloom (taux de réussite)</div>
+                <canvas id="bloomSuccess" height="160"></canvas>
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="border rounded p-3">
+                <div class="fw-semibold mb-2">Difficulté (taux de réussite)</div>
+                <canvas id="diffSuccess" height="160"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mt-3">
+    <div class="card-body">
+      <h5 class="card-title">Modules (matières) — score moyen</h5>
+      {% if a.get('courses') %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th class="text-end">Quiz</th>
+                <th class="text-end">Score moyen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in a.get('courses') %}
+                <tr>
+                  <td>
+                    <div class="fw-semibold">{{ c.course.title }}</div>
+                    <div class="small text-muted">{{ c.course.description or '' }}</div>
+                  </td>
+                  <td class="text-end">{{ c.quizzes }}</td>
+                  <td class="text-end fw-bold">{{ c.avg_score }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info mb-0">Pas encore de données de quiz pour cette classe.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card shadow-sm mt-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h5 class="card-title mb-0">AAA (AA) — taux de réussite</h5>
+        <span class="text-muted small">AAA = acquis du module (TN)</span>
+      </div>
+
+      {% if a.get('clo') %}
+        <div class="row g-3 mt-1">
+          <div class="col-12 col-lg-7">
+            <div class="border rounded p-3">
+              <canvas id="aaSuccess" height="200"></canvas>
+            </div>
+          </div>
+          <div class="col-12 col-lg-5">
+            <div class="table-responsive" style="max-height: 320px; overflow:auto;">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>AAA (AA)</th>
+                    <th class="text-end">Succès</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for s in a.get('clo') %}
+                    <tr>
+                      <td>{{ s.name }}</td>
+                      <td class="text-end fw-semibold">{{ s.success_rate }}%</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="alert alert-info mb-0 mt-2">Pas encore de données AAA (AA) pour cette classe.</div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    (function(){
+      const a = {{ (analytics or {}) | tojson }};
+
+      function bar(elId, items){
+        const el = document.getElementById(elId);
+        if(!el) return;
+        const labels = (items||[]).map(x=>x.name);
+        const values = (items||[]).map(x=>Number(x.success_rate||0));
+        new Chart(el, {
+          type: 'bar',
+          data: { labels, datasets: [{ label: 'Taux de réussite', data: values, borderWidth: 1 }] },
+          options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+            plugins: { legend: { display: false } }
+          }
+        });
+      }
+
+      bar('bloomSuccess', a.bloom);
+      bar('diffSuccess', a.difficulty);
+      bar('aaSuccess', a.clo);
+    })();
+  </script>
+{% endblock %}

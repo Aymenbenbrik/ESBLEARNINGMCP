@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}View Quiz - Week {{ week_num }} - {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+.week-header { 
+    background-color: #f8f9fa; 
+    border-bottom: 1px solid #dee2e6; 
+    padding: 1rem 0; 
+    margin-bottom: 1.5rem; 
+}
+.week-title { 
+    color: #dc3545; 
+    font-size: 1.5rem; 
+    margin-bottom: 0.5rem; 
+}
+.week-topic { 
+    font-size: 1.1rem; 
+    color: #495057; 
+    margin-bottom: 1rem; 
+}
+
+/* Container content font size */
+.week-header .container p,
+.week-header .container ol,
+.week-header .container ul,
+.week-header .container li {
+    font-size: 1rem; /* Comfortable readable size */
+    line-height: 1.5;
+    color: #495057;
+}
+
+/* Quiz question list styling */
+.question-list {
+    list-style: decimal inside;
+    padding-left: 0;
+}
+.question-item {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #f1f1f1;
+}
+.question-text {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #6c757d; /* Couleur douce pour le titre de la question (gris moyen) */
+    font-size: 1.1rem;
+}
+.choices {
+    list-style: none;
+    padding-left: 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+.choices li {
+    margin-bottom: 0.3rem;
+}
+.correct-answer {
+    font-weight: bold;
+    color: #2e7d32; /* Vert doux (plus agréable que #28a745) */
+    font-size: 1rem;
+}
+.explanation {
+    font-style: italic;
+    color: #6c757d;
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
+}
+.back-btn {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.5rem 1rem;
+    background-color: #dc3545;
+    color: white;
+    border-radius: 0.25rem;
+    text-decoration: none;
+    font-size: 1rem;
+}
+.back-btn:hover {
+    background-color: #b02a37;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a>
+            </li>
+            <li class="breadcrumb-item active">Week {{ week_num }}</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}
+<div class="week-header">
+    <div class="container">
+        <h1 class="week-title">Week {{ week_num }}</h1>
+        <p class="week-topic">{{ document.title or "Quiz for Week " ~ week_num }}</p>
+
+        <p><strong>Course:</strong> {{ course.title }}</p>
+        <p><strong>Week:</strong> {{ week_num }}</p>
+
+        {% if questions %}
+            <ol class="question-list">
+                {% for q in questions %}
+                    <li class="question-item">
+                        <p class="question-text">{{ q.question }}</p>
+                        <ul class="choices">
+                            <li>A. {{ q.choice_a }}</li>
+                            <li>B. {{ q.choice_b }}</li>
+                            <li>C. {{ q.choice_c }}</li>
+                        </ul>
+                        <p class="correct-answer">Correct Answer: {{ q.correct_choice }}</p>
+                        {% if q.explanation %}
+                            <p class="explanation">Explanation: {{ q.explanation }}</p>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ol>
+        {% else %}
+            <p>No questions available for this quiz.</p>
+        {% endif %}
+
+        <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" class="back-btn">← Back to Week Plan</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Empty because all content is inside the header container -->
+{% endblock %}

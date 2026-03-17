@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Syllabus – {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+:root{
+  --brand:#d4181f;
+  --brand-700:#a90f15;
+}
+.link-brand{ color:var(--brand); font-weight:800; }
+.link-brand:hover{ color:var(--brand-700); }
+.btn-brand{ background:var(--brand); border-color:var(--brand); font-weight:800; }
+.btn-brand:hover{ background:var(--brand-700); border-color:var(--brand-700); }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+  <div class="container">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('courses.index') }}" class="text-decoration-none link-brand">Courses</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none link-brand">
+          {{ course.title }}
+        </a>
+      </li>
+      <li class="breadcrumb-item active">Upload Syllabus</li>
+    </ol>
+  </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Upload Syllabus for {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header text-white" style="background:var(--brand);">
+        <i class="fas fa-file-upload me-2"></i>Upload Syllabus
+      </div>
+
+      <div class="card-body">
+        <form method="POST" enctype="multipart/form-data"
+              action="{{ url_for('syllabus.upload_syllabus', course_id=course.id) }}">
+          {{ form.hidden_tag() }}
+
+          <div class="mb-3">
+            <label for="syllabus_type" class="form-label fw-bold">Syllabus Standard</label>
+            <select name="syllabus_type" class="form-control" id="syllabus_type" required>
+              <option value="" disabled selected>-- Select Syllabus Standard --</option>
+              <option value="bga">BGA (Weekly Plan, CLO, PLO)</option>
+              <option value="tn">TN Norm (AAA, AAP, Chapters)</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            {{ form.title.label(class="form-label") }}
+            {{ form.title(class="form-control", placeholder="Optional title for the syllabus") }}
+            {% for error in form.title.errors %}
+              <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+          </div>
+
+          <div class="mb-4">
+            {{ form.file.label(class="form-label") }}
+            <div class="input-group mb-2">
+              {{ form.file(class="form-control", id="fileInput") }}
+              <label class="input-group-text" for="fileInput">Browse</label>
+            </div>
+            <small class="form-text text-muted">
+              Allowed types: PDF, DOCX (TN recommended), XLSX (BGA).
+            </small>
+            {% for error in form.file.errors %}
+              <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{{ url_for('courses.view', course_id=course.id) }}" class="btn btn-outline-secondary">
+              <i class="fas fa-arrow-left me-2"></i>Back
+            </a>
+            <button type="submit" class="btn btn-brand text-white">
+              <i class="fas fa-upload me-2"></i>Upload Syllabus
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', function() {
+    const fileName = this.files[0]?.name || 'Browse';
+    this.nextElementSibling.textContent = fileName;
+  });
+});
+</script>
+{% endblock %}

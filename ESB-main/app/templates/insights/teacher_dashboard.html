@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboards{% endblock %}
+
+{% block heading %}Dashboards{% endblock %}
+
+{% block subheading %}
+  <div class="text-muted">Vue enseignant — modules, étudiants, performances (Quiz / AAA / Bloom / difficulté).</div>
+{% endblock %}
+
+{% block page_actions %}
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn bolt-btn bolt-btn-ghost" href="{{ url_for('courses.create') }}">
+      <i class="fas fa-plus"></i>Nouveau module
+    </a>
+    <a class="btn bolt-btn bolt-btn-ghost" href="{{ url_for('auth.manage_students') }}">
+      <i class="fas fa-users"></i>Gérer étudiants
+    </a>
+  </div>
+{% endblock %}
+
+{% block content %}
+
+  {# --- KPI --- #}
+  {% set total_quizzes = course_stats|sum(attribute='quiz_count') if course_stats else 0 %}
+  {% set total_score = 0 %}
+  {% set course_count = 0 %}
+  {% for stat in course_stats %}
+    {% if stat.avg_score and stat.avg_score > 0 %}
+      {% set total_score = total_score + stat.avg_score %}
+      {% set course_count = course_count + 1 %}
+    {% endif %}
+  {% endfor %}
+  {% set avg_overall = ((total_score / course_count)|round(1)) if course_count > 0 else 0 %}
+
+  <div class="row g-3">
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card"><div class="card-body bolt-kpi">
+        <div class="bolt-kpi-label">Modules</div>
+        <div class="bolt-kpi-value">{{ courses|length }}</div>
+        <div class="bolt-kpi-sub">créés / gérés</div>
+      </div></div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card"><div class="card-body bolt-kpi">
+        <div class="bolt-kpi-label">Étudiants</div>
+        <div class="bolt-kpi-value">{{ enrolled_students|length }}</div>
+        <div class="bolt-kpi-sub">uniques liés</div>
+      </div></div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card"><div class="card-body bolt-kpi">
+        <div class="bolt-kpi-label">Quiz</div>
+        <div class="bolt-kpi-value">{{ total_quizzes }}</div>
+        <div class="bolt-kpi-sub">sur tous les modules</div>
+      </div></div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card"><div class="card-body bolt-kpi">
+        <div class="bolt-kpi-label">Moyenne</div>
+        <div class="bolt-kpi-value">{{ avg_overall }}%</div>
+        <div class="bolt-kpi-sub">moyenne des modules actifs</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    {# --- Courses table --- #}
+    <div class="col-12 col-xl-7">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <div class="fw-bold" style="font-size:1.05rem;">Mes modules</div>
+              <div class="text-muted" style="font-size:.9rem;">Accès rapide aux dashboards module</div>
+            </div>
+            <a class="btn bolt-btn bolt-btn-ghost" href="{{ url_for('courses.index') }}">
+              Voir tous les modules
+            </a>
+          </div>
+
+          {% if course_stats %}
+            <div class="table-responsive mt-3">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th class="text-end">Étudiants</th>
+                    <th class="text-end">Quiz</th>
+                    <th class="text-end">Moyenne</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for stat in course_stats %}
+                    <tr>
+                      <td>
+                        <div class="fw-semibold">{{ stat.course.title }}</div>
+                        <div class="text-muted" style="font-size:.85rem;">{{ stat.course.code if stat.course.code else '' }}</div>
+                      </td>
+                      <td class="text-end"><span class="badge bg-light text-dark">{{ stat.student_count }}</span></td>
+                      <td class="text-end"><span class="badge bg-light text-dark">{{ stat.quiz_count }}</span></td>
+                      <td class="text-end">
+                        {% if stat.avg_score and stat.avg_score > 0 %}
+                          <span class="badge" style="background: rgba(197,23,24,0.10); color: var(--bolt-accent);">{{ stat.avg_score }}%</span>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">
+                        <a class="btn bolt-btn bolt-btn-ghost btn-sm" href="{{ url_for('insights.course_insights', course_id=stat.course.id) }}" title="Dashboard module">
+                          <i class="fas fa-chart-bar"></i>
+                        </a>
+                        <a class="btn bolt-btn bolt-btn-ghost btn-sm" href="{{ url_for('courses.view', course_id=stat.course.id) }}" title="Ouvrir module">
+                          <i class="fas fa-arrow-right"></i>
+                        </a>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted mt-3">Aucun module trouvé. Crée un module pour commencer.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# --- Students quick list --- #}
+    <div class="col-12 col-xl-5">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <div class="fw-bold" style="font-size:1.05rem;">Étudiants</div>
+              <div class="text-muted" style="font-size:.9rem;">Accès rapide au dashboard étudiant</div>
+            </div>
+            <a class="btn bolt-btn bolt-btn-ghost" href="{{ url_for('auth.manage_students') }}">Gérer</a>
+          </div>
+
+          {% if enrolled_students %}
+            <div class="list-group list-group-flush mt-3" style="max-height: 520px; overflow:auto;">
+              {% for s in enrolled_students %}
+                <a class="list-group-item list-group-item-action" href="{{ url_for('insights.teacher_student_dashboard', student_id=s.id) }}">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-semibold">{{ s.username }}</div>
+                      <div class="text-muted" style="font-size:.85rem;">{{ s.email }}</div>
+                    </div>
+                    <i class="fas fa-chevron-right text-muted"></i>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted mt-3">Aucun étudiant lié. Ajoute des étudiants pour voir les performances.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endblock %}

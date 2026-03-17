@@ -1,0 +1,948 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+  /* --- Modern layout (ChatGPT-like sidebar) --- */
+  .course-topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    margin-bottom:1rem;
+  }
+
+  .sidebar-toggle{
+    border:1px solid rgba(0,0,0,.1);
+    background: white;
+    border-radius: 12px;
+    padding: .5rem .75rem;
+    display:inline-flex;
+    align-items:center;
+    gap:.5rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,.06);
+  }
+  .sidebar-toggle:hover{ transform: translateY(-1px); }
+
+  .course-shell{
+    display:grid;
+    grid-template-columns: 330px 1fr;
+    gap: 1.25rem;
+    align-items:start;
+  }
+  .course-shell.sidebar-collapsed{ grid-template-columns: 0 1fr; }
+  .course-shell.sidebar-collapsed .course-sidebar{ width:0; padding:0; border:none; overflow:hidden; }
+
+  .course-sidebar{
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow:auto;
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(220,53,69,.06), rgba(255,255,255,1) 220px);
+    box-shadow: 0 14px 40px rgba(0,0,0,.08);
+    padding: 1rem;
+  }
+
+  .course-main{
+    min-width: 0;
+  }
+
+  .panel{
+    background: white;
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 18px;
+    box-shadow: 0 14px 40px rgba(0,0,0,.06);
+    overflow:hidden;
+  }
+
+  .panel-header{
+    padding: 1rem 1.1rem;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: .75rem;
+  }
+
+  .panel-body{ padding: 1.1rem; }
+
+  .muted{ color: #6c757d; }
+
+  .hero{
+    padding: 1.25rem;
+    display:flex;
+    gap: 1.25rem;
+    align-items:center;
+    background: radial-gradient(900px 260px at 20% 10%, rgba(220,53,69,.12), transparent 70%),
+                radial-gradient(700px 240px at 85% 0%, rgba(13,110,253,.12), transparent 60%),
+                white;
+  }
+
+  .hero-ill{
+    width: 180px;
+    height: 140px;
+    flex: 0 0 auto;
+    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,.06);
+    background: #fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .hero-ill img{ width:100%; height:100%; object-fit:cover; }
+
+  .hero-title{ font-size: 1.6rem; margin:0; }
+  .hero-actions{ display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.75rem; }
+
+  .badge-soft{
+    background: rgba(220,53,69,.08);
+    border: 1px solid rgba(220,53,69,.18);
+    color: #b02a37;
+    border-radius: 999px;
+    padding: .25rem .6rem;
+    font-weight: 600;
+    font-size: .8rem;
+  }
+
+  .section-title{
+    font-size: 1.05rem;
+    margin: 0;
+    display:flex;
+    align-items:center;
+    gap:.5rem;
+  }
+
+  .chapter-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: .9rem;
+  }
+
+  /* New: vertical chapters + sections */
+  .chapter-list{
+    display:flex;
+    flex-direction:column;
+    gap: .9rem;
+  }
+  details.chapter-item > summary{
+    list-style:none;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.75rem;
+    padding: .95rem 1rem;
+    border-radius: 18px;
+    border: 1px solid rgba(0,0,0,.08);
+    background: linear-gradient(180deg, rgba(248,249,250,1), rgba(255,255,255,1));
+    box-shadow: 0 10px 28px rgba(0,0,0,.05);
+    user-select:none;
+  }
+  details.chapter-item > summary::-webkit-details-marker{ display:none; }
+  details.chapter-item[open] > summary{
+    border-color: rgba(220,53,69,.28);
+    box-shadow: 0 16px 40px rgba(0,0,0,.08);
+  }
+  .chapter-body{
+    padding: .95rem 1rem 1.05rem;
+    border: 1px solid rgba(0,0,0,.08);
+    border-top: none;
+    border-radius: 0 0 18px 18px;
+    background: rgba(255,255,255,1);
+  }
+  .section-list{
+    display:flex;
+    flex-direction:column;
+    gap:.55rem;
+    margin-bottom: .9rem;
+  }
+  .section-item{
+    padding: .7rem .8rem;
+    border: 1px solid rgba(0,0,0,.06);
+    border-radius: 14px;
+    background: rgba(248,249,250,.75);
+  }
+  .chapter-actions{ display:flex; flex-wrap:wrap; gap:.5rem; }
+
+  /* legacy cards kept for compatibility /*
+  .chapter-card{
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 18px;
+    padding: 1rem;
+    background: linear-gradient(180deg, rgba(248,249,250,1), rgba(255,255,255,1));
+    box-shadow: 0 10px 28px rgba(0,0,0,.05);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .chapter-card:hover{ transform: translateY(-2px); box-shadow: 0 16px 40px rgba(0,0,0,.08); }
+  .chapter-meta{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+  .chapter-name{ font-weight: 700; margin: .35rem 0; }
+
+  .file-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: .75rem;
+    padding: .75rem;
+    border: 1px solid rgba(0,0,0,.06);
+    border-radius: 14px;
+    background: rgba(248,249,250,.8);
+  }
+
+  details.sidebar-group{ margin-bottom: .75rem; }
+  details.sidebar-group > summary{
+    list-style:none;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.75rem;
+    padding: .75rem .85rem;
+    border-radius: 14px;
+    border: 1px solid rgba(0,0,0,.06);
+    background: rgba(255,255,255,.9);
+    box-shadow: 0 10px 28px rgba(0,0,0,.05);
+    user-select:none;
+  }
+  details.sidebar-group[open] > summary{ border-color: rgba(220,53,69,.25); }
+  details.sidebar-group > summary::-webkit-details-marker{ display:none; }
+  .chev{ opacity:.65; }
+
+  /* Stepper */
+  .stepper{ margin: .35rem 0 0; padding-left: 1.2rem; }
+  .stepper li{ margin-bottom: .65rem; }
+  .stepper small{ display:block; color:#6c757d; }
+
+  /* Responsive: sidebar becomes off-canvas-like */
+  @media (max-width: 992px){
+    .course-shell{ grid-template-columns: 1fr; }
+    .course-shell.sidebar-collapsed{ grid-template-columns: 1fr; }
+    .course-shell.sidebar-collapsed .course-sidebar{ display:none; }
+    .course-sidebar{ position: relative; top: 0; max-height: none; }
+  }
+
+  /* Existing CLO/PLO rendering styles kept (simplified) */
+  .data-section { margin-top: 1rem; }
+  .clo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .clo-card { background: white; border: 1px solid #dee2e6; border-radius: 14px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .clo-title { font-size: 1.0rem; font-weight: 800; color: #dc3545; margin-bottom: 0.35rem; }
+  .clo-description { color: #6c757d; margin-bottom: 0.75rem; font-size: 0.95rem; }
+  .plo-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+  .plo-badge { background: #f8f9fa; color: #495057; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.82rem; border: 1px solid #dee2e6; }
+  .pct-badge { display:inline-block; padding: .15rem .6rem; border-radius: 999px; font-weight: 800; font-size: .85rem; margin-left: .45rem; color:white; }
+  .pct-high { background: #28a745; }
+  .pct-medium { background: #ffc107; color: #212529; }
+  .pct-low { background: #dc3545; }
+  .plo-list { list-style: none; padding: 0; }
+  .plo-item { background: white; border: 1px solid #dee2e6; border-radius: 14px; padding: 0.9rem; margin-bottom: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .plo-number { font-weight: 800; color: #dc3545; display:inline-block; width: 64px; }
+  .plo-desc { margin-left: 64px; color:#495057; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+  <div class="container">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+      </li>
+      <li class="breadcrumb-item active">{{ course.title }}</li>
+    </ol>
+  </div>
+</nav>
+{% endblock %}
+
+{% block heading %}{{ course.title }}{% endblock %}
+
+{% block content %}
+
+{# Flags used in workflow & rendering #}
+{% set is_tn = syllabus and (syllabus.syllabus_type or '')|lower == 'tn' %}
+{% set needs_extract = (syllabus and syllabus.file_path) and ((not is_tn and not syllabus.weekly_plan) or (is_tn and (not syllabus.tn_data or (syllabus.tn_chapters|length == 0)))) %}
+{% set needs_step2 = (syllabus and syllabus.file_path) and ((is_tn and syllabus.tn_data and not (syllabus.tn_data.get('__classified') if syllabus.tn_data else False)) or ((not is_tn) and syllabus.weekly_plan and (chapters|length == 0))) %}
+
+<div class="course-topbar">
+  <div class="d-flex align-items-center gap-2">
+    <button id="sidebarToggle" type="button" class="sidebar-toggle" aria-label="Toggle sidebar">
+      <span style="font-weight:900">☰</span>
+      <span class="d-none d-md-inline">Infos module</span>
+    </button>
+    {% if syllabus and syllabus.file_path %}
+      <span class="badge-soft">Syllabus: {{ (syllabus.syllabus_type or 'bga')|upper }}</span>
+    {% endif %}
+  </div>
+
+  {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ url_for('syllabus.upload_syllabus_form', course_id=course.id) }}" class="btn btn-danger btn-sm">
+      <i class="fas fa-upload me-1"></i>Upload syllabus
+    </a>
+    <a href="{{ url_for('courses.upload_module_attachment', course_id=course.id) }}" class="btn btn-outline-danger btn-sm">
+      <i class="fas fa-paperclip me-1"></i>Fichier module
+    </a>
+    {% if syllabus and syllabus.weekly_plan %}
+      <a href="{{ url_for('syllabus.multi_week_quiz_setup', course_id=course.id) }}" class="btn btn-success btn-sm">
+        <i class="fas fa-clipboard-list me-1"></i>Quiz multi-week
+      </a>
+    {% endif %}
+
+    {% if is_tn and syllabus and syllabus.tn_chapters and syllabus.tn_chapters|length %}
+      <a href="{{ url_for('syllabus.tn_quiz_setup', course_id=course.id) }}" class="btn btn-success btn-sm">
+        <i class="fas fa-clipboard-question me-1"></i>Quiz (TN)
+      </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div id="courseLayout" class="course-shell">
+
+  <!-- LEFT SIDEBAR (hide/show) -->
+  <aside class="course-sidebar" aria-label="Course sidebar">
+
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="fw-bold">Aperçu du module</div>
+      {% if syllabus and syllabus.file_path %}
+        <a class="btn btn-sm btn-outline-danger" target="_blank" href="{{ url_for('syllabus.uploaded_file', filename=syllabus.file_path) }}">
+          <i class="fas fa-download me-1"></i>PDF
+        </a>
+      {% endif %}
+    </div>
+    <div class="muted small mb-3">Tout ce qui était dans l'ancien affichage est ici (et tu peux cacher la sidebar).</div>
+
+    <!-- Progress / Stepper (auto extraction + classification) -->
+    {% if current_user.is_teacher and course.teacher_id == current_user.id and (needs_extract or needs_step2 or request.args.get('syllabus_uploaded')) %}
+      <div id="syllabus-progress"
+           class="panel mb-3"
+           data-course-id="{{ course.id }}"
+           data-syllabus-type="{{ (syllabus.syllabus_type if syllabus else 'bga')|lower }}"
+           data-needs-extract="{{ '1' if needs_extract else '0' }}"
+           data-needs-step2="{{ '1' if needs_step2 else '0' }}">
+        <div class="panel-header">
+          <div class="section-title"><i class="fas fa-magic text-danger"></i> Préparation</div>
+          <span class="badge bg-light text-dark border">Auto</span>
+        </div>
+        <div class="panel-body">
+          <ol class="stepper">
+            <li>
+              <div class="fw-semibold">Extraction du syllabus</div>
+              <span id="step1-badge" class="badge bg-secondary">En attente</span>
+              <span id="step1-spinner" class="spinner-border spinner-border-sm text-danger ms-2" role="status" style="display:none;"><span class="visually-hidden">Loading...</span></span>
+              <small>Extraction en cours… veuillez patienter.</small>
+            </li>
+            <li>
+              <div class="fw-semibold">Classification des chapitres</div>
+              <span id="step2-badge" class="badge bg-secondary">En attente</span>
+              <span id="step2-spinner" class="spinner-border spinner-border-sm text-danger ms-2" role="status" style="display:none;"><span class="visually-hidden">Loading...</span></span>
+              <small>On associe AAA / structure automatiquement.</small>
+            </li>
+          </ol>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Syllabus info -->
+    <details class="sidebar-group" open>
+      <summary>
+        <span class="fw-semibold"><i class="fas fa-file-alt me-2 text-danger"></i>Syllabus</span>
+        <span class="chev">▾</span>
+      </summary>
+      <div class="mt-2">
+        {% if syllabus and syllabus.file_path %}
+          <div class="file-item">
+            <div class="d-flex align-items-center gap-2">
+              <i class="fas fa-file-pdf text-danger"></i>
+              <div class="small">
+                <div class="fw-semibold">{{ syllabus.file_path }}</div>
+                <div class="muted">Type: {{ (syllabus.syllabus_type or 'bga')|upper }}</div>
+              </div>
+            </div>
+            <a class="btn btn-sm btn-outline-danger" target="_blank" href="{{ url_for('syllabus.uploaded_file', filename=syllabus.file_path) }}">Ouvrir</a>
+          </div>
+        {% else %}
+          <div class="muted">Aucun syllabus uploadé.</div>
+        {% endif %}
+      </div>
+    </details>
+
+    {% if is_tn and tn_aa_distribution and tn_aa_distribution|length %}
+      <details class="sidebar-group" open>
+        <summary>
+          <span class="fw-semibold"><i class="fas fa-chart-pie me-2 text-danger"></i>Distribution des acquis</span>
+          <span class="chev">▾</span>
+        </summary>
+        <div class="mt-2">
+          <div class="muted small mb-2">Poids calculé automatiquement (selon la fréquence des AA dans les sections/chapitres).</div>
+          <div class="d-grid gap-2">
+            {% for r in tn_aa_distribution[:12] %}
+              <div>
+                <div class="d-flex justify-content-between small">
+                  <div class="fw-semibold">{{ r.label }}</div>
+                  <div class="muted">{{ r.percent }}%</div>
+                </div>
+                <div class="progress" style="height:8px;">
+                  <div class="progress-bar bg-danger" role="progressbar" style="width: {{ r.percent }}%"></div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+          {% if tn_aa_distribution|length > 12 %}
+            <div class="muted small mt-2">+{{ tn_aa_distribution|length - 12 }} autres AA</div>
+          {% endif %}
+        </div>
+      </details>
+    {% endif %}
+
+    <!-- General information (old display moved here) -->
+    <details class="sidebar-group" {% if not (syllabus and (syllabus.weekly_plan or syllabus.tn_data)) %}open{% endif %}>
+      <summary>
+        <span class="fw-semibold"><i class="fas fa-info-circle me-2 text-danger"></i>Informations générales</span>
+        <span class="chev">▾</span>
+      </summary>
+      <div class="mt-2">
+        {% if is_tn and syllabus %}
+          {% if syllabus.tn_admin %}
+            <div class="small">
+              <div class="fw-semibold">{{ syllabus.tn_admin.module_name or 'Module' }}</div>
+              <div class="muted">UE: {{ syllabus.tn_admin.code_ue or '-' }} • ECUE: {{ syllabus.tn_admin.code_ecue or '-' }}</div>
+              <div class="muted">Responsable: {{ syllabus.tn_admin.responsible or '-' }}</div>
+            </div>
+            <hr>
+          {% endif %}
+
+          <div class="small fw-semibold text-danger mb-1">AAA</div>
+          {% if syllabus.tn_aa and syllabus.tn_aa|length %}
+            <ul class="small mb-2">
+              {% for aa in syllabus.tn_aa|sort(attribute='number') %}
+                <li><strong>AA{{ aa.number }}:</strong> {{ aa.description }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="muted">AAA non disponibles.</div>
+          {% endif %}
+
+          <div class="small fw-semibold text-danger mt-2 mb-1">AAP</div>
+          {% if syllabus.tn_aap and syllabus.tn_aap|length %}
+            <div class="d-flex flex-wrap gap-2">
+              {% for aap in syllabus.tn_aap|sort(attribute='number') %}
+                <span class="badge {% if aap.selected %}bg-success{% else %}bg-secondary{% endif %}">AAP{{ aap.number }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted">AAP non disponibles.</div>
+          {% endif %}
+
+        {% elif syllabus and syllabus.weekly_plan %}
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <button id="clo-btn" class="btn btn-outline-primary btn-sm"><i class="fas fa-list me-1"></i>CLO</button>
+            <button id="plo-btn" class="btn btn-outline-primary btn-sm"><i class="fas fa-list me-1"></i>PLO</button>
+          </div>
+
+          <div id="data-display" class="mt-2" style="display:none;">
+            <div class="fw-semibold" id="data-title">Data</div>
+            <div id="data-content"></div>
+          </div>
+
+          <div class="mt-3">
+            <div class="small fw-semibold text-danger mb-1">Weekly plan</div>
+            <div class="small muted">Aperçu rapide des thèmes.</div>
+            <ul class="small mb-0">
+              {% for w in syllabus.weekly_plan[:10] %}
+                <li><span class="badge bg-danger me-1">W{{ w['Week#'] }}</span>{{ w['Topic'] or 'No Topic' }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% else %}
+          <div class="muted">Les infos seront disponibles après l'extraction.</div>
+        {% endif %}
+      </div>
+    </details>
+    <!-- Quick links -->
+    <details class="sidebar-group" open>
+      <summary>
+        <span class="fw-semibold"><i class="fas fa-bolt me-2 text-danger"></i>Raccourcis</span>
+        <span class="chev">▾</span>
+      </summary>
+      <div class="mt-2 d-grid gap-2">
+        <a href="{{ url_for('courses.upload_module_attachment', course_id=course.id) }}" class="btn btn-outline-danger btn-sm">
+          <i class="fas fa-paperclip me-1"></i>Ajouter fichier module
+        </a>
+        {% if chapters and chapters|length %}
+          <a href="{{ url_for('chapters.view', chapter_id=chapters[0].id) }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-book-open me-1"></i>Ouvrir chapitre 1
+          </a>
+        {% endif %}
+      </div>
+    </details>
+
+  </aside>
+
+
+  <!-- MAIN CONTENT -->
+  <main class="course-main">
+
+    <div class="panel mb-3">
+      <div class="hero">
+        <div class="hero-ill">
+          <img src="{{ url_for('static', filename='img/course_hero.svg') }}" alt="Course illustration">
+        </div>
+        <div style="min-width:0">
+          <h1 class="hero-title">{{ course.title }}</h1>
+          <div class="muted">{{ course.description or 'Aucune description.' }}</div>
+          <div class="hero-actions">
+            {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+              <a href="{{ url_for('syllabus.upload_syllabus_form', course_id=course.id) }}" class="btn btn-danger">
+                <i class="fas fa-upload me-1"></i>Upload syllabus
+              </a>
+              <a href="{{ url_for('courses.upload_module_attachment', course_id=course.id) }}" class="btn btn-outline-danger">
+                <i class="fas fa-paperclip me-1"></i>Fichier module
+              </a>
+              <form action="{{ url_for('courses.delete', course_id=course.id) }}" method="POST"
+                    style="display:inline"
+                    onsubmit="return confirm('Delete &quot;{{ course.title }}&quot;? This will permanently remove all chapters, documents, quizzes, and enrollments.')">
+                  <button type="submit" class="btn btn-outline-secondary">
+                      <i class="fas fa-trash me-1"></i>Delete Course
+                  </button>
+              </form>
+            {% endif %}
+            {% if syllabus and syllabus.weekly_plan %}
+              <a href="{{ url_for('syllabus.multi_week_quiz_setup', course_id=course.id) }}" class="btn btn-success">
+                <i class="fas fa-clipboard-list me-1"></i>Quiz multi-week
+              </a>
+            {% endif %}
+            {% if is_tn and syllabus and syllabus.tn_chapters and syllabus.tn_chapters|length %}
+              <a href="{{ url_for('syllabus.tn_quiz_setup', course_id=course.id) }}" class="btn btn-success">
+                <i class="fas fa-clipboard-question me-1"></i>Quiz (TN)
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chapters (always visible) -->
+    <div class="panel mb-3">
+      <div class="panel-header">
+        <h2 class="section-title"><i class="fas fa-book text-danger"></i> Chapitres</h2>
+        {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+          <a href="{{ url_for('chapters.create', course_id=course.id) }}" class="btn btn-sm btn-outline-danger">
+            <i class="fas fa-plus me-1"></i>Ajouter
+          </a>
+        {% endif %}
+      </div>
+      <div class="panel-body">
+        {% if chapters and chapters|length %}
+          <div class="chapter-list">
+            {% for ch in chapters %}
+              <details class="chapter-item">
+                <summary>
+                  <div class="d-flex align-items-center gap-2" style="min-width:0">
+                    <span class="badge bg-danger">Chapitre {{ ch.order }}</span>
+                    <span class="fw-bold text-truncate" style="max-width: 420px;">{{ ch.title }}</span>
+                    {% if ch.summary %}<span class="badge bg-light text-dark border">Résumé prêt</span>{% endif %}
+                  </div>
+                  <span class="chev">▾</span>
+                </summary>
+                <div class="chapter-body">
+
+                  {% if is_tn and syllabus and syllabus.tn_chapters %}
+                    {% for tnc in syllabus.tn_chapters %}
+                      {% if tnc.index == ch.order %}
+
+                        {% if tnc.aa_links and tnc.aa_links|length %}
+                          <div class="small muted mb-1">AAA du chapitre</div>
+                          <div class="d-flex flex-wrap gap-2 mb-3">
+                            {% for link in tnc.aa_links %}
+                              <span class="badge bg-light text-dark border">AA{{ link.aa.number }}</span>
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+
+                        {% if tnc.sections and tnc.sections|length %}
+                          <div class="small fw-semibold text-danger mb-2">Sections</div>
+                          <div class="section-list">
+                            {% for sec in tnc.sections|sort(attribute="index") %}
+                              <div class="section-item">
+                                <div class="fw-semibold">{{ sec.index }} — {{ sec.title }}</div>
+                                {% if sec.aa_links and sec.aa_links|length %}
+                                  <div class="d-flex flex-wrap gap-2 mt-2">
+                                    {% for l in sec.aa_links %}
+                                      <span class="badge bg-light text-dark border">AA{{ l.aa.number }}</span>
+                                    {% endfor %}
+                                  </div>
+                                {% endif %}
+                              </div>
+                            {% endfor %}
+                          </div>
+                        {% else %}
+                          <div class="muted small mb-3">Aucune section trouvée pour ce chapitre.</div>
+                        {% endif %}
+
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+
+                  <div class="chapter-actions">
+                    <a href="{{ url_for("chapters.view", chapter_id=ch.id) }}" class="btn btn-sm btn-outline-primary">
+                      <i class="fas fa-eye me-1"></i>Ouvrir
+                    </a>
+                    {% if is_tn and syllabus and syllabus.tn_chapters and syllabus.tn_chapters|length %}
+                      <a href="{{ url_for('syllabus.tn_quiz_setup', course_id=course.id, chapter_id=ch.id) }}" class="btn btn-sm btn-success">
+                        <i class="fas fa-clipboard-question me-1"></i>Quiz
+                      </a>
+                    {% endif %}
+                    <a href="{{ url_for("chapters.upload_document", chapter_id=ch.id) }}" class="btn btn-sm btn-outline-danger">
+                      <i class="fas fa-upload me-1"></i>Fichiers
+                    </a>
+                    <a href="{{ url_for("ai.chapter_chat", chapter_id=ch.id) }}" class="btn btn-sm btn-outline-success">
+                      <i class="fas fa-robot me-1"></i>Chatbot
+                    </a>
+                    <a href="{{ url_for("chapters.generate_full_chapter_summary", chapter_id=ch.id) }}" class="btn btn-sm btn-outline-secondary">
+                      <i class="fas fa-align-left me-1"></i>Résumé
+                    </a>
+                  </div>
+                </div>
+              </details>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-center py-4">
+            <div class="muted">Les chapitres apparaîtront ici après l'extraction/classification.</div>
+            {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+              <div class="mt-3">
+                <a href="{{ url_for('chapters.create', course_id=course.id) }}" class="btn btn-outline-danger">
+                  <i class="fas fa-plus me-1"></i>Créer un chapitre manuellement
+                </a>
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Module files -->
+    <div class="panel mb-3">
+      <div class="panel-header">
+        <h2 class="section-title"><i class="fas fa-paperclip text-danger"></i> Fichiers du module</h2>
+        {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+          <a href="{{ url_for('courses.upload_module_attachment', course_id=course.id) }}" class="btn btn-sm btn-outline-danger">
+            <i class="fas fa-upload me-1"></i>Ajouter
+          </a>
+        {% endif %}
+      </div>
+      <div class="panel-body">
+        {% if module_attachments and module_attachments|length %}
+          <div class="d-grid gap-2">
+            {% for doc in module_attachments %}
+              <div class="file-item">
+                <div class="d-flex align-items-center gap-2" style="min-width:0">
+                  <i class="fas fa-file"></i>
+                  <div style="min-width:0">
+                    <div class="fw-semibold text-truncate" style="max-width:520px;">{{ doc.title }}</div>
+                    <div class="muted small">{{ doc.file_type|upper if doc.file_type else 'FILE' }}</div>
+                  </div>
+                </div>
+                <div class="d-flex gap-2">
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('documents.view_extraction', document_id=doc.id) }}">
+                    <i class="fas fa-microscope me-1"></i>Extraction
+                  </a>
+                  {% if doc.analysis_report_path %}
+                    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('documents.download_extraction_report', document_id=doc.id) }}">
+                      <i class="fas fa-file-pdf me-1"></i>PDF
+                    </a>
+                  {% endif %}
+                  <a class="btn btn-sm btn-outline-primary" target="_blank" href="{{ url_for('syllabus.uploaded_document', filename=doc.file_path) }}">Ouvrir</a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="muted">Aucun fichier général pour ce module.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Evaluate exams -->
+    <div class="panel mb-3">
+      <div class="panel-header">
+        <h2 class="section-title"><i class="fas fa-check-circle text-danger"></i> Évaluer les examens</h2>
+        <span class="badge bg-light text-dark border">PDF report</span>
+      </div>
+      <div class="panel-body">
+        {% if is_tn %}
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div class="muted">Ajoutez un DS/Test/Examen puis lancez l'analyse (Bloom + difficulté + AA + sources).</div>
+            <a class="btn btn-sm btn-outline-danger" href="{{ url_for('evaluate.tn_exams', course_id=course.id) }}"><i class="fas fa-cog me-1"></i>Gérer les examens</a>
+          </div>
+
+          {% if tn_exams and tn_exams|length %}
+            <div class="row g-2">
+              {% for ex in tn_exams %}
+                <div class="col-md-6">
+                  <div class="chapter-card" style="margin:0">
+                    <div class="fw-semibold"><i class="fas fa-file-signature me-1 text-danger"></i>{{ ex.title }}</div>
+                    <div class="muted small">{{ (ex.content_metadata or {}).get('exam_type','—') }} • {{ ex.created_at.strftime('%b %d, %Y') if ex.created_at else '—' }}</div>
+                    <div class="chapter-actions mt-2">
+                      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('evaluate.tn_exam_view', course_id=course.id, document_id=ex.id) }}"><i class="fas fa-chart-bar me-1"></i>Ouvrir</a>
+                      {% if ex.analysis_report_path %}
+                        <a class="btn btn-sm btn-outline-success" href="{{ url_for('evaluate.tn_exam_download_report', course_id=course.id, document_id=ex.id) }}"><i class="fas fa-download me-1"></i>PDF</a>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted">Aucun examen ajouté.</div>
+          {% endif %}
+        {% else %}
+          {% if evaluation_targets and evaluation_targets|length %}
+            <div class="row g-2">
+              {% for t in evaluation_targets %}
+                <div class="col-md-6">
+                  <div class="chapter-card" style="margin:0">
+                    <div class="fw-semibold">{{ t.label }}</div>
+                    <div class="chapter-actions mt-2">
+                      <a class="btn btn-sm btn-outline-danger" href="{{ url_for('evaluate.upload_exam', course_id=course.id, week_num=t.number) }}">
+                        <i class="fas fa-upload me-1"></i>Upload exam
+                      </a>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('evaluate.evaluate_exam', course_id=course.id, week_num=t.number) }}">
+                        <i class="fas fa-chart-bar me-1"></i>Evaluate
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted">Cette section sera disponible après l'extraction du syllabus.</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quizzes (saved) -->
+    {% if course_quizzes %}
+    <div class="panel mb-3">
+      <div class="panel-header">
+        <h2 class="section-title"><i class="fas fa-clipboard-list text-danger"></i> Quizzes{% if is_tn %} (TN){% endif %}</h2>
+        <span class="badge bg-light text-dark border">{{ course_quizzes|length }}</span>
+      </div>
+      <div class="panel-body">
+        <div class="row g-2">
+          {% for quiz in course_quizzes %}
+            <div class="col-md-6">
+              <div class="chapter-card" style="margin:0">
+                <div class="fw-semibold"><i class="fas fa-file-alt me-1 text-danger"></i>{{ quiz.title }}</div>
+                <div class="muted small">
+                  {{ quiz.quiz_data|length if quiz.quiz_data else 0 }} questions • {{ quiz.created_at.strftime('%b %d, %Y') if quiz.created_at else 'N/A' }}
+                </div>
+                <div class="chapter-actions mt-2">
+                  {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+                    <a href="{{ url_for('syllabus.view_course_quiz', course_id=course.id, document_id=quiz.id) }}" class="btn btn-sm btn-outline-primary">
+                      <i class="fas fa-eye me-1"></i>View
+                    </a>
+                    <a href="{{ url_for('syllabus.delete_course_quiz', course_id=course.id, document_id=quiz.id) }}"
+                       class="btn btn-sm btn-outline-danger"
+                       onclick="return confirm('Delete this quiz?');">
+                      <i class="fas fa-trash me-1"></i>Delete
+                    </a>
+                  {% elif current_user.is_student %}
+                    <a href="{{ url_for('syllabus.take_course_quiz', course_id=course.id, document_id=quiz.id) }}" class="btn btn-sm btn-success">
+                      <i class="fas fa-play-circle me-1"></i>Take Quiz
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- Sidebar hide/show like ChatGPT ---
+(function(){
+  const layout = document.getElementById('courseLayout');
+  const btn = document.getElementById('sidebarToggle');
+  if(!layout || !btn) return;
+
+  const key = 'courseSidebarCollapsed';
+  const apply = (collapsed) => {
+    if(collapsed) layout.classList.add('sidebar-collapsed');
+    else layout.classList.remove('sidebar-collapsed');
+  };
+
+  const saved = localStorage.getItem(key);
+  apply(saved === '1');
+
+  btn.addEventListener('click', () => {
+    const isCollapsed = layout.classList.contains('sidebar-collapsed');
+    localStorage.setItem(key, isCollapsed ? '0' : '1');
+    apply(!isCollapsed);
+  });
+})();
+
+// ------------------------------------------------------------
+// Auto workflow: extraction -> classification/build chapters
+// (keeps the existing internal logic; UI only)
+// ------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', function () {
+  const progress = document.getElementById('syllabus-progress');
+  if (!progress) return;
+
+  const syllabusType = (progress.dataset.syllabusType || 'bga').toLowerCase();
+  const needsExtract = progress.dataset.needsExtract === '1';
+  const needsStep2 = progress.dataset.needsStep2 === '1';
+
+  const step1Badge = document.getElementById('step1-badge');
+  const step2Badge = document.getElementById('step2-badge');
+  const step1Spinner = document.getElementById('step1-spinner');
+  const step2Spinner = document.getElementById('step2-spinner');
+
+  function setBadge(badgeEl, text, cls) {
+    if (!badgeEl) return;
+    badgeEl.textContent = text;
+    badgeEl.className = 'badge ' + cls;
+  }
+
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token() }}'
+      },
+      body: body ? JSON.stringify(body) : JSON.stringify({})
+    });
+    const data = await res.json();
+    if (!res.ok || (data && data.ok === false) || data.error) {
+      throw new Error((data && (data.error || data.message)) || 'Request failed');
+    }
+    return data;
+  }
+
+  async function run() {
+    try {
+      // STEP 1
+      if (needsExtract) {
+        setBadge(step1Badge, 'En cours', 'bg-warning text-dark');
+        if (step1Spinner) step1Spinner.style.display = 'inline-block';
+
+        if (syllabusType === 'tn') {
+          await postJson("{{ url_for('syllabus.tn_extract', course_id=course.id) }}");
+        } else {
+          await postJson("{{ url_for('syllabus.extract_syllabus', course_id=course.id) }}", {
+            pdf_path: "{{ syllabus.file_path if syllabus else '' }}"
+          });
+        }
+
+        if (step1Spinner) step1Spinner.style.display = 'none';
+        setBadge(step1Badge, 'Terminé', 'bg-success');
+      } else {
+        setBadge(step1Badge, 'Terminé', 'bg-success');
+      }
+
+      // STEP 2
+      if (needsStep2) {
+        setBadge(step2Badge, 'En cours', 'bg-warning text-dark');
+        if (step2Spinner) step2Spinner.style.display = 'inline-block';
+
+        if (syllabusType === 'tn') {
+          await postJson("{{ url_for('syllabus.tn_classify_store', course_id=course.id) }}");
+        } else {
+          await postJson("{{ url_for('syllabus.bga_build_chapters', course_id=course.id) }}");
+        }
+
+        if (step2Spinner) step2Spinner.style.display = 'none';
+        setBadge(step2Badge, 'Terminé', 'bg-success');
+      } else {
+        setBadge(step2Badge, 'Terminé', 'bg-success');
+      }
+
+      // Refresh without query params
+      window.location.href = "{{ url_for('courses.view', course_id=course.id) }}";
+    } catch (e) {
+      if (step1Spinner) step1Spinner.style.display = 'none';
+      if (step2Spinner) step2Spinner.style.display = 'none';
+      setBadge(step1Badge, 'Erreur', 'bg-danger');
+      setBadge(step2Badge, 'Erreur', 'bg-danger');
+      alert('Workflow failed: ' + e.message);
+    }
+  }
+
+  run();
+});
+
+{% if syllabus and syllabus.weekly_plan %}
+// CLO / PLO viewer (kept from previous UI)
+function toggleDataDisplay(fetchUrl, title, isClo = false) {
+  const dataDisplay = document.getElementById('data-display');
+  const dataContent = document.getElementById('data-content');
+  const dataTitle = document.getElementById('data-title');
+  if (!dataDisplay || !dataContent || !dataTitle) return;
+
+  if (dataDisplay.style.display === 'block') {
+    dataDisplay.style.display = 'none';
+    dataContent.innerHTML = '';
+    return;
+  }
+
+  dataTitle.textContent = title;
+  fetch(fetchUrl)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        dataContent.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+      } else {
+        let html = '';
+        if (isClo && data.clo_data) {
+          html += '<div class="clo-grid data-section">';
+          data.clo_data.forEach(clo => {
+            const cloKey = `CLO${clo['CLO#']}`;
+            const stat = data.clo_stats[cloKey] || {weeks: 0, percentage: 0};
+            const pct = Math.round(stat.percentage || 0);
+            const pctClass = pct >= 70 ? 'pct-high' : (pct >= 50 ? 'pct-medium' : 'pct-low');
+            html += `<div class="clo-card">
+              <div class="clo-title">CLO ${clo['CLO#']} <span class="pct-badge ${pctClass}">${pct}%</span></div>
+              <div class="clo-description">${clo['CLO Description']}</div>
+              <div class="plo-badges">${clo['Linked PLOs'].map(plo => `<span class="plo-badge">PLO${plo}</span>`).join('')}</div>
+              <div class="small muted">Covered in ${stat.weeks || 'N/A'} weeks</div>
+            </div>`;
+          });
+          html += '</div>';
+        } else if (data.plo_data) {
+          html += '<ul class="plo-list data-section">';
+          data.plo_data.forEach(plo => {
+            html += `<li class="plo-item"><span class="plo-number">PLO ${plo['PLO#']}</span><div class="plo-desc">${plo['PLO Description']}</div></li>`;
+          });
+          html += '</ul>';
+        }
+        dataContent.innerHTML = html;
+      }
+      dataDisplay.style.display = 'block';
+    })
+    .catch(err => {
+      dataContent.innerHTML = `<div class="alert alert-danger">Failed to load: ${err}</div>`;
+      dataDisplay.style.display = 'block';
+    });
+}
+
+const cloBtn = document.getElementById('clo-btn');
+const ploBtn = document.getElementById('plo-btn');
+if (cloBtn) cloBtn.addEventListener('click', () => toggleDataDisplay("{{ url_for('syllabus.get_clo_data', course_id=course.id) }}", 'Course Learning Outcomes (CLOs)', true));
+if (ploBtn) ploBtn.addEventListener('click', () => toggleDataDisplay("{{ url_for('syllabus.get_plo_data', course_id=course.id) }}", 'Program Learning Outcomes (PLOs)', false));
+{% endif %}
+</script>
+{% endblock %}

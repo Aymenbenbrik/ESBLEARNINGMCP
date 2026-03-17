@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h2 class="mb-0">Admin · Formations</h2>
+      <div class="text-muted">Créer une formation, puis ajoute des cours et des classes.</div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('admin.program_create') }}" class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label">Nom de la formation</label>
+          <input name="name" class="form-control" placeholder="ex: Licence Informatique" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Année (optionnel)</label>
+          <input name="year" class="form-control" placeholder="2025/2026">
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-primary w-100">Créer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    {% for p in programs %}
+      <div class="col-md-6 col-lg-4">
+        <a class="text-decoration-none" href="{{ url_for('admin.program_view', program_id=p.id) }}">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <h5 class="mb-1 text-dark">{{ p.name }}</h5>
+                <span class="badge bg-secondary">#{{ p.id }}</span>
+              </div>
+              <div class="text-muted">{{ p.year or '—' }}</div>
+              <div class="mt-3 small text-muted">
+                {% set courses_count = (p.courses.count() if p.courses.__class__.__name__ == 'AppenderQuery' else (p.courses|length)) %}
+                {% set classes_count = (p.classes.count() if p.classes.__class__.__name__ == 'AppenderQuery' else (p.classes|length)) %}
+                {{ courses_count }} cours · {{ classes_count }} classes
+              </div>
+            </div>
+          </div>
+        </a>
+      </div>
+    {% else %}
+      <div class="col-12">
+        <div class="text-muted">Aucune formation.</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

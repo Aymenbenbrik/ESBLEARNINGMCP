@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz de révision{% endblock %}
+
+{% block styles %}
+<style>
+  /* ====== Page header ====== */
+  .page-head{padding:26px 0 12px}
+  .page-title{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:0}
+  .page-sub{color:#6b7280;margin-top:6px}
+
+  /* ====== Cards (same vibe as teacher pages) ====== */
+  .filter-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:18px;align-items:start}
+  @media (max-width: 992px){.filter-grid{grid-template-columns:1fr}}
+
+  .cardx{background:#fff;border:1px solid #edf2f7;border-radius:16px;box-shadow:0 6px 16px rgba(16,24,40,.06)}
+  .cardx .cardx-h{padding:16px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .cardx .cardx-b{padding:18px}
+  .cardx-title{font-weight:800;margin:0;font-size:16px}
+  .cardx-sub{color:#6b7280;font-size:13px;margin:0;margin-top:4px}
+
+  /* ====== Modern multi-select ====== */
+  .ms-wrap{display:flex;flex-direction:column;gap:8px}
+  .ms-label{font-weight:700;font-size:13px;color:#111827}
+  .ms-trigger{
+    width:100%;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:10px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    cursor:pointer;
+    transition:box-shadow .15s,border-color .15s;
+  }
+  .ms-trigger:hover{border-color:#cbd5e1;box-shadow:0 1px 0 rgba(16,24,40,.03)}
+  .ms-trigger:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .ms-text{color:#374151;font-size:14px}
+  .ms-meta{color:#6b7280;font-size:12px;white-space:nowrap}
+  .ms-menu{width:100%;max-height:320px;overflow:auto;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 16px 30px rgba(16,24,40,.12);padding:10px;background:#fff}
+  .ms-top{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .ms-search{flex:1}
+  .ms-search input{width:100%;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px}
+  .ms-actions{display:flex;gap:6px}
+  .ms-actions button{border:1px solid #e5e7eb;background:#fff;border-radius:10px;padding:7px 10px;font-size:12px;color:#374151;cursor:pointer}
+  .ms-actions button:hover{border-color:#cbd5e1;background:#f8fafc}
+  .ms-opt{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer}
+  .ms-opt:hover{background:#f8fafc}
+  .ms-opt input{width:16px;height:16px}
+  .ms-opt .t{font-size:13px;color:#111827}
+  .ms-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+  .ms-pill{background:#eff6ff;color:#1d4ed8;border:1px solid #dbeafe;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+  .ms-pill .x{cursor:pointer;opacity:.9}
+  .ms-pill .x:hover{opacity:1}
+
+  /* ====== Number input + CTA ====== */
+  .num-input{border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;font-size:14px;width:100%}
+  .help{color:#6b7280;font-size:13px;line-height:1.35;margin-top:8px}
+  .cta{display:flex;flex-direction:column;gap:12px}
+  .btn-cta{width:100%;border-radius:12px;padding:12px 14px;font-weight:800}
+  .btn-soft{background:#fff;border:1px solid #e5e7eb;color:#111827}
+
+  /* Hide legacy selects but keep them for form submit */
+  .legacy-select{display:none !important}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-head">
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+      <div>
+        <h1 class="page-title">Quiz de révision</h1>
+        <p class="page-sub mb-0">Générer un quiz <strong>non noté</strong> à partir de la banque de questions approuvées pour <strong>{{ course.title }}</strong>.</p>
+      </div>
+      <a class="btn btn-outline-secondary" href="{{ url_for('courses.view', course_id=course.id) }}">
+        <i class="fas fa-arrow-left me-2"></i>Retour au module
+      </a>
+    </div>
+  </div>
+
+  <form method="POST" class="filter-grid">
+    <!-- LEFT: Filters -->
+    <div class="cardx">
+      <div class="cardx-h">
+        <div>
+          <p class="cardx-title mb-0">Filtres</p>
+          <p class="cardx-sub mb-0">Choisis ce que tu veux réviser. Tu peux sélectionner plusieurs éléments.</p>
+        </div>
+        <div class="text-muted" style="font-size:12px">Astuce: Ctrl / Cmd + clic</div>
+      </div>
+      <div class="cardx-b">
+        <div class="row g-3">
+          <div class="col-12 col-md-5">
+            <label class="ms-label" for="num_questions">Nombre de questions</label>
+            <input id="num_questions" class="num-input" type="number" name="num_questions" value="{{ num_questions }}" min="1" max="50" required>
+            <div class="help">Si la banque contient moins de questions que demandé, on te proposera le maximum disponible.</div>
+          </div>
+
+          <div class="col-12 col-md-7">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <!-- Chapters (custom UI) -->
+                <div class="ms-wrap" data-ms="chapters">
+                  <div class="ms-label">Chapitres</div>
+                  <button type="button" class="ms-trigger" aria-expanded="false">
+                    <span class="ms-text">Sélectionner…</span>
+                    <span class="ms-meta"><span class="ms-count">0</span> sélectionné(s) <i class="fas fa-chevron-down ms-caret ms-meta"></i></span>
+                  </button>
+                  <div class="ms-menu d-none" role="menu"></div>
+                  <div class="ms-pills"></div>
+                </div>
+
+                <!-- Legacy select for form submit -->
+                <select id="chaptersSelect" name="chapter_ids" class="legacy-select" multiple>
+                  {% for ch in chapters %}
+                    <option value="{{ ch.id }}">Chapitre {{ ch.order }} — {{ ch.title }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <!-- AAA (custom UI) -->
+                <div class="ms-wrap" data-ms="aaas">
+                  <div class="ms-label">AAA (Acquis)</div>
+                  <button type="button" class="ms-trigger" aria-expanded="false">
+                    <span class="ms-text">Sélectionner…</span>
+                    <span class="ms-meta"><span class="ms-count">0</span> sélectionné(s) <i class="fas fa-chevron-down ms-caret ms-meta"></i></span>
+                  </button>
+                  <div class="ms-menu d-none" role="menu"></div>
+                  <div class="ms-pills"></div>
+                  <div class="help" style="margin-top:6px">La liste dépend de la banque (module + chapitres choisis).</div>
+                </div>
+
+                <select id="aaasSelect" name="aaas" class="legacy-select" multiple>
+                  {% for a in aaas %}
+                    <option value="{{ a }}">{{ a }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <!-- Bloom -->
+                <div class="ms-wrap" data-ms="blooms">
+                  <div class="ms-label">Bloom</div>
+                  <button type="button" class="ms-trigger" aria-expanded="false">
+                    <span class="ms-text">Sélectionner…</span>
+                    <span class="ms-meta"><span class="ms-count">0</span> sélectionné(s) <i class="fas fa-chevron-down ms-caret ms-meta"></i></span>
+                  </button>
+                  <div class="ms-menu d-none" role="menu"></div>
+                  <div class="ms-pills"></div>
+                </div>
+                <select id="bloomSelect" name="blooms" class="legacy-select" multiple>
+                  {% for b in blooms %}
+                    <option value="{{ b }}">{{ b }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <!-- Difficulty -->
+                <div class="ms-wrap" data-ms="difficulties">
+                  <div class="ms-label">Difficulté</div>
+                  <button type="button" class="ms-trigger" aria-expanded="false">
+                    <span class="ms-text">Sélectionner…</span>
+                    <span class="ms-meta"><span class="ms-count">0</span> sélectionné(s) <i class="fas fa-chevron-down ms-caret ms-meta"></i></span>
+                  </button>
+                  <div class="ms-menu d-none" role="menu"></div>
+                  <div class="ms-pills"></div>
+                </div>
+                <select id="difficultySelect" name="difficulties" class="legacy-select" multiple>
+                  {% for d in difficulties %}
+                    <option value="{{ d }}">{{ d }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: CTA -->
+    <div class="cardx">
+      <div class="cardx-h">
+        <div>
+          <p class="cardx-title mb-0">Lancer le quiz</p>
+          <p class="cardx-sub mb-0">Le quiz est généré en <strong>shuffle</strong> depuis la banque approuvée du professeur, selon tes filtres.</p>
+        </div>
+      </div>
+      <div class="cardx-b cta">
+        <button type="submit" class="btn btn-primary btn-cta">
+          <i class="fas fa-random me-2"></i>Générer le quiz
+        </button>
+        <button type="button" class="btn btn-soft" id="clearAllBtn">
+          <i class="fas fa-eraser me-2"></i>Réinitialiser les filtres
+        </button>
+        <div class="help">Si aucune sélection n'est faite, on prend toutes les questions disponibles (approuvées).</div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ===== Helpers =====
+  const qs = (sel, el=document) => el.querySelector(sel);
+  const qsa = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+
+  function escapeHtml(s){
+    return String(s)
+      .replaceAll('&','&amp;')
+      .replaceAll('<','&lt;')
+      .replaceAll('>','&gt;')
+      .replaceAll('"','&quot;')
+      .replaceAll("'",'&#039;');
+  }
+
+  // ===== MultiSelect UI bound to a hidden <select multiple> =====
+  function initMultiSelect(wrapper, selectEl){
+    const trigger = qs('.ms-trigger', wrapper);
+    const menu = qs('.ms-menu', wrapper);
+    const pills = qs('.ms-pills', wrapper);
+    const countEl = qs('.ms-count', wrapper);
+    const textEl = qs('.ms-text', wrapper);
+
+    function buildMenu(){
+      const options = Array.from(selectEl.options).map(o => ({value:o.value, label:o.text, selected:o.selected}));
+      const html = `
+        <div class="ms-top">
+          <div class="ms-search"><input type="text" placeholder="Rechercher…" aria-label="Rechercher"></div>
+          <div class="ms-actions">
+            <button type="button" data-act="all">Tout</button>
+            <button type="button" data-act="none">Aucun</button>
+          </div>
+        </div>
+        <div class="ms-list">
+          ${options.map(o => `
+            <label class="ms-opt" data-value="${escapeHtml(o.value)}">
+              <input type="checkbox" ${o.selected ? 'checked':''}>
+              <span class="t">${escapeHtml(o.label)}</span>
+            </label>
+          `).join('')}
+        </div>
+      `;
+      menu.innerHTML = html;
+
+      // search
+      const input = qs('.ms-search input', menu);
+      input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        qsa('.ms-opt', menu).forEach(row => {
+          const label = qs('.t', row).textContent.toLowerCase();
+          row.style.display = label.includes(q) ? '' : 'none';
+        });
+      });
+
+      // actions
+      qsa('button[data-act]', menu).forEach(btn => {
+        btn.addEventListener('click', () => {
+          const act = btn.dataset.act;
+          Array.from(selectEl.options).forEach(o => o.selected = (act === 'all'));
+          syncFromSelect();
+          buildMenu();
+        });
+      });
+
+      // checkbox toggle
+      qsa('.ms-opt', menu).forEach(row => {
+        row.addEventListener('click', (e) => {
+          // allow click anywhere
+          if (e.target.tagName.toLowerCase() !== 'input'){
+            const cb = qs('input', row);
+            cb.checked = !cb.checked;
+          }
+          const v = row.getAttribute('data-value');
+          const opt = Array.from(selectEl.options).find(o => o.value === v);
+          if (opt){ opt.selected = qs('input', row).checked; }
+          syncFromSelect();
+        });
+      });
+    }
+
+    function syncFromSelect(){
+      const selected = Array.from(selectEl.selectedOptions).map(o => ({value:o.value, label:o.text}));
+      countEl.textContent = String(selected.length);
+      textEl.textContent = selected.length ? `${selected.length} sélectionné(s)` : 'Sélectionner…';
+
+      // pills
+      pills.innerHTML = selected.slice(0, 12).map(s => `
+        <span class="ms-pill" data-value="${escapeHtml(s.value)}">
+          ${escapeHtml(s.label)} <span class="x" title="Retirer">×</span>
+        </span>
+      `).join('');
+      if (selected.length > 12){
+        const more = document.createElement('span');
+        more.className = 'ms-pill';
+        more.textContent = `+${selected.length - 12} autre(s)`;
+        pills.appendChild(more);
+      }
+
+      qsa('.ms-pill .x', pills).forEach(x => {
+        x.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const v = e.target.closest('.ms-pill').dataset.value;
+          const opt = Array.from(selectEl.options).find(o => o.value === v);
+          if (opt){ opt.selected = false; }
+          syncFromSelect();
+          if (!menu.classList.contains('d-none')) buildMenu();
+        });
+      });
+    }
+
+    function open(){
+      // close others
+      qsa('.ms-menu').forEach(m => { if (m !== menu) m.classList.add('d-none'); });
+      qsa('.ms-trigger').forEach(t => { if (t !== trigger) t.setAttribute('aria-expanded','false'); });
+      buildMenu();
+      menu.classList.remove('d-none');
+      trigger.setAttribute('aria-expanded','true');
+      const input = qs('.ms-search input', menu);
+      if (input) input.focus();
+    }
+
+    function close(){
+      menu.classList.add('d-none');
+      trigger.setAttribute('aria-expanded','false');
+    }
+
+    trigger.addEventListener('click', () => {
+      const isOpen = !menu.classList.contains('d-none');
+      if (isOpen) close(); else open();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!wrapper.contains(e.target)) close();
+    });
+
+    // initial
+    syncFromSelect();
+    return { syncFromSelect, rebuild: () => { syncFromSelect(); if (!menu.classList.contains('d-none')) buildMenu(); } };
+  }
+
+  // ===== Setup all multi-selects =====
+  const msChapters = initMultiSelect(document.querySelector('[data-ms="chapters"]'), document.getElementById('chaptersSelect'));
+  const msAAAs = initMultiSelect(document.querySelector('[data-ms="aaas"]'), document.getElementById('aaasSelect'));
+  const msBlooms = initMultiSelect(document.querySelector('[data-ms="blooms"]'), document.getElementById('bloomSelect'));
+  const msDiffs = initMultiSelect(document.querySelector('[data-ms="difficulties"]'), document.getElementById('difficultySelect'));
+
+  // Clear all
+  document.getElementById('clearAllBtn').addEventListener('click', () => {
+    [chaptersSelect, aaasSelect, bloomSelect, difficultySelect].forEach(sel => {
+      Array.from(sel.options).forEach(o => o.selected = false);
+    });
+    msChapters.rebuild();
+    msAAAs.rebuild();
+    msBlooms.rebuild();
+    msDiffs.rebuild();
+  });
+
+  // ===== Dynamic AAA list based on selected chapters =====
+  async function updateAAAs(){
+    const chapterIds = Array.from(chaptersSelect.selectedOptions).map(o => o.value);
+    const courseId = "{{ course.id }}";
+    const params = new URLSearchParams();
+    params.set('course_id', courseId);
+    chapterIds.forEach(id => params.append('chapter_ids', id));
+
+    try{
+      const res = await fetch(`/question-bank/api/aaas?${params.toString()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const values = Array.isArray(data) ? data : (data.aaas || []);
+
+      // keep current selections if still available
+      const selectedNow = new Set(Array.from(aaasSelect.selectedOptions).map(o => o.value));
+      aaasSelect.innerHTML = '';
+      values.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        opt.selected = selectedNow.has(v);
+        aaasSelect.appendChild(opt);
+      });
+      msAAAs.rebuild();
+    }catch(e){
+      console.warn('AAA update failed', e);
+    }
+  }
+
+  // when chapters change
+  chaptersSelect.addEventListener('change', updateAAAs);
+  // initial AAA fetch
+  updateAAAs();
+</script>
+{% endblock %}

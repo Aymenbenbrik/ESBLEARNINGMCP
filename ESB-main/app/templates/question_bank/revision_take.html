@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}Revision{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0"><i class="fas fa-graduation-cap me-2"></i> Révision : {{ course.title }}</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('question_bank.student_revision', course_id=course.id) }}">Nouvelle sélection</a>
+  </div>
+
+  {% if not questions %}
+    <div class="alert alert-warning">Aucune question approuvée ne correspond à vos filtres.</div>
+  {% else %}
+    {% for q in questions %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <span class="badge text-bg-light">Q{{ loop.index }}</span>
+            {% if q.bloom_level %}<span class="badge text-bg-info">{{ q.bloom_level }}</span>{% endif %}
+            {% if q.difficulty %}<span class="badge text-bg-secondary">{{ q.difficulty }}</span>{% endif %}
+            {% if q.clo %}<span class="badge text-bg-light">{{ q.clo }}</span>{% endif %}
+          </div>
+          <div class="fw-semibold">{{ q.question_text }}</div>
+
+          {% if q.question_type == 'mcq' %}
+            <div class="mt-2 small">
+              <div>A) {{ q.choice_a }}</div>
+              <div>B) {{ q.choice_b }}</div>
+              <div>C) {{ q.choice_c }}</div>
+            </div>
+            <details class="mt-2">
+              <summary>Voir la réponse</summary>
+              <div class="mt-2">
+                <div><strong>Correct :</strong> {{ q.correct_choice }}</div>
+                {% if q.explanation %}<div class="text-muted small mt-1">{{ q.explanation }}</div>{% endif %}
+              </div>
+            </details>
+          {% else %}
+            <details class="mt-2">
+              <summary>Voir une réponse modèle</summary>
+              <div class="text-muted small mt-2">{{ q.explanation or '—' }}</div>
+            </details>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

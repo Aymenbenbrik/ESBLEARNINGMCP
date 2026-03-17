@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluate Exam - Week {{ week_num }}{% endblock %}
+
+{% block styles %}
+<style>
+/* Vos styles existants */
+.week-header { 
+    background-color: #f8f9fa; 
+    border-bottom: 1px solid #dee2e6; 
+    padding: 1rem 0; 
+    margin-bottom: 1.5rem; 
+}
+.week-title { 
+    color: #dc3545; 
+    font-size: 1.5rem; 
+    margin-bottom: 0.5rem; 
+}
+.week-topic { 
+    font-size: 1.1rem; 
+    color: #495057; 
+    margin-bottom: 1rem; 
+}
+.document-list { list-style-type: none; padding-left: 0; }
+.document-item {
+    padding: 0.75rem; margin-bottom: 0.5rem;
+    background-color: #f8f9fa; border-radius: 0.25rem;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: background-color 0.2s ease;
+}
+.document-item:hover { background-color: #e9ecef; }
+.document-icon { font-size: 1.5rem; margin-right: 1rem; }
+.pdf-icon { color: #FF5722; }
+.doc-icon { color: #2196F3; }
+#loading-spinner { display: none; margin-left: 10px; }
+.loading-text { display: none; margin-left: 10px; }
+
+/* Résultats */
+.results {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+.result-item {
+    margin-bottom: 1rem;
+}
+.result-title {
+    font-weight: 600;
+    color: #dc3545;
+    margin-bottom: 0.5rem;
+}
+
+/* Affichage CLO / Bloom */
+.data-section { margin-top: 1rem; }
+.clo-grid, .bloom-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+    gap: 1rem; 
+    margin-bottom: 2rem; 
+}
+.clo-card, .bloom-card { 
+    background: white; 
+    border: 1px solid #dee2e6; 
+    border-radius: 8px; 
+    padding: 1.5rem; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+}
+.clo-title, .bloom-title-card { 
+    font-size: 1.1rem; 
+    font-weight: bold; 
+    color: #dc3545; 
+    margin-bottom: 0.5rem; 
+}
+.clo-description, .bloom-description { 
+    color: #6c757d; 
+    margin-bottom: 1rem; 
+    font-size: 0.95rem; 
+}
+.pct-badge { 
+    display: inline-block; 
+    padding: 0.25rem 0.75rem; 
+    border-radius: 15px; 
+    font-weight: bold; 
+    font-size: 0.9rem; 
+    margin-left: 0.5rem; 
+    color: white;
+}
+.pct-high { background: #28a745; }
+.pct-medium { background: #ffc107; color: #212529; }
+.pct-low { background: #dc3545; }
+
+/* Badges Bloom */
+.bloom-level-badge {
+    display: inline-block;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: white;
+    margin-top: 0.5rem;
+}
+.bloom-Mémoriser { background-color: #007bff; }
+.bloom-Comprendre { background-color: #17a2b8; }
+.bloom-Appliquer { background-color: #28a745; }
+.bloom-Analyser { background-color: #ffc107; color: #212529; }
+.bloom-Évaluer { background-color: #fd7e14; }
+.bloom-Créer { background-color: #dc3545; }
+
+/* Tableau classification questions */
+.questions-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2rem;
+}
+.questions-table th, .questions-table td {
+    border: 1px solid #dee2e6;
+    padding: 0.5rem;
+    vertical-align: top;
+}
+.questions-table th {
+    background-color: #f8f9fa;
+    color: #dc3545;
+    font-weight: 600;
+}
+
+/* NEW: Report buttons styling */
+.report-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.btn-view {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+.btn-view:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Messages flash -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'error' else category }} flash-message" role="alert">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if current_user.is_teacher %}
+    {% if not exam_document %}
+    <div class="mb-4">
+        <a href="{{ url_for('evaluate.upload_exam', course_id=course_id, week_num=week_num) }}" class="btn btn-danger">
+            <i class="fas fa-upload me-2"></i>Upload Exam
+        </a>
+    </div>
+    {% endif %}
+
+    {% if exam_document and exam_document.file_path %}
+    <div class="mb-4">
+        <h5>Uploaded Exam File:</h5>
+        <ul class="document-list">
+            <li class="document-item">
+                <span>
+                    <i class="fas fa-file-pdf document-icon pdf-icon"></i>
+                    {% set fixed_path = exam_document.file_path.replace('\\', '/') %}
+                    {% set exam_filename = fixed_path.split('/')[-1] %}  <!-- Extract filename -->
+                    <a href="{{ url_for('evaluate.download_exam', filename=exam_filename) }}" target="_blank">
+                        {{ fixed_path }}
+                    </a>
+                </span>
+            </li>
+        </ul>
+    </div>
+
+    <!-- UPDATED: PDF Report Section with View/Download Options -->
+    {% if exam_document.analysis_report_path %}
+    <div class="mb-3">
+        <h6>Generated Analysis Report:</h6>
+        {% set pdf_path = exam_document.analysis_report_path.replace('\\', '/') %}
+        {% set pdf_filename = pdf_path.split('/')[-1] %}  <!-- Extract filename only -->
+        <div class="report-buttons">
+            <a href="{{ url_for('evaluate.download_report', filename=pdf_filename) }}" target="_blank" class="btn btn-success btn-view">
+                <i class="fas fa-eye me-2"></i>View Report
+            </a>
+            <a href="{{ url_for('evaluate.download_report', filename=pdf_filename) }}" class="btn btn-primary" download>
+                <i class="fas fa-download me-2"></i>Download Report
+            </a>
+        </div>
+        <small class="text-muted">Generated on {{ exam_document.updated_at.strftime('%Y-%m-%d %H:%M') if exam_document.updated_at else 'Unknown' }}</small>
+    </div>
+    {% else %}
+    <div class="mb-3 alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>No PDF report generated yet. Run the analysis to create one.
+    </div>
+    {% endif %}
+
+    {% if not exam_document.analysis_results %}
+    <div class="mb-4">
+        <button id="analyze-btn" class="btn btn-outline-danger">
+            <i class="fas fa-magic me-2"></i>Analyze Exam (CLO & Bloom's Taxonomy)
+        </button>
+        <div id="loading-spinner" class="spinner-border text-danger" role="status" style="display:none;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <span id="loading-text" class="loading-text" style="display:none;">Analyzing... Please wait</span>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if exam_document and exam_document.analysis_results %}
+    <div class="results">
+        <h5>Analysis Results</h5>
+
+        <!-- CLO Coverage -->
+        <div class="result-item data-section">
+            <div class="result-title">CLO Coverage</div>
+            <div class="clo-grid">
+            {% for clo in clo_data %}
+                {% set key = clo['CLO#'] | string %}
+                {% set pct = exam_document.analysis_results.clo_percentages.get(key, 0) %}
+                <div class="clo-card">
+                <div class="clo-title">
+                    CLO{{ key }}
+                    <div class="clo-description">{{ clo['CLO Description'] }}</div>
+                    <span class="pct-badge {{ 'pct-high' if pct >= 70 else ('pct-medium' if pct >= 50 else 'pct-low') }}">{{ pct }}%</span>
+                </div>
+                </div>
+            {% endfor %}
+            </div>
+
+        <!-- Bloom's Taxonomy Balance -->
+        <div class="result-item data-section">
+            <div class="result-title">Bloom's Taxonomy Balance</div>
+            <div class="bloom-grid">
+                {% for level, pct in exam_document.analysis_results.bloom_percentages.items() %}
+                <div class="bloom-card">
+                    <div class="bloom-title-card">{{ level }}</div>
+                    <div class="bloom-description">{{ 
+                        {
+                            "Mémoriser": "Se souvenir ou rappeler des faits et concepts.",
+                            "Comprendre": "Expliquer, reformuler ou interpréter des idées.",
+                            "Appliquer": "Utiliser des connaissances dans des contextes pratiques.",
+                            "Analyser": "Identifier des relations ou différencier des parties d'un problème.",
+                            "Évaluer": "Jugement critique ou justification d'un choix.",
+                            "Créer": "Produire ou combiner des idées pour générer quelque chose de nouveau."
+                        }[level] 
+                    }}</div>
+                    <span class="bloom-level-badge bloom-{{ level }}">{{ pct }}%</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Questions Classification -->
+        <div class="result-item">
+            <div class="result-title">Questions Classification</div>
+            <table class="questions-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Question Text</th>
+                        <th>CLO#</th>
+                        <th>CLO Description</th>
+                        <th>Bloom Level</th>
+                        <th>Bloom Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in exam_document.analysis_results.questions_classified %}
+                    <tr>
+                        <td>{{ q['Question#'] }}</td>
+                        <td>{{ q['Text'] }}</td>
+                        <td>
+                            {% if q['CLO#'] is iterable and not q['CLO#'] is string %}
+                                {{ q['CLO#'] | join(', ') }}
+                            {% else %}
+                                {{ q['CLO#'] }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if q['CLODescription'] is iterable and not q['CLODescription'] is string %}
+                                {{ q['CLODescription'] | join(', ') }}
+                            {% else %}
+                                {{ q['CLODescription'] }}
+                            {% endif %}
+                        </td>
+                        <td>{{ q['Bloom_Level'] }}</td>
+                        <td>{{ q['Bloom_Description'] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+    {% endif %}
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if exam_document and exam_document.file_path and not exam_document.analysis_results %}
+document.getElementById('analyze-btn').addEventListener('click', function() {
+    document.getElementById('loading-spinner').style.display = 'inline-block';
+    document.getElementById('loading-text').style.display = 'inline';
+    this.disabled = true;
+    fetch("{{ url_for('evaluate.analyze_exam', course_id=course_id, week_num=week_num) }}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ exam_path: "{{ exam_document.file_path }}" })
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('loading-spinner').style.display = 'none';
+        document.getElementById('loading-text').style.display = 'none';
+        this.disabled = false;
+        if (data.error) {
+            alert('Analysis failed: ' + data.error);
+        } else {
+            location.reload();
+        }
+    })
+    .catch(error => {
+        document.getElementById('loading-spinner').style.display = 'none';
+        document.getElementById('loading-text').style.display = 'none';
+        this.disabled = false;
+        alert('Analysis failed: ' + error);
+    });
+});
+{% endif %}
+</script>
+{% endblock %}

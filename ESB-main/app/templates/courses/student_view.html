@@ -1,0 +1,678 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }}{% endblock %}
+{% block styles %}
+<style>
+/* student view html page */
+
+/* Course Header */
+.course-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.course-header h1 {
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.course-meta {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1rem;
+    font-size: 0.95rem;
+}
+
+.course-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Content Cards */
+.content-card {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: box-shadow 0.3s ease;
+}
+
+.content-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.content-card-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.content-card-icon {
+    font-size: 1.8rem;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+
+.icon-attachments { background: #e3f2fd; color: #1976d2; }
+.icon-quizzes { background: #f3e5f5; color: #7b1fa2; }
+.icon-videos { background: #ffe0b2; color: #e65100; }
+.icon-activities { background: #c8e6c9; color: #2e7d32; }
+
+.content-card h3 {
+    margin: 0;
+    color: #212529;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.content-card-subtitle {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-top: 0.25rem;
+}
+
+/* Item Lists */
+.item-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.list-item {
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background-color 0.2s ease;
+}
+
+.list-item:hover {
+    background: #e9ecef;
+}
+
+.item-info {
+    flex: 1;
+}
+
+.item-title {
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.item-meta {
+    font-size: 0.85rem;
+    color: #6c757d;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.item-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: 1rem;
+}
+
+.item-icon {
+    font-size: 1.2rem;
+    width: 1.5rem;
+    text-align: center;
+}
+
+/* File Icons */
+.icon-pdf { color: #FF5722; }
+.icon-doc { color: #2196F3; }
+.icon-ppt { color: #FF9800; }
+.icon-video { color: #E91E63; }
+.icon-generic { color: #757575; }
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Progress Section */
+.progress-section {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.progress-item {
+    margin-bottom: 1.5rem;
+}
+
+.progress-item:last-child {
+    margin-bottom: 0;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #212529;
+}
+
+.progress-bar-container {
+    height: 8px;
+    background: white;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+
+.pct-high { background: #28a745; }
+.pct-medium { background: #ffc107; }
+.pct-low { background: #dc3545; }
+
+/* Week Selector */
+.week-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.week-btn {
+    padding: 0.5rem 1rem;
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    color: #495057;
+}
+
+.week-btn:hover {
+    border-color: #667eea;
+    color: #667eea;
+}
+
+.week-btn.active {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+/* Badge Styles */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+    white-space: nowrap;
+}
+
+.badge i {
+    font-size: 0.65rem;
+}
+
+.badge-new { 
+    background: #ff6b6b; 
+    color: white; 
+}
+
+.badge-pending { 
+    background: #ffc107; 
+    color: #212529; 
+}
+
+.badge-completed { 
+    background: #28a745; 
+    color: white; 
+}
+
+/* Button Styles */
+.btn-action {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+}
+
+.btn-primary-action {
+    background: #667eea;
+    color: white;
+}
+
+.btn-primary-action:hover {
+    background: #5568d3;
+    text-decoration: none;
+    color: white;
+}
+
+.btn-secondary-action {
+    background: #e9ecef;
+    color: #212529;
+}
+
+.btn-secondary-action:hover {
+    background: #dee2e6;
+    text-decoration: none;
+    color: #212529;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .course-meta {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .list-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .item-actions {
+        margin-top: 0.75rem;
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .item-actions .btn-action {
+        flex: 1;
+        justify-content: center;
+    }
+    
+    .content-card-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .item-title {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none">Courses</a>
+            </li>
+            <li class="breadcrumb-item active">{{ course.title }}</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    
+    <!-- Course Header -->
+    <div class="course-header">
+        <h1>{{ course.title }}</h1>
+        <p class="mb-0">{{ course.description or 'Welcome to this course!' }}</p>
+        <div class="course-meta">
+            <div class="course-meta-item">
+                <i class="fas fa-user"></i>
+                <span>Instructor: {{ course.teacher.full_name if course.teacher else 'N/A' }}</span>
+            </div>
+            <div class="course-meta-item">
+                <i class="fas fa-calendar"></i>
+                <span>Enrolled: {{ course.created_at.strftime('%B %Y') if course.created_at else 'N/A' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Overview (if available) -->
+    {% if student_progress %}
+    <div class="progress-section">
+        <h5 style="color: #212529; margin-bottom: 1rem; font-weight: 600;">Your Progress</h5>
+        
+        {% if student_progress.get('quizzes_total', 0) > 0 %}
+        <div class="progress-item">
+            <div class="progress-label">
+                <span>Quizzes Completed</span>
+                <span>{{ student_progress.get('quizzes_completed', 0) }}/{{ student_progress.get('quizzes_total', 0) }}</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill pct-high" 
+                     style="width: {{ (student_progress.get('quizzes_completed', 0) / student_progress.get('quizzes_total', 1) * 100)|int }}%">
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if student_progress.get('assignments_total', 0) > 0 %}
+        <div class="progress-item">
+            <div class="progress-label">
+                <span>Assignments Submitted</span>
+                <span>{{ student_progress.get('assignments_submitted', 0) }}/{{ student_progress.get('assignments_total', 0) }}</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill pct-medium" 
+                     style="width: {{ (student_progress.get('assignments_submitted', 0) / student_progress.get('assignments_total', 1) * 100)|int }}%">
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Week Selector (if syllabus available) -->
+    {% if syllabus and syllabus.weekly_plan and syllabus.weekly_plan|length > 0 %}
+    <div class="mb-4">
+        <h6 style="color: #6c757d; margin-bottom: 1rem;">Select Week:</h6>
+        <div class="week-selector">
+            <button class="week-btn active" data-week="all">All Weeks</button>
+            {% for week_data in syllabus.weekly_plan %}
+            <button class="week-btn" data-week="{{ week_data['Week#'] }}">
+                Week {{ week_data['Week#'] }}
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-lg-8">
+            
+            <!-- ============================================================ -->
+            <!-- QUIZZES SECTION - UPDATED WITH STATUS & SMART BUTTONS -->
+            <!-- ============================================================ -->
+            {% if course_quizzes and course_quizzes|length > 0 %}
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div class="content-card-icon icon-quizzes">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <div>
+                        <h3>Quizzes</h3>
+                        <div class="content-card-subtitle">Test your knowledge with course quizzes</div>
+                    </div>
+                </div>
+                <ul class="item-list">
+                    {% for quiz_item in course_quizzes %}
+                        <li class="list-item">
+                            <div class="item-info">
+                                <div class="item-title">
+                                    <i class="fas fa-file-alt item-icon"></i>
+                                    {{ quiz_item.document.title }}
+                                    
+                                    <!-- ✅ Show completion status badge -->
+                                    {% if quiz_item.student_completed %}
+                                        <span class="badge badge-completed">
+                                            <i class="fas fa-check-circle"></i> COMPLETED
+                                        </span>
+                                    {% elif quiz_item.quiz_id %}
+                                        <span class="badge badge-pending">
+                                            <i class="fas fa-hourglass-half"></i> IN PROGRESS
+                                        </span>
+                                    {% else %}
+                                        <span class="badge badge-new">
+                                            <i class="fas fa-star"></i> NEW
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                <div class="item-meta">
+                                    <span><i class="fas fa-question-circle"></i>{{ quiz_item.document.quiz_data|length if quiz_item.document.quiz_data else 0 }} questions</span>
+                                    <span><i class="fas fa-calendar"></i>{{ quiz_item.document.created_at.strftime('%b %d, %Y') if quiz_item.document.created_at else 'N/A' }}</span>
+                                    
+                                    <!-- ✅ Show score if completed -->
+                                    {% if quiz_item.student_completed and quiz_item.student_score %}
+                                        <span><i class="fas fa-star"></i>Score: {{ quiz_item.student_score }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="item-actions">
+                                <!-- ✅ Smart buttons based on status -->
+                                {% if quiz_item.student_completed %}
+                                    <!-- Already completed: show "View Results" button -->
+                                    <a href="{{ url_for('quiz.results', quiz_id=quiz_item.quiz_id) }}" 
+                                       class="btn-action btn-secondary-action">
+                                        <i class="fas fa-eye"></i>View Results
+                                    </a>
+                                {% elif quiz_item.quiz_id %}
+                                    <!-- In progress: show "Resume" button -->
+                                    <a href="{{ url_for('quiz.take', quiz_id=quiz_item.quiz_id, question_index=0) }}" 
+                                       class="btn-action btn-primary-action">
+                                        <i class="fas fa-play-circle"></i>Resume
+                                    </a>
+                                {% else %}
+                                    <!-- Not started: show "Take Quiz" button -->
+                                    <a href="{{ url_for('syllabus.take_course_quiz', course_id=course.id, document_id=quiz.id) }}" 
+                                       class="btn-action btn-primary-action">
+                                        <i class="fas fa-play-circle"></i>Take Quiz
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div class="content-card-icon icon-quizzes">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <div>
+                        <h3>Quizzes</h3>
+                        <div class="content-card-subtitle">Test your knowledge with course quizzes</div>
+                    </div>
+                </div>
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <p>No quizzes available yet for this course.</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Attachments Section (Syllabus & Course Materials) -->
+            {% if syllabus and syllabus.file_path %}
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div class="content-card-icon icon-attachments">
+                        <i class="fas fa-file-download"></i>
+                    </div>
+                    <div>
+                        <h3>Course Materials</h3>
+                        <div class="content-card-subtitle">Download syllabus and course documents</div>
+                    </div>
+                </div>
+                <ul class="item-list">
+                    <li class="list-item">
+                        <div class="item-info">
+                            <div class="item-title">
+                                <i class="fas fa-file-pdf item-icon icon-pdf"></i>
+                                {{ syllabus.file_path }}
+                            </div>
+                            <div class="item-meta">
+                                <span>Syllabus</span>
+                                <span><i class="fas fa-calendar"></i>{{ syllabus.created_at.strftime('%b %d, %Y') if syllabus.created_at else 'N/A' }}</span>
+                            </div>
+                        </div>
+                        <div class="item-actions">
+                            <a href="{{ url_for('syllabus.uploaded_file', filename=syllabus.file_path) }}" 
+                               class="btn-action btn-primary-action" target="_blank" rel="noopener noreferrer">
+                                <i class="fas fa-download"></i>Download
+                            </a>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Weekly Plan Section -->
+            {% if syllabus and syllabus.weekly_plan and syllabus.weekly_plan|length > 0 %}
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div class="content-card-icon icon-activities">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <div>
+                        <h3>Weekly Schedule</h3>
+                        <div class="content-card-subtitle">View assignments and topics for each week</div>
+                    </div>
+                </div>
+                <ul class="item-list">
+                    {% for week_data in syllabus.weekly_plan %}
+                    <li class="list-item">
+                        <div class="item-info">
+                            <div class="item-title">
+                                <i class="fas fa-book item-icon"></i>
+                                Week {{ week_data['Week#'] }}: {{ week_data['Topic'] or 'No Title' }}
+                            </div>
+                            <div class="item-meta">
+                                <span><strong>Objectives:</strong> {{ week_data['Class Objectives'][:50] if week_data.get('Class Objectives') else 'N/A' }}...</span>
+                            </div>
+                        </div>
+                        <div class="item-actions">
+                            <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_data['Week#']) }}" 
+                               class="btn-action btn-secondary-action">
+                                <i class="fas fa-arrow-right"></i>View Details
+                            </a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Videos Section (Placeholder) -->
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div class="content-card-icon icon-videos">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <div>
+                        <h3>Video Lectures</h3>
+                        <div class="content-card-subtitle">Watch recorded lectures and tutorials</div>
+                    </div>
+                </div>
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <p>No videos available yet for this course.</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Sidebar -->
+        <div class="col-lg-4">
+            
+            <!-- Quick Stats -->
+            <div class="content-card">
+                <h5 style="color: #212529; margin-bottom: 1rem; font-weight: 600;">
+                    <i class="fas fa-chart-pie" style="margin-right: 0.5rem;"></i>Quick Stats
+                </h5>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                        <div style="font-size: 2rem; font-weight: 700; color: #667eea;">
+                            {{ course_quizzes|length if course_quizzes else 0 }}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #6c757d;">Quizzes Available</div>
+                    </div>
+                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+                        <div style="font-size: 2rem; font-weight: 700; color: #667eea;">
+                            {% if syllabus and syllabus.weekly_plan %}{{ syllabus.weekly_plan|length }}{% else %}0{% endif %}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #6c757d;">Weeks of Content</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Course Info -->
+            <div class="content-card">
+                <h5 style="color: #212529; margin-bottom: 1rem; font-weight: 600;">
+                    <i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i>Course Info
+                </h5>
+                <div style="font-size: 0.9rem; line-height: 1.8;">
+                    <p><strong>Instructor:</strong><br>{{ course.teacher.full_name if course.teacher else 'N/A' }}</p>
+                    <p><strong>Status:</strong><br><span class="badge badge-completed">Active</span></p>
+                    {% if course.code %}
+                    <p><strong>Course Code:</strong><br>{{ course.code }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Upcoming Deadlines -->
+            <div class="content-card">
+                <h5 style="color: #212529; margin-bottom: 1rem; font-weight: 600;">
+                    <i class="fas fa-calendar-check" style="margin-right: 0.5rem;"></i>Upcoming
+                </h5>
+                <div class="empty-state" style="padding: 1rem;">
+                    <p style="font-size: 0.9rem;">No upcoming deadlines</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Week selector functionality
+document.querySelectorAll('.week-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.week-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        const week = this.dataset.week;
+        console.log('Selected week:', week);
+        // Add filtering logic here if needed
+    });
+});
+</script>
+{% endblock %}

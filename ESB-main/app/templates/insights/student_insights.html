@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}Student Insights{% endblock %}
+
+{% block heading %}Student Insights: {{ student.username }}{% endblock %}
+
+{% block styles %}
+<style>
+    .insight-card {
+        transition: transform 0.3s;
+    }
+    .insight-card:hover {
+        transform: translateY(-3px);
+    }
+    .progress-bar-container {
+        width: 100%;
+        background-color: #f3f3f3;
+        border-radius: 10px;
+        position: relative;
+    }
+    .progress-bar {
+        height: 20px;
+        border-radius: 10px;
+        transition: width 1s ease-in-out;
+    }
+    .progress-bar-label {
+        position: absolute;
+        right: 5px;
+        top: 0;
+        color: white;
+        font-weight: bold;
+        line-height: 20px;
+    }
+    .stat-icon {
+        font-size: 2.5rem;
+        color: #dc3545;
+    }
+    .quiz-history {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+
+
+{% block content %}
+<div class="container">
+    <!-- Student Profile Row -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-user me-2"></i>Student Profile
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2 text-center">
+                            <i class="fas fa-user-graduate fa-5x text-danger mb-3"></i>
+                        </div>
+                        <div class="col-md-5">
+                            <h4>{{ student.username }}</h4>
+                            <p><i class="fas fa-envelope me-2"></i>{{ student.email }}</p>
+                            <p><i class="fas fa-calendar-alt me-2"></i>Joined: {{ student.created_at.strftime('%B %d, %Y') }}</p>
+                        </div>
+                        <div class="col-md-5">
+                            <h5>Enrolled Courses</h5>
+                            <ul class="list-group">
+                                {% for course_data in courses_enrolled %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>{{ course_data.course.title }}</span>
+                                    <span class="badge bg-primary rounded-pill">Enrolled: {{ course_data.enrolled_at.strftime('%b %d, %Y') }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Statistics Row -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>Key Statistics
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card insight-card text-center h-100 border-danger mb-3 mb-md-0">
+                                <div class="card-body">
+                                    <i class="fas fa-clock stat-icon mb-3"></i>
+                                    <h3>{{ total_study_time }}</h3>
+                                    <p class="text-muted mb-0">Total Study Time (minutes)</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card insight-card text-center h-100 border-primary mb-3 mb-md-0">
+                                <div class="card-body">
+                                    <i class="fas fa-file-alt stat-icon mb-3"></i>
+                                    <h3>{{ student_quizzes|length }}</h3>
+                                    <p class="text-muted mb-0">Quizzes Taken</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card insight-card text-center h-100 border-success mb-3 mb-md-0">
+                                <div class="card-body">
+                                    <i class="fas fa-calendar-day stat-icon mb-3"></i>
+                                    <h3>{{ unique_session_dates }}</h3>
+                                    <p class="text-muted mb-0">Days Logged In</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card insight-card text-center h-100 border-warning">
+                                <div class="card-body">
+                                    <i class="fas fa-hourglass-half stat-icon mb-3"></i>
+                                    <h3>{{ avg_session_time }}</h3>
+                                    <p class="text-muted mb-0">Avg. Session (minutes)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Quiz History and Chat Sessions -->
+    <div class="row mb-4">
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-history me-2"></i>Quiz History
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if student_quizzes %}
+                    <div class="quiz-history">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Course</th>
+                                    <th>Document</th>
+                                    <th>Difficulty</th>
+                                    <th>Score</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for quiz_data in student_quizzes %}
+                                <tr>
+                                    <td>{{ quiz_data.course.title if quiz_data.course else 'N/A' }}</td>
+                                    <td>{{ quiz_data.document.title if quiz_data.document else 'N/A' }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if quiz_data.quiz.difficulty == 'easy' else 'warning' if quiz_data.quiz.difficulty == 'medium' else 'danger' }}">
+                                            {{ quiz_data.quiz.difficulty|capitalize }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if quiz_data.quiz.score is not none %}
+                                            <span class="badge bg-{{ 'success' if quiz_data.quiz.score >= 0.7 else 'warning' if quiz_data.quiz.score >= 0.5 else 'danger' }}">
+                                                {{ (quiz_data.quiz.score )|int }}%
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Not completed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ quiz_data.quiz.created_at.strftime('%b %d, %Y') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No quiz history available.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-comments me-2"></i>Chat Sessions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if chat_sessions %}
+                    <div class="list-group">
+                        {% for chat in chat_sessions %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ chat.document.title if chat.document else 'Unknown Document' }}</h6>
+                                <small>{{ chat.session.created_at.strftime('%b %d, %Y') }}</small>
+                            </div>
+                            <p class="mb-1">
+                                <small class="text-muted">Course: {{ chat.course.title if chat.course else 'N/A' }}</small>
+                            </p>
+                            <div class="d-flex justify-content-between">
+                                <small>
+                                    <i class="fas fa-comment me-1"></i>{{ chat.message_count }} messages
+                                </small>
+                                <small>
+                                    <i class="fas fa-clock me-1"></i>{{ chat.duration }} minutes
+                                </small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No chat sessions available.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Activity -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-sign-in-alt me-2"></i>Login Activity
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if login_sessions %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Login Date</th>
+                                    <th>Logout Date</th>
+                                    <th>Duration</th>
+                                    <th>IP Address</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for session in login_sessions %}
+                                <tr>
+                                    <td>{{ session.login_time.strftime('%b %d, %Y %H:%M') }}</td>
+                                    <td>
+                                        {% if session.logout_time %}
+                                            {{ session.logout_time.strftime('%b %d, %Y %H:%M') }}
+                                        {% else %}
+                                            <span class="badge bg-success">Currently Active</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.duration %}
+                                            {{ session.duration }} minutes
+                                        {% else %}
+                                            <span class="badge bg-warning">In Progress</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small class="text-muted">{{ session.ip_address or 'Unknown' }}</small></td>
+                                    <td>
+                                        {% if session.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Closed</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>No login activity available.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Monthly Activity Chart
+    const activityLabels = {{ activity_labels|safe }};
+    const activityData = {{ activity_data|safe }};
+    
+    const activityCtx = document.getElementById('activityChart').getContext('2d');
+    new Chart(activityCtx, {
+        type: 'bar',
+        data: {
+            labels: activityLabels,
+            datasets: [{
+                label: 'Activity Count',
+                data: activityData,
+                backgroundColor: 'rgba(220, 53, 69, 0.6)',
+                borderColor: '#dc3545',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Monthly Activity ({{ student.username }})'
+                },
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    // Fetch difficulty performance data
+    const studentId = {{ student.id }};
+    console.log("Fetching quiz difficulty data for student ID:", studentId);
+    
+    fetch(`/api/insights/student/${studentId}/quiz-difficulty`)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(`Server responded with status ${response.status}: ${err.error || 'Unknown error'}`);
+                });
+            }
+            return response.json();
+        })
+        .then(difficultyData => {
+            console.log("Quiz difficulty data received:", difficultyData);
+            // Update the difficultyStats div
+            const statsDiv = document.getElementById('difficultyStats');
+            statsDiv.innerHTML = '';
+            
+            if (!difficultyData || difficultyData.length === 0) {
+                statsDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No quiz difficulty data available.</div>';
+                return;
+            }
+            
+            const difficulties = [];
+            const scores = [];
+            const counts = [];
+            const colors = ['#28a745', '#ffc107', '#dc3545']; // green, yellow, red
+            
+            difficultyData.forEach((item, index) => {
+                difficulties.push(item.difficulty);
+                scores.push(item.avg_score);
+                counts.push(item.quiz_count);
+                
+                // Create difficulty stat elements
+                const difficultyDiv = document.createElement('div');
+                difficultyDiv.classList.add('mb-3');
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.classList.add('d-flex', 'justify-content-between', 'mb-1');
+                headerDiv.innerHTML = `<span>${item.difficulty}</span><span>${item.avg_score}%</span>`;
+                
+                const progressContainer = document.createElement('div');
+                progressContainer.classList.add('progress-bar-container');
+                
+                const progressBar = document.createElement('div');
+                progressBar.classList.add('progress-bar');
+                progressBar.style.width = '0%';
+                progressBar.style.backgroundColor = colors[index];
+                
+                const smallText = document.createElement('small');
+                smallText.classList.add('text-muted');
+                smallText.textContent = `${item.quiz_count} quizzes taken`;
+                
+                progressContainer.appendChild(progressBar);
+                difficultyDiv.appendChild(headerDiv);
+                difficultyDiv.appendChild(progressContainer);
+                difficultyDiv.appendChild(smallText);
+                statsDiv.appendChild(difficultyDiv);
+                
+                // Animate progress bars
+                setTimeout(() => {
+                    progressBar.style.width = `${item.avg_score}%`;
+                }, 300);
+            });
+            
+            // Difficulty Chart
+            const difficultyCtx = document.getElementById('difficultyChart').getContext('2d');
+            new Chart(difficultyCtx, {
+                type: 'radar',
+                data: {
+                    labels: difficulties,
+                    datasets: [{
+                        label: 'Score (%)',
+                        data: scores,
+                        backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                        borderColor: '#dc3545',
+                        pointBackgroundColor: '#dc3545',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#dc3545',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Quiz Performance by Difficulty'
+                        }
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching difficulty data:', error);
+            document.getElementById('difficultyStats').innerHTML = 
+                `<div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading difficulty data: ${error.message || 'Unknown error'}
+                </div>`;
+        });
+});
+</script>
+{% endblock %}

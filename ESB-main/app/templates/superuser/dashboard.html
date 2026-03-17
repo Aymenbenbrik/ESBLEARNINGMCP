@@ -1,0 +1,132 @@
+<!-- templates/superuser/dashboard.html with classes -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Superuser Dashboard</h1>
+    
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Users</h5>
+                    <h2 class="card-text">{{ users_count }}</h2>
+                    <a href="{{ url_for('superuser.list_users') }}" class="btn btn-primary">Manage Users</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Teachers</h5>
+                    <h2 class="card-text">{{ teachers_count }}</h2>
+                    <a href="{{ url_for('superuser.list_users') }}?role=teacher" class="btn btn-primary">View Teachers</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Students</h5>
+                    <h2 class="card-text">{{ students_count }}</h2>
+                    <a href="{{ url_for('superuser.list_users') }}?role=student" class="btn btn-primary">View Students</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Classes</h5>
+                    <h2 class="card-text">{{ classes_count }}</h2>
+                    <a href="{{ url_for('superuser.list_classes') }}" class="btn btn-primary">Manage Classes</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Actions</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item">
+                            <a href="{{ url_for('superuser.create_user') }}" class="text-decoration-none">
+                                <i class="fas fa-user-plus me-2"></i>Create New User
+                            </a>
+                        </li>
+                        <li class="list-group-item">
+                            <a href="{{ url_for('superuser.create_class') }}" class="text-decoration-none">
+                                <i class="fas fa-users me-2"></i>Create New Class
+                            </a>
+                        </li>
+                        <li class="list-group-item">
+                            <a href="{{ url_for('superuser.list_relationships') }}" class="text-decoration-none">
+                                <i class="fas fa-user-friends me-2"></i>Manage Teacher-Student Relationships
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">System Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <th scope="row">Application Version</th>
+                                <td>1.0.0</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Teacher:Student Ratio</th>
+                                <td>
+                                    {% if students_count > 0 and teachers_count > 0 %}
+                                    1:{{ (students_count / teachers_count)|round(1) }}
+                                    {% else %}
+                                    N/A
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    // Update server time every second
+    function updateServerTime() {
+        const serverTimeElement = document.getElementById('server-time');
+        if (serverTimeElement) {
+            const currentTime = new Date(serverTimeElement.textContent);
+            currentTime.setSeconds(currentTime.getSeconds() + 1);
+            
+            const options = { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit'
+            };
+            
+            serverTimeElement.textContent = currentTime.toLocaleString('en-US', options);
+        }
+    }
+    
+    // Update time every second
+    setInterval(updateServerTime, 1000);
+</script>
+{% endblock %}
+{% endblock %}

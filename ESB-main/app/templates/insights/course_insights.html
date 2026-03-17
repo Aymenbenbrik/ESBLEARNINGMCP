@@ -1,0 +1,518 @@
+{% extends "base.html" %}
+
+{% block title %}Course Insights - {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 0.5rem;
+    }
+    
+    .analytics-card {
+        background: white;
+        border-left: 4px solid #007bff;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        transition: all 0.2s;
+    }
+    
+    .analytics-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .analytics-card.success {
+        border-left-color: #28a745;
+        background: #f8fff9;
+    }
+    
+    .analytics-card.warning {
+        border-left-color: #ffc107;
+        background: #fffbf0;
+    }
+    
+    .analytics-card.danger {
+        border-left-color: #dc3545;
+        background: #fff8f8;
+    }
+    
+    .progress-bar-container {
+        width: 100%;
+        background-color: #e9ecef;
+        border-radius: 10px;
+        position: relative;
+        height: 24px;
+        margin: 0.5rem 0;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.6s ease;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 8px;
+        color: white;
+        font-weight: bold;
+        font-size: 0.8rem;
+    }
+    
+    .student-table {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    
+    .section-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #212529;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 3px solid #007bff;
+    }
+    
+    .badge-performance {
+        padding: 0.5rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    
+    .mini-chart {
+        height: 200px;
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <!-- Course Header -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2 class="mb-3">
+                <i class="fas fa-book me-2"></i>{{ course.title }} - Analytics Dashboard
+            </h2>
+            <p class="text-muted">{{ course.description }}</p>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CLASS OVERALL STATISTICS -->
+    <!-- ============================================================ -->
+    <div class="section-title">
+        <i class="fas fa-chart-pie me-2"></i>Class Overall Performance
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value text-primary">{{ class_stats.total_students }}</div>
+                <div class="stat-label">Total Students Enrolled</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value text-success">{{ class_stats.avg_class_score }}%</div>
+                <div class="stat-label">Average Class Score</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value text-info">{{ class_stats.total_quizzes_completed }}</div>
+                <div class="stat-label">Total Quizzes Completed</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value text-warning">{{ quiz_completion_rate }}%</div>
+                <div class="stat-label">Quiz Completion Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Score Range Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" style="color: #28a745;">{{ class_stats.highest_score }}%</div>
+                <div class="stat-label">Highest Score</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" style="color: #dc3545;">{{ class_stats.lowest_score }}%</div>
+                <div class="stat-label">Lowest Score</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" style="color: #17a2b8;">{{ class_stats.class_engagement }}</div>
+                <div class="stat-label">Total Chat Sessions</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" style="color: #6f42c1;">{{ total_questions }}</div>
+                <div class="stat-label">Total Questions Answered</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Distribution -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users me-2"></i>Student Performance Distribution
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 text-center">
+                            <div class="analytics-card success">
+                                <h4 class="text-success">{{ performance_distribution.excellent }}</h4>
+                                <span class="badge-performance" style="background: #d4edda; color: #155724;">
+                                    Excellent (90-100%)
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="analytics-card">
+                                <h4 class="text-info">{{ performance_distribution.good }}</h4>
+                                <span class="badge-performance" style="background: #d1ecf1; color: #0c5460;">
+                                    Good (70-89%)
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="analytics-card warning">
+                                <h4 class="text-warning">{{ performance_distribution.satisfactory }}</h4>
+                                <span class="badge-performance" style="background: #fff3cd; color: #856404;">
+                                    Satisfactory (50-69%)
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="analytics-card danger">
+                                <h4 class="text-danger">{{ performance_distribution.poor }}</h4>
+                                <span class="badge-performance" style="background: #f8d7da; color: #721c24;">
+                                    Poor (0-49%)
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CLO & BLOOM ANALYTICS -->
+    <!-- ============================================================ -->
+    <div class="section-title">
+        <i class="fas fa-graduation-cap me-2"></i>Learning Outcomes Analysis
+    </div>
+
+    <div class="row mb-4">
+        <!-- Top CLOs -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-arrow-up me-2"></i>Top Performing CLOs
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if top_clos %}
+                        {% for clo in top_clos %}
+                        <div class="analytics-card success">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>{{ clo.name }}</strong>
+                                <span class="badge bg-success">{{ clo.success_rate }}%</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar bg-success" style="width: {{ clo.success_rate }}%">
+                                    {{ clo.correct }}/{{ clo.total }}
+                                </div>
+                            </div>
+                            <small class="text-muted">Avg: {{ clo.avg_score }}% • {{ clo.student_count }} students</small>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">No CLO data available</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom CLOs -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-arrow-down me-2"></i>Bottom Performing CLOs
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if bottom_clos %}
+                        {% for clo in bottom_clos %}
+                        <div class="analytics-card danger">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>{{ clo.name }}</strong>
+                                <span class="badge bg-danger">{{ clo.success_rate }}%</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar bg-danger" style="width: {{ clo.success_rate }}%">
+                                    {{ clo.correct }}/{{ clo.total }}
+                                </div>
+                            </div>
+                            <small class="text-muted">Avg: {{ clo.avg_score }}% • {{ clo.student_count }} students</small>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">No CLO data available</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bloom's Taxonomy Performance -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-brain me-2"></i>Top Bloom's Levels
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if top_bloom %}
+                        {% for bloom in top_bloom %}
+                        <div class="analytics-card">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>{{ bloom.name|title }}</strong>
+                                <span class="badge bg-info">{{ bloom.success_rate }}%</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar bg-info" style="width: {{ bloom.success_rate }}%">
+                                    {{ bloom.correct }}/{{ bloom.total }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">No Bloom data available</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="fas fa-layer-group me-2"></i>Bottom Bloom's Levels
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if bottom_bloom %}
+                        {% for bloom in bottom_bloom %}
+                        <div class="analytics-card warning">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>{{ bloom.name|title }}</strong>
+                                <span class="badge bg-warning text-dark">{{ bloom.success_rate }}%</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar bg-warning" style="width: {{ bloom.success_rate }}%">
+                                    {{ bloom.correct }}/{{ bloom.total }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">No Bloom data available</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CHAPTER PERFORMANCE -->
+    <!-- ============================================================ -->
+    <div class="section-title">
+        <i class="fas fa-book me-2"></i>Chapter Performance
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    {% if chapter_performance %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Chapter</th>
+                                    <th>Average Score</th>
+                                    <th>Highest Score</th>
+                                    <th>Lowest Score</th>
+                                    <th>Quizzes Taken</th>
+                                    <th>Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for chapter in chapter_performance %}
+                                <tr>
+                                    <td><strong>{{ chapter.chapter }}</strong></td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if chapter.avg_score >= 70 else 'warning' if chapter.avg_score >= 50 else 'danger' }}">
+                                            {{ chapter.avg_score }}%
+                                        </span>
+                                    </td>
+                                    <td>{{ chapter.highest_score }}%</td>
+                                    <td>{{ chapter.lowest_score }}%</td>
+                                    <td>{{ chapter.quiz_count }}</td>
+                                    <td>
+                                        <div class="progress-bar-container" style="min-width: 150px;">
+                                            <div class="progress-bar bg-{{ 'success' if chapter.avg_score >= 70 else 'warning' if chapter.avg_score >= 50 else 'danger' }}" 
+                                                 style="width: {{ chapter.avg_score }}%"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">No chapter performance data available</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- INDIVIDUAL STUDENT PERFORMANCE -->
+    <!-- ============================================================ -->
+    <div class="section-title">
+        <i class="fas fa-users me-2"></i>Individual Student Performance
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    {% if enrolled_students %}
+                    <div class="student-table">
+                        <table class="table table-hover">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Student</th>
+                                    <th>Enrolled</th>
+                                    <th>Quizzes Started</th>
+                                    <th>Quizzes Completed</th>
+                                    <th>Average Score</th>
+                                    <th>Engagement</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for idx, student_data in enrolled_students %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td>
+                                        <strong>{{ student_data.student.username }}</strong><br>
+                                        <small class="text-muted">{{ student_data.student.email }}</small>
+                                    </td>
+                                    <td>{{ student_data.enrolled_at.strftime('%b %d, %Y') }}</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ student_data.total_quizzes }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ student_data.completed_quizzes }}</span>
+                                    </td>
+                                    <td>
+                                        {% if student_data.avg_score > 0 %}
+                                            <span class="badge bg-{{ 'success' if student_data.avg_score >= 70 else 'warning' if student_data.avg_score >= 50 else 'danger' }}">
+                                                {{ student_data.avg_score }}%
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if student_data.engagement > 5 else 'warning' if student_data.engagement > 0 else 'secondary' }}">
+                                            {{ student_data.engagement }} sessions
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if student_data.avg_score >= 90 %}
+                                            <span class="badge bg-success">Excellent</span>
+                                        {% elif student_data.avg_score >= 70 %}
+                                            <span class="badge bg-info">Good</span>
+                                        {% elif student_data.avg_score >= 50 %}
+                                            <span class="badge bg-warning">Fair</span>
+                                        {% elif student_data.avg_score > 0 %}
+                                            <span class="badge bg-danger">Needs Help</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">No Activity</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('insights.student_course_details', student_id=student_data.student.id, course_id=course.id) }}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-chart-line"></i>Details
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">No students enrolled in this course</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}

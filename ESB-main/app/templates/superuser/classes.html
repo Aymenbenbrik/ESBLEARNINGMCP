@@ -1,0 +1,82 @@
+<!-- templates/superuser/classes.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>Classes Management</h1>
+        <a href="{{ url_for('superuser.create_class') }}" class="btn btn-success">Create New Class</a>
+    </div>
+    
+    <div class="mt-4">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Students</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for class_obj in classes %}
+                    <tr>
+                        <td>{{ class_obj.id }}</td>
+                        <td>{{ class_obj.name }}</td>
+                        <td>{{ class_obj.description }}</td>
+                        <td>{{ class_obj.students.count() }}</td>
+                        <td>{{ class_obj.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('superuser.edit_class', class_id=class_obj.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteClassModal{{ class_obj.id }}">
+                                    Delete
+                                </button>
+                            </div>
+                            
+                            <!-- Delete Class Modal -->
+                            <div class="modal fade" id="deleteClassModal{{ class_obj.id }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Confirm Deletion</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            Are you sure you want to delete the class <strong>{{ class_obj.name }}</strong>?
+                                            {% if class_obj.students.count() > 0 %}
+                                            <div class="alert alert-warning mt-2">
+                                                This class has {{ class_obj.students.count() }} assigned students. 
+                                                You must reassign these students before deleting the class.
+                                            </div>
+                                            {% else %}
+                                            This action cannot be undone.
+                                            {% endif %}
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <form action="{{ url_for('superuser.delete_class', class_id=class_obj.id) }}" method="post">
+                                                <!-- CSRF Token -->
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="btn btn-danger" {% if class_obj.students.count() > 0 %}disabled{% endif %}>Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

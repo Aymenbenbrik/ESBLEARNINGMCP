@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="700" viewBox="0 0 900 700">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dc3545" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#0d6efd" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#dc3545" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#0d6efd" stop-opacity="0.16"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#000" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="700" rx="40" fill="url(#g1)"/>
+
+  <!-- floating blobs -->
+  <circle cx="140" cy="140" r="90" fill="url(#g2)"/>
+  <circle cx="760" cy="120" r="70" fill="url(#g2)"/>
+  <circle cx="760" cy="560" r="110" fill="url(#g2)"/>
+
+  <!-- main card -->
+  <g filter="url(#shadow)">
+    <rect x="160" y="170" width="580" height="360" rx="28" fill="#ffffff"/>
+    <rect x="200" y="220" width="260" height="18" rx="9" fill="#dc3545" fill-opacity="0.22"/>
+    <rect x="200" y="260" width="440" height="14" rx="7" fill="#0d6efd" fill-opacity="0.16"/>
+    <rect x="200" y="290" width="390" height="14" rx="7" fill="#0d6efd" fill-opacity="0.12"/>
+
+    <!-- mini charts -->
+    <rect x="200" y="340" width="220" height="150" rx="18" fill="#f8f9fa"/>
+    <rect x="450" y="340" width="270" height="150" rx="18" fill="#f8f9fa"/>
+
+    <rect x="230" y="375" width="26" height="90" rx="8" fill="#dc3545" fill-opacity="0.55"/>
+    <rect x="268" y="405" width="26" height="60" rx="8" fill="#0d6efd" fill-opacity="0.35"/>
+    <rect x="306" y="390" width="26" height="75" rx="8" fill="#dc3545" fill-opacity="0.35"/>
+    <rect x="344" y="420" width="26" height="45" rx="8" fill="#0d6efd" fill-opacity="0.25"/>
+
+    <circle cx="500" cy="414" r="44" fill="#dc3545" fill-opacity="0.18"/>
+    <path d="M500 370 A44 44 0 0 1 544 414 L500 414 Z" fill="#dc3545" fill-opacity="0.55"/>
+    <path d="M500 414 L544 414 A44 44 0 0 1 500 458 Z" fill="#0d6efd" fill-opacity="0.35"/>
+
+    <!-- chips -->
+    <rect x="565" y="372" width="130" height="26" rx="13" fill="#dc3545" fill-opacity="0.12"/>
+    <rect x="565" y="408" width="160" height="26" rx="13" fill="#0d6efd" fill-opacity="0.10"/>
+    <rect x="565" y="444" width="110" height="26" rx="13" fill="#dc3545" fill-opacity="0.10"/>
+  </g>
+
+  <!-- book icon -->
+  <g transform="translate(95 470)" filter="url(#shadow)">
+    <rect x="0" y="0" width="170" height="170" rx="26" fill="#ffffff"/>
+    <path d="M48 50c0-8 6-14 14-14h68c8 0 14 6 14 14v88c0 8-6 14-14 14H62c-8 0-14-6-14-14V50z" fill="#dc3545" fill-opacity="0.10"/>
+    <path d="M62 42h64c6 0 10 4 10 10v86c0 6-4 10-10 10H62c-6 0-10-4-10-10V52c0-6 4-10 10-10z" fill="#ffffff" stroke="#dc3545" stroke-opacity="0.35" stroke-width="4"/>
+    <path d="M64 68h52" stroke="#0d6efd" stroke-opacity="0.35" stroke-width="6" stroke-linecap="round"/>
+    <path d="M64 92h60" stroke="#0d6efd" stroke-opacity="0.25" stroke-width="6" stroke-linecap="round"/>
+    <path d="M64 116h44" stroke="#0d6efd" stroke-opacity="0.20" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>

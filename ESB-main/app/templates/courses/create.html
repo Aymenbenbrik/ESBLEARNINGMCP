@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if course %}Edit Course{% else %}Create Course{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item active">
+                {% if course %}Edit Course{% else %}Create Course{% endif %}
+            </li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}
+{% if course %}Edit Course: {{ course.title }}{% else %}Create New Course{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-graduation-cap me-2"></i>
+                {% if course %}Course Details{% else %}New Course{% endif %}
+            </div>
+            <div class="card-body">
+                <form method="POST" {% if course %}action="{{ url_for('courses.edit', course_id=course.id) }}"{% else %}action="{{ url_for('courses.create') }}"{% endif %}>
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.title.label(class="form-label") }}
+                        {{ form.title(class="form-control", placeholder="Enter course title") }}
+                        <small class="form-text text-muted">Choose a clear, descriptive title for your course.</small>
+                        {% for error in form.title.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-4">
+                        {{ form.description.label(class="form-label") }}
+                        {{ form.description(class="form-control auto-resize", rows=4, placeholder="Enter course description") }}
+                        <small class="form-text text-muted">Provide a brief overview of what students will learn in this course.</small>
+                        {% for error in form.description.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('courses.index') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Courses
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-save me-2"></i>
+                            {% if course %}Update Course{% else %}Create Course{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        {% if course %}
+        <div class="card mt-4">
+            <div class="card-header">
+                <i class="fas fa-book me-2"></i>Chapters
+            </div>
+            <div class="card-body">
+                {% if course.chapters.count() > 0 %}
+                <ul class="list-group">
+                    {% for chapter in course.chapters.order_by(Chapter.order) %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-danger me-2">{{ chapter.order }}</span>
+                            {{ chapter.title }}
+                        </div>
+                        <div>
+                            <a href="{{ url_for('chapters.edit', chapter_id=chapter.id) }}" class="btn btn-sm btn-outline-secondary me-1">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted text-center mb-3">No chapters added to this course yet.</p>
+                {% endif %}
+                
+                <div class="d-grid gap-2 mt-3">
+                    <a href="{{ url_for('chapters.create', course_id=course.id) }}" class="btn btn-outline-danger">
+                        <i class="fas fa-plus-circle me-2"></i>Add Chapter
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Auto-resize textareas
+        const textareas = document.querySelectorAll('textarea.auto-resize');
+        textareas.forEach(function(textarea) {
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+            
+            // Trigger on load
+            textarea.style.height = 'auto';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
+        });
+    });
+</script>
+{% endblock %}

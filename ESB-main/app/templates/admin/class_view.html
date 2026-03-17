@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <div class="text-muted">Classe</div>
+      <h2 class="mb-0">{{ classe.name }} <span class="text-muted fs-6">· {{ classe.year }}</span></h2>
+      <div class="text-muted">Formation : <a href="{{ url_for('admin.program_view', program_id=program.id) }}">{{ program.name }}</a></div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.program_view', program_id=program.id) }}">Retour</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white">
+          <div class="d-flex align-items-center justify-content-between">
+            <strong>Cours & affectations</strong>
+            <span class="text-muted">{{ assignments|length }}</span>
+          </div>
+        </div>
+        <div class="card-body">
+          {% if not program_courses %}
+            <div class="text-muted">Aucun cours dans la formation. Ajoute des cours dans la formation puis reviens ici.</div>
+          {% else %}
+            <form method="post" action="{{ url_for('admin.class_assignments', class_id=classe.id) }}" class="table-responsive">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th style="min-width: 220px;">Cours</th>
+                    <th style="min-width: 260px;">Professeur</th>
+                    <th style="width:1%;">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for c in program_courses %}
+                    <tr>
+                      <td>
+                        <div class="fw-semibold">{{ c.title }}</div>
+                        {% if c.description %}<div class="text-muted small">{{ c.description }}</div>{% endif %}
+                      </td>
+                      <td>
+                        <select class="form-select" name="teacher_{{ c.id }}">
+                          <option value="">— Non assigné —</option>
+                          {% for t in teachers %}
+                            <option value="{{ t.id }}" {% if assignments.get(c.id) and assignments.get(c.id).teacher_id == t.id %}selected{% endif %}>
+                              {{ t.name }} ({{ t.email }})
+                            </option>
+                          {% endfor %}
+                        </select>
+                      </td>
+                      <td>
+                        {% if assignments.get(c.id) and assignments.get(c.id).teacher_id %}
+                          <span class="badge text-bg-success">Assigné</span>
+                        {% else %}
+                          <span class="badge text-bg-secondary">Non assigné</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <div class="d-flex justify-content-end">
+                <button class="btn btn-primary" type="submit">Enregistrer</button>
+              </div>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white">
+          <strong>Étudiants</strong>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('admin.class_students', class_id=classe.id) }}" class="d-flex gap-2 mb-3">
+            <select class="form-select" name="student_id" required>
+              <option value="" selected disabled>Ajouter un étudiant…</option>
+              {% for s in students %}
+                <option value="{{ s.id }}">{{ s.name }} ({{ s.email }})</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-outline-primary" type="submit">Ajouter</button>
+          </form>
+
+          {% if not enrolled_students %}
+            <div class="text-muted">Aucun étudiant dans cette classe.</div>
+          {% else %}
+            <div class="list-group">
+              {% for s in enrolled_students %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                  <div>
+                    <div class="fw-semibold">{{ s.name }}</div>
+                    <div class="text-muted small">{{ s.email }}</div>
+                  </div>
+                  <form method="post" action="{{ url_for('admin.class_students_remove', class_id=classe.id, student_id=s.id) }}">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Retirer</button>
+                  </form>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header bg-white"><strong>Rappel</strong></div>
+        <div class="card-body">
+          <div class="text-muted small">
+            Les cours viennent de la <em>formation</em>. Ici, on affecte un professeur par cours pour cette classe, et on gère les étudiants.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

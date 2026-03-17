@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Examens{% endblock %}
+{% block heading %}Examens — {{ course.title }}{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <p class="text-muted mb-0">Ajoutez un examen (DS/Test/Examen) puis lancez l'évaluation (Bloom + difficulté + AA + sources).</p>
+    <a class="btn btn-outline-secondary" href="{{ url_for('courses.view', course_id=course.id) }}">Retour au cours</a>
+  </div>
+
+  <div class="row g-3 mt-3">
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Ajouter un examen</h5>
+          <form method="POST" enctype="multipart/form-data">
+            {{ form.hidden_tag() }}
+            <div class="mb-2">
+              {{ form.title.label(class_="form-label") }}
+              {{ form.title(class_="form-control") }}
+            </div>
+            <div class="mb-2">
+              {{ form.exam_type.label(class_="form-label") }}
+              {{ form.exam_type(class_="form-select") }}
+            </div>
+            <div class="mb-3">
+              {{ form.file.label(class_="form-label") }}
+              {{ form.file(class_="form-control") }}
+              <div class="form-text">Formats: PDF/DOC/DOCX</div>
+            </div>
+            {{ form.submit(class_="btn btn-danger w-100") }}
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Liste des examens</h5>
+          {% if exams and exams|length %}
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Titre</th>
+                    <th class="text-nowrap">Type</th>
+                    <th class="text-nowrap">Ajouté le</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for ex in exams %}
+                    <tr>
+                      <td>
+                        <div class="fw-semibold">{{ ex.title }}</div>
+                        <div class="small text-muted">{{ ex.file_path }}</div>
+                      </td>
+                      <td class="text-nowrap">
+                        {{ (ex.content_metadata or {}).get('exam_type', '—') }}
+                      </td>
+                      <td class="text-nowrap">{{ ex.created_at.strftime('%d/%m/%Y %H:%M') if ex.created_at else '—' }}</td>
+                      <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('evaluate.tn_exam_view', course_id=course.id, document_id=ex.id) }}">Ouvrir</a>
+                        {% if ex.analysis_report_path %}
+                          <a class="btn btn-sm btn-outline-success" href="{{ url_for('evaluate.tn_exam_download_report', course_id=course.id, document_id=ex.id) }}">PDF</a>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">Aucun examen pour le moment.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

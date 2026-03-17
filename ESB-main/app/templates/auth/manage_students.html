@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Students{% endblock %}
+
+{% block heading %}Manage Students{% endblock %}
+
+{% block styles %}
+<style>
+    .student-list {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    .login-status {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+    }
+    .login-active {
+        background-color: #28a745;
+    }
+    .login-inactive {
+        background-color: #dc3545;
+    }
+    .login-pending {
+        background-color: #ffc107;
+    }
+    .tab-content {
+        padding-top: 20px;
+    }
+    .action-btns {
+        white-space: nowrap;
+    }
+    .edit-form {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+
+
+{% block content %}
+<div class="container">
+    <ul class="nav nav-tabs mb-4" id="studentTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="add-tab" data-bs-toggle="tab" data-bs-target="#add" type="button" role="tab" aria-controls="add" aria-selected="true">
+                <i class="fas fa-user-plus me-2"></i>Add Students
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab" aria-controls="manage" aria-selected="false">
+                <i class="fas fa-users-cog me-2"></i>Manage Students
+            </button>
+        </li>
+    </ul>
+    
+    <div class="tab-content" id="studentTabsContent">
+        <!-- Add Students Tab -->
+        <div class="tab-pane fade show active" id="add" role="tabpanel" aria-labelledby="add-tab">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="card-title mb-0"><i class="fas fa-user-plus me-2"></i>Add Multiple Students</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="post" action="{{ url_for('auth.manage_students') }}">
+                                {{ form.hidden_tag() }}
+                                
+                                <div class="form-group mb-3">
+                                    <p class="text-muted">
+                                        Enter one email address per line. The system will:
+                                        <ul>
+                                            <li>Create new accounts or link to existing accounts</li>
+                                            <li>Generate usernames from email addresses</li>
+                                            <li>Set initial passwords in the format <strong>FirstName@123</strong></li>
+                                            <li>Students will be prompted to change their password on first login</li>
+                                        </ul>
+                                    </p>
+                                    {{ form.student_emails.label(class_="form-label") }}
+                                    {{ form.student_emails(class_="form-control", rows="10", placeholder="student1@example.com\nstudent2@example.com") }}
+                                    {% for error in form.student_emails.errors %}
+                                        <span class="text-danger">{{ error }}</span>
+                                    {% endfor %}
+                                </div>
+                                
+                                <div class="form-group">
+                                    {{ form.submit(class_="btn btn-danger") }}
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0"><i class="fas fa-info-circle me-2"></i>Instructions</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>Add students to your system by providing their email addresses.</p>
+                            <p>Password format examples:</p>
+                            <ul>
+                                <li>For <strong>john.doe@example.com</strong>, password will be <strong>John@123</strong></li>
+                                <li>For <strong>alice@example.com</strong>, password will be <strong>Alice@123</strong></li>
+                            </ul>
+                            <p>Share these initial passwords with your students. They will be prompted to change their password on first login.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0"><i class="fas fa-chart-pie me-2"></i>Student Statistics</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-6 mb-3">
+                                    <h3 class="text-primary">{{ total_students }}</h3>
+                                    <p class="text-muted mb-0">Total Students</p>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <h3 class="text-success">{{ active_students }}</h3>
+                                    <p class="text-muted mb-0">Active Students</p>
+                                </div>
+                                <div class="col-6">
+                                    <h3 class="text-warning">{{ pending_students }}</h3>
+                                    <p class="text-muted mb-0">First Login Pending</p>
+                                </div>
+                                <div class="col-6">
+                                    <h3 class="text-info">{{ enrolled_count }}</h3>
+                                    <p class="text-muted mb-0">Total Enrollments</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Manage Students Tab -->
+        <div class="tab-pane fade" id="manage" role="tabpanel" aria-labelledby="manage-tab">
+            <div class="card">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0"><i class="fas fa-users me-2"></i>Student List</h5>
+                    <div class="input-group" style="max-width: 300px;">
+                        <input type="text" id="studentSearch" class="form-control" placeholder="Search students...">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="student-list">
+                        <table class="table table-hover" id="studentTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Last Login</th>
+                                    <th>Enrolled Courses</th>
+                                    <th>Shared</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for student in students %}
+                                <tr data-student-id="{{ student.id }}" class="student-row">
+                                    <td>
+                                        {% if student.is_first_login %}
+                                            <span class="login-status login-pending" title="First Login Pending"></span>
+                                            <span class="badge bg-warning">Pending</span>
+                                        {% elif student.last_login and (now - student.last_login).days < 7 %}
+                                            <span class="login-status login-active" title="Recently Active"></span>
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="login-status login-inactive" title="Inactive"></span>
+                                            <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="student-username">{{ student.username }}</td>
+                                    <td class="student-email">{{ student.email }}</td>
+                                    <td>
+                                        {% if student.last_login %}
+                                            {{ student.last_login.strftime('%b %d, %Y') }}
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ student.enrollments.count() }} courses</span>
+                                    </td>
+                                    <td>
+                                        {% if student.teachers.count() > 1 %}
+                                            <span class="badge bg-info" title="This student is added by {{ student.teachers.count() }} teachers">
+                                                <i class="fas fa-user-friends me-1"></i>Shared
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary" title="You are the only teacher for this student">
+                                                <i class="fas fa-user me-1"></i>Only You
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="action-btns">
+                                        <button class="btn btn-sm btn-outline-primary edit-student-btn" data-student-id="{{ student.id }}">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <a href="{{ url_for('insights.teacher_student_dashboard', student_id=student.id) }}" class="btn btn-sm btn-outline-success" title="Dashboard">
+                                            <i class="fas fa-tachometer-alt"></i>
+                                        </a>
+                                        <a href="{{ url_for('insights.student_insights', student_id=student.id) }}" class="btn btn-sm btn-outline-secondary" title="Insights détaillés">
+                                            <i class="fas fa-chart-line"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-outline-danger reset-password-btn" data-student-id="{{ student.id }}" data-student-email="{{ student.email }}">
+                                            <i class="fas fa-key"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger delete-student-btn" data-bs-toggle="modal" data-bs-target="#deleteStudentModal" data-student-id="{{ student.id }}" data-student-name="{{ student.username }}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr class="edit-form" id="edit-form-{{ student.id }}">
+                                    <td colspan="6">
+                                        <form action="{{ url_for('auth.edit_student', student_id=student.id) }}" method="post" class="row g-3">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <div class="col-md-5">
+                                                <label class="form-label">Username</label>
+                                                <input type="text" class="form-control" name="username" value="{{ student.username }}">
+                                            </div>
+                                            <div class="col-md-5">
+                                                <label class="form-label">Email</label>
+                                                <input type="email" class="form-control" name="email" value="{{ student.email }}">
+                                            </div>
+                                            <div class="col-md-2 d-flex align-items-end">
+                                                <button type="submit" class="btn btn-primary me-2">Save</button>
+                                                <button type="button" class="btn btn-secondary cancel-edit-btn">Cancel</button>
+                                            </div>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Student Modal -->
+<div class="modal fade" id="deleteStudentModal" tabindex="-1" aria-labelledby="deleteStudentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteStudentModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to remove the student <strong id="studentToDelete"></strong> from your student list?</p>
+                <p class="text-danger"><i class="fas fa-exclamation-triangle me-2"></i>The student will lose access to your courses, but their account will remain in the system. Other teachers who have added this student will still have access to them.</p>
+            </div>
+            <div class="modal-footer">
+                <form id="deleteStudentForm" action="" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete Student</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal fade" id="resetPasswordModal" tabindex="-1" aria-labelledby="resetPasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="resetPasswordModalLabel">Reset Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset the password for <strong id="studentToReset"></strong>?</p>
+                <p>The password will be reset to the default format: <strong id="newPassword"></strong></p>
+                <p>The student will be prompted to change this password on their next login.</p>
+            </div>
+            <div class="modal-footer">
+                <form id="resetPasswordForm" action="" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">Reset Password</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Search functionality
+    const searchInput = document.getElementById('studentSearch');
+    searchInput.addEventListener('keyup', function() {
+        const filter = searchInput.value.toLowerCase();
+        const rows = document.querySelectorAll('.student-row');
+        
+        rows.forEach(row => {
+            const username = row.querySelector('.student-username').textContent.toLowerCase();
+            const email = row.querySelector('.student-email').textContent.toLowerCase();
+            
+            if (username.includes(filter) || email.includes(filter)) {
+                row.style.display = '';
+                const editFormId = 'edit-form-' + row.getAttribute('data-student-id');
+                const editForm = document.getElementById(editFormId);
+                if (editForm.classList.contains('show-form')) {
+                    editForm.style.display = 'table-row';
+                }
+            } else {
+                row.style.display = 'none';
+                const editFormId = 'edit-form-' + row.getAttribute('data-student-id');
+                document.getElementById(editFormId).style.display = 'none';
+            }
+        });
+    });
+    
+    // Edit student
+    const editButtons = document.querySelectorAll('.edit-student-btn');
+    editButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const studentId = this.getAttribute('data-student-id');
+            const editForm = document.getElementById('edit-form-' + studentId);
+            
+            // Hide any other open edit forms
+            document.querySelectorAll('.edit-form.show-form').forEach(form => {
+                if (form.id !== 'edit-form-' + studentId) {
+                    form.classList.remove('show-form');
+                    form.style.display = 'none';
+                }
+            });
+            
+            // Toggle this edit form
+            if (editForm.classList.contains('show-form')) {
+                editForm.classList.remove('show-form');
+                editForm.style.display = 'none';
+            } else {
+                editForm.classList.add('show-form');
+                editForm.style.display = 'table-row';
+            }
+        });
+    });
+    
+    // Cancel edit
+    const cancelButtons = document.querySelectorAll('.cancel-edit-btn');
+    cancelButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const editForm = this.closest('.edit-form');
+            editForm.classList.remove('show-form');
+            editForm.style.display = 'none';
+        });
+    });
+    
+    // Delete student
+    const deleteModal = document.getElementById('deleteStudentModal');
+    deleteModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const studentId = button.getAttribute('data-student-id');
+        const studentName = button.getAttribute('data-student-name');
+        
+        document.getElementById('studentToDelete').textContent = studentName;
+        document.getElementById('deleteStudentForm').action = '/delete_student/' + studentId;
+    });
+    
+    // Reset password
+    const resetButtons = document.querySelectorAll('.reset-password-btn');
+    resetButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const studentId = this.getAttribute('data-student-id');
+            const studentEmail = this.getAttribute('data-student-email');
+            
+            // Generate default password from email
+            let defaultPassword = 'Default@123';
+            if (studentEmail) {
+                const namePart = studentEmail.split('@')[0];
+                if (namePart) {
+                    // If name has dot, take first part
+                    const firstName = namePart.includes('.') ? namePart.split('.')[0] : namePart;
+                    if (firstName) {
+                        defaultPassword = firstName.charAt(0).toUpperCase() + firstName.slice(1) + '@123';
+                    }
+                }
+            }
+            
+            document.getElementById('studentToReset').textContent = studentEmail;
+            document.getElementById('newPassword').textContent = defaultPassword;
+            document.getElementById('resetPasswordForm').action = '/reset_password/' + studentId;
+            
+            // Show modal
+            const resetModal = new bootstrap.Modal(document.getElementById('resetPasswordModal'));
+            resetModal.show();
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,707 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz Results - {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+/* Main Results Header */
+.results-header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.score-display {
+    font-size: 3.5rem;
+    font-weight: 700;
+    margin: 1rem 0;
+    color: #ecf0f1;
+}
+
+.results-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.summary-stat {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(255,255,255,0.1);
+    border-radius: 6px;
+}
+
+.stat-number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    display: block;
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    opacity: 0.9;
+    margin-top: 0.25rem;
+}
+
+/* Analysis Cards */
+.analysis-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.analysis-card {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.analysis-bar {
+    margin-bottom: 1rem;
+}
+
+.analysis-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar-custom {
+    height: 24px;
+    background: #ecf0f1;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #3498db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: width 0.3s ease;
+}
+
+.bloom-remember { background: #95a5a6; }
+.bloom-understand { background: #3498db; }
+.bloom-apply { background: #2ecc71; }
+.bloom-analyze { background: #f39c12; }
+.bloom-evaluate { background: #e74c3c; }
+.bloom-create { background: #9b59b6; }
+
+.clo-item {
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.clo-badge {
+    background: #ecf0f1;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Question Review */
+.question-review {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.question-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.question-number {
+    background: #2c3e50;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.question-type-badge {
+    padding: 0.35rem 0.75rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-mcq {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-open {
+    background: #cfe2ff;
+    color: #084298;
+}
+
+.question-meta {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.meta-tag {
+    padding: 0.25rem 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.question-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+.answer-section {
+    margin-bottom: 1rem;
+}
+
+.answer-label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.answer-content {
+    color: #212529;
+    line-height: 1.6;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.correct-answer {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.correct-label {
+    color: #155724;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.incorrect-answer {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.incorrect-label {
+    color: #721c24;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pending-answer {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.pending-label {
+    color: #856404;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.choice-display {
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    background: #f8f9fa;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.choice-text {
+    flex: 1;
+}
+
+.choice-badges {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.badge-choice {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+}
+
+.explanation {
+    background: #e7f3ff;
+    border-left: 4px solid #0066cc;
+    padding: 1rem;
+    margin-top: 1rem;
+    border-radius: 4px;
+}
+
+.explanation-label {
+    font-weight: 600;
+    color: #004085;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.explanation-text {
+    color: #004085;
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+}
+
+.btn-action {
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary {
+    background: #2c3e50;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1a252f;
+    color: white;
+    text-decoration: none;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+    color: white;
+    text-decoration: none;
+}
+
+@media (max-width: 768px) {
+    .score-display {
+        font-size: 2.5rem;
+    }
+    
+    .question-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .question-meta {
+        justify-content: flex-start;
+        margin-left: 0;
+    }
+    
+    .analysis-section {
+        grid-template-columns: 1fr;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .btn-action {
+        justify-content: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none">{{ course.title }}</a>
+            </li>
+            
+            {% if chapter and chapter.id %}
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('chapters.view', chapter_id=chapter.id) }}" class="text-decoration-none">{{ chapter.title }}</a>
+                </li>
+            {% elif week_num %}
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" class="text-decoration-none">Week {{ week_num }}</a>
+                </li>
+            {% endif %}
+            
+            <li class="breadcrumb-item active">Results</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    
+    <!-- Results Header -->
+    <div class="results-header">
+        <h1 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Quiz Results</h1>
+        
+        {% set score = quiz.score or 0 %}
+        <div class="score-display">{{ "%.1f"|format(score) }}%</div>
+        
+        <div class="results-summary">
+            <div class="summary-stat">
+                <span class="stat-number">{{ questions|length }}</span>
+                <span class="stat-label">Total Questions</span>
+            </div>
+            
+            {% set mcq_questions = questions|selectattr('question_type', 'equalto', 'mcq')|list %}
+            {% if mcq_questions %}
+            <div class="summary-stat">
+                <span class="stat-number">{{ mcq_questions|selectattr('is_correct', 'equalto', True)|list|length }}/{{ mcq_questions|length }}</span>
+                <span class="stat-label">MCQ Correct</span>
+            </div>
+            {% endif %}
+            
+            {% set open_ended = questions|selectattr('question_type', 'equalto', 'open_ended')|list %}
+            {% if open_ended %}
+            <div class="summary-stat">
+                <span class="stat-number">{{ open_ended|length }}</span>
+                <span class="stat-label">Open-Ended</span>
+            </div>
+            {% endif %}
+            
+            <div class="summary-stat">
+                <span class="stat-number">{{ quiz.completed_at.strftime('%b %d') if quiz.completed_at else 'N/A' }}</span>
+                <span class="stat-label">Completed</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analysis Section -->
+    <div class="analysis-section">
+        
+        <!-- Bloom's Taxonomy Analysis -->
+        <div class="analysis-card">
+            <div class="card-title">
+                <i class="fas fa-layer-group"></i>Bloom's Taxonomy Performance
+            </div>
+            
+            {% if bloom_stats %}
+                {% for bloom_level in ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'] %}
+                    {% if bloom_level in bloom_stats %}
+                        {% set stat = bloom_stats[bloom_level] %}
+                        {% set percentage = stat['success_rate']|int %}
+                        
+                        <div class="analysis-bar">
+                            <div class="analysis-bar-label">
+                                <span>{{ bloom_level|title }}</span>
+                                <span>{{ stat['correct'] }}/{{ stat['total'] }} ({{ percentage }}%)</span>
+                            </div>
+                            <div class="progress-bar-custom">
+                                <div class="progress-fill bloom-{{ bloom_level }}" style="width: {{ percentage }}%">
+                                    {{ percentage }}%
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No Bloom taxonomy data available</p>
+            {% endif %}
+        </div>
+
+        <!-- CLO Performance Analysis -->
+        <div class="analysis-card">
+            <div class="card-title">
+                <i class="fas fa-bullseye"></i>CLO Performance
+            </div>
+            
+            {% if clo_stats %}
+                {% for clo_name, clo_data in clo_stats.items()|sort %}
+                    {% set percentage = clo_data['success_rate']|int %}
+                    <div class="clo-item">
+                        <div>
+                            <strong>{{ clo_name }}</strong><br>
+                            <small class="text-muted">{{ clo_data['correct'] }}/{{ clo_data['total'] }} correct</small>
+                        </div>
+                        <span class="clo-badge">{{ percentage }}%</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No CLO data available</p>
+            {% endif %}
+        </div>
+
+    </div>
+
+    <!-- Question Review Section -->
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4"><i class="fas fa-list-check me-2"></i>Question Review</h2>
+            
+            {% for question in questions %}
+            <div class="question-review">
+                
+                <!-- Question Header -->
+                <div class="question-header">
+                    <span class="question-number">Q{{ loop.index }}</span>
+                    
+                    {% if question.question_type == 'open_ended' %}
+                        <span class="question-type-badge badge-open"><i class="fas fa-keyboard me-1"></i>Open-Ended</span>
+                    {% else %}
+                        <span class="question-type-badge badge-mcq"><i class="fas fa-list me-1"></i>MCQ</span>
+                    {% endif %}
+                    
+                    <div class="question-meta">
+                        {% if question.bloom_level and question.bloom_level != 'N/A' %}
+                            <span class="meta-tag">{{ question.bloom_level|title }}</span>
+                        {% endif %}
+                        {% if question.clo and question.clo != 'N/A' %}
+                            <span class="meta-tag">{{ question.clo }}</span>
+                        {% endif %}
+                        {% if question.difficulty and question.difficulty != 'N/A' %}
+                            <span class="meta-tag">{{ question.difficulty|upper }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Question Text -->
+                <p class="question-text">{{ question.question_text }}</p>
+
+                <!-- MCQ Questions -->
+                {% if question.question_type == 'mcq' %}
+                    
+                    <!-- Your Answer -->
+                    <div class="answer-section">
+                        <div class="answer-label"><i class="fas fa-user"></i>Your Answer</div>
+                        {% if question.student_choice %}
+                            <div class="answer-content">
+                                <strong>{{ question.student_choice }}.</strong>
+                                {% if question.student_choice == 'A' %}{{ question.choice_a }}
+                                {% elif question.student_choice == 'B' %}{{ question.choice_b }}
+                                {% elif question.student_choice == 'C' %}{{ question.choice_c }}{% endif %}
+                            </div>
+                        {% else %}
+                            <div class="answer-content text-muted">Not answered</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- All Options -->
+                    <div class="answer-section">
+                        <div class="answer-label"><i class="fas fa-list"></i>All Options</div>
+                        
+                        <div class="choice-display">
+                            <div class="choice-text"><strong>A.</strong> {{ question.choice_a }}</div>
+                            <div class="choice-badges">
+                                {% if question.student_choice == 'A' %}<span class="badge bg-info badge-choice">Your Choice</span>{% endif %}
+                                {% if question.correct_choice == 'A' %}<span class="badge bg-success badge-choice">Correct</span>{% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="choice-display">
+                            <div class="choice-text"><strong>B.</strong> {{ question.choice_b }}</div>
+                            <div class="choice-badges">
+                                {% if question.student_choice == 'B' %}<span class="badge bg-info badge-choice">Your Choice</span>{% endif %}
+                                {% if question.correct_choice == 'B' %}<span class="badge bg-success badge-choice">Correct</span>{% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="choice-display">
+                            <div class="choice-text"><strong>C.</strong> {{ question.choice_c }}</div>
+                            <div class="choice-badges">
+                                {% if question.student_choice == 'C' %}<span class="badge bg-info badge-choice">Your Choice</span>{% endif %}
+                                {% if question.correct_choice == 'C' %}<span class="badge bg-success badge-choice">Correct</span>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Result -->
+                    {% if question.is_correct %}
+                        <div class="correct-answer">
+                            <div class="correct-label"><i class="fas fa-check-circle"></i>Correct</div>
+                        </div>
+                    {% elif question.student_choice %}
+                        <div class="incorrect-answer">
+                            <div class="incorrect-label"><i class="fas fa-times-circle"></i>Incorrect</div>
+                        </div>
+                    {% else %}
+                        <div class="pending-answer">
+                            <div class="pending-label"><i class="fas fa-clock"></i>Not Answered</div>
+                        </div>
+                    {% endif %}
+
+                <!-- Open-Ended Questions -->
+                {% else %}
+                    
+                    <!-- Student's Response -->
+                    <div class="answer-section">
+                        <div class="answer-label"><i class="fas fa-user"></i>Your Response</div>
+                        {% if question.student_choice %}
+                            <div class="answer-content">{{ question.student_choice }}</div>
+                        {% else %}
+                            <div class="answer-content text-muted">No response provided</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- AI Evaluation Result -->
+                    {% if question.is_correct == True %}
+                        <div class="correct-answer">
+                            <div class="correct-label"><i class="fas fa-check-circle"></i>Excellent Answer{% if question.score %} ({{ question.score }}/100){% endif %}</div>
+                        </div>
+                    {% elif question.is_correct == False %}
+                        <div class="incorrect-answer">
+                            <div class="incorrect-label"><i class="fas fa-times-circle"></i>Needs Improvement{% if question.score %} ({{ question.score }}/100){% endif %}</div>
+                        </div>
+                    {% else %}
+                        <div class="pending-answer">
+                            <div class="pending-label"><i class="fas fa-info-circle"></i>Pending Instructor Review</div>
+                        </div>
+                    {% endif %}
+
+                    <!-- AI Feedback -->
+                    {% if question.feedback %}
+                        <div class="explanation">
+                            <div class="explanation-label"><i class="fas fa-lightbulb"></i>AI Feedback</div>
+                            <div class="explanation-text">{{ question.feedback }}</div>
+                        </div>
+                    {% endif %}
+
+                    <!-- Model Answer -->
+                    {% if question.explanation %}
+                        <div class="answer-section">
+                            <div class="answer-label"><i class="fas fa-book"></i>Model Answer</div>
+                            <div class="answer-content">
+                                {% set cleaned = question.explanation|replace('[METADATA:', '')|replace(']', '') %}
+                                {% set final = cleaned.split('[METADATA')[0] if '[METADATA' in cleaned else cleaned %}
+                                {{ final }}
+                            </div>
+                        </div>
+                    {% endif %}
+
+                {% endif %}
+
+                <!-- General Explanation (for MCQ) -->
+                {% if question.explanation and question.question_type == 'mcq' %}
+                    {% set cleaned_explanation = question.explanation|replace('[METADATA:', '')|replace(']', '') %}
+                    {% set final_explanation = cleaned_explanation.split('[METADATA')[0] if '[METADATA' in cleaned_explanation else cleaned_explanation %}
+                    <div class="explanation">
+                        <div class="explanation-label"><i class="fas fa-lightbulb"></i>Explanation</div>
+                        <div class="explanation-text">{{ final_explanation }}</div>
+                    </div>
+                {% endif %}
+
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <!-- Dans results.html, remplacez la section "Action Buttons" -->
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        <!-- Back to Course -->
+        <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="btn-action btn-secondary">
+            <i class="fas fa-arrow-left"></i>Back to Course
+        </a>
+        
+        <!-- Back to Week (if applicable) -->
+        {% if week_num %}
+            <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" 
+            class="btn-action btn-secondary">
+                <i class="fas fa-calendar"></i>Back to Week
+            </a>
+        {% endif %}
+        
+        <!-- ✅ REMOVED: Retake Quiz button for students -->
+        <!-- Teachers can delete and recreate the quiz if needed -->
+        
+        {% if current_user.is_teacher %}
+            <!-- Teachers only: Option to delete quiz -->
+            <a href="{{ url_for('syllabus.delete_course_quiz', course_id=course.id, document_id=document.id) }}" 
+            class="btn-action btn-secondary"
+            onclick="return confirm('Are you sure? This will allow students to retake it.')">
+                <i class="fas fa-trash"></i>Delete & Allow Retake
+            </a>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,712 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} - Week {{ week_num }}{% endblock %}
+
+{% block styles %}
+<style>
+/* Simple, minimal styles - no complex colors or animations */
+.week-header { 
+    background-color: #f8f9fa; 
+    border-bottom: 1px solid #dee2e6; 
+    padding: 1rem 0; 
+    margin-bottom: 1.5rem; 
+}
+.week-title { 
+    color: #dc3545; 
+    font-size: 1.5rem; 
+    margin-bottom: 0.5rem; 
+}
+.week-topic { 
+    font-size: 1.1rem; 
+    color: #495057; 
+    margin-bottom: 1rem; 
+}
+.section { 
+    margin-bottom: 1.5rem; 
+    padding: 1rem; 
+    background: white; 
+    border: 1px solid #dee2e6; 
+    border-radius: 0.25rem; 
+}
+.section h5 { 
+    color: #dc3545; 
+    margin-bottom: 0.75rem; 
+    border-bottom: 1px solid #f8f9fa; 
+    padding-bottom: 0.5rem; 
+}
+.section p, .section ul { 
+    color: #495057; 
+    line-height: 1.5; 
+}
+
+/* Simple CLO list with percentage bars */
+.clo-list { 
+    list-style: none; 
+    padding: 0; 
+}
+.clo-item { 
+    padding: 0.75rem; 
+    margin-bottom: 0.75rem; 
+    background: #f8f9fa; 
+    border-radius: 0.25rem; 
+    border-left: 4px solid #dc3545; 
+}
+.clo-number { 
+    font-weight: bold; 
+    color: #dc3545; 
+    margin-right: 0.5rem; 
+}
+.clo-description { 
+    margin-bottom: 0.5rem; 
+    font-size: 0.95rem; 
+}
+.clo-percentage { 
+    font-size: 0.9rem; 
+    color: #495057; 
+    margin-bottom: 0.5rem; 
+}
+.progress { 
+    height: 0.75rem; 
+    background-color: #e9ecef; 
+    border-radius: 0.375rem; 
+    margin-bottom: 0; 
+}
+.progress-bar { 
+    background-color: #28a745; 
+    border-radius: 0.375rem; 
+}
+.progress-bar-low { 
+    background-color: #ffc107; 
+}
+
+/* Action Buttons */
+.action-buttons { 
+    display: flex; 
+    gap: 0.5rem; 
+    flex-wrap: wrap; 
+    margin-bottom: 1.5rem; 
+    padding: 0.5rem 0; 
+    border-bottom: 1px solid #dee2e6; 
+}
+.action-btn { 
+    padding: 0.5rem 1rem; 
+    font-size: 0.9rem; 
+    border-radius: 0.25rem; 
+}
+
+/* Attachments Sidebar */
+.attachments-sidebar { 
+    position: sticky; 
+    top: 100px; 
+    max-height: 600px; 
+    overflow-y: auto; 
+    background: white; 
+    border: 1px solid #dee2e6; 
+    border-radius: 0.25rem; 
+    padding: 1rem; 
+    margin-bottom: 1rem; 
+}
+.attachments-title { 
+    font-size: 1rem; 
+    color: #495057; 
+    margin-bottom: 1rem; 
+    border-bottom: 1px solid #dee2e6; 
+    padding-bottom: 0.5rem; 
+}
+.attachments-list { 
+    list-style: none; 
+    padding: 0; 
+}
+.attachment-item { 
+    margin-bottom: 1rem; 
+    padding: 0.75rem; 
+    background: #f8f9fa; 
+    border-radius: 0.25rem; 
+    border-left: 3px solid #dee2e6;
+    font-size: 0.9rem; 
+}
+.attachment-item.video-item {
+    border-left-color: #007bff;
+}
+.attachment-item.document-item {
+    border-left-color: #6c757d;
+}
+.attachment-item.quiz-item {
+    border-left-color: #28a745;
+}
+
+.attachment-link { 
+    color: #dc3545; 
+    text-decoration: none; 
+    cursor: pointer;
+}
+.attachment-link:hover { 
+    text-decoration: underline; 
+}
+
+.video-thumbnail {
+    width: 100%;
+    height: 60px;
+    background: #e9ecef;
+    border-radius: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0.5rem 0;
+    font-size: 1.5rem;
+    color: #007bff;
+}
+
+.quiz-btn {
+    background-color: #28a745; 
+    color: white; 
+    border: none; 
+    padding: 0.35rem 0.65rem; 
+    border-radius: 0.25rem; 
+    font-size: 0.85rem; 
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 0.5rem;
+}
+.quiz-btn:hover { 
+    background-color: #218838; 
+    color: white; 
+}
+
+.action-video-btn {
+    background-color: #007bff; 
+    color: white; 
+    border: none; 
+    padding: 0.35rem 0.65rem; 
+    border-radius: 0.25rem; 
+    font-size: 0.85rem; 
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 0.5rem;
+    cursor: pointer;
+}
+.action-video-btn:hover { 
+    background-color: #0056b3; 
+    color: white; 
+}
+
+.delete-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.25rem;
+    font-size: 0.85rem;
+    text-decoration: none;
+    margin-top: 0.5rem;
+    display: inline-block;
+}
+.delete-btn:hover {
+    background-color: #c82333;
+    color: white;
+}
+
+/* Video Modal */
+.video-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    animation: fadeIn 0.3s ease-in;
+}
+
+.video-modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.video-modal-content {
+    background-color: #000;
+    border-radius: 0.5rem;
+    max-width: 90%;
+    max-height: 90vh;
+    overflow: hidden;
+    position: relative;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.video-modal video {
+    width: 100%;
+    height: 100%;
+    max-height: 85vh;
+}
+
+.video-modal-close {
+    position: absolute;
+    top: 15px;
+    right: 30px;
+    color: #fff;
+    font-size: 2rem;
+    font-weight: bold;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    padding: 5px 15px;
+    border-radius: 0.25rem;
+}
+
+.video-modal-close:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.video-modal-title {
+    color: #fff;
+    padding: 15px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.6);
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .attachments-sidebar { 
+        position: static; 
+        max-height: none; 
+        margin-top: 1rem; 
+    }
+    .action-buttons { 
+        justify-content: center; 
+    }
+    .video-modal-content {
+        max-width: 95%;
+        max-height: 70vh;
+    }
+    .video-modal video {
+        max-height: 65vh;
+    }
+}
+
+.analyze-video-btn {
+    background-color: #6f42c1;
+    color: white;
+    border: none;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.25rem;
+    font-size: 0.85rem;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.analyze-video-btn:hover {
+    background-color: #5a32a3;
+    color: white;
+}
+
+.analyze-video-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.analysis-status {
+    font-size: 0.75rem;
+    color: #28a745;
+    margin-top: 0.25rem;
+}
+
+.analysis-status.processing {
+    color: #ffc107;
+}
+
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a>
+            </li>
+            <li class="breadcrumb-item active">Week {{ week_num }}</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Week {{ week_num }} - {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Main Content -->
+        <div class="col-lg-9 col-md-8">
+            <!-- Week Header -->
+            <div class="week-header">
+                <div class="container">
+                    <h1 class="week-title">Week {{ week_num }}</h1>
+                    <p class="week-topic">{{ week_data.get('Topic', 'No topic specified') }}</p>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+                    <a href="{{ url_for('syllabus.upload_week_attachment_form', course_id=course.id, week_num=week_num) }}" class="btn btn-outline-danger action-btn">
+                        <i class="fas fa-upload me-1"></i>Upload Attachment
+                    </a>
+                {% endif %}
+                <a href="{{ url_for('syllabus.generate_quiz', course_id=course.id, week_num=week_num) }}" class="btn btn-outline-secondary action-btn">
+                    <i class="fas fa-question-circle me-1"></i>Generate Quiz
+                </a>
+                <a href="{{ url_for('syllabus.ask_ai', course_id=course.id, week_num=week_num) }}" class="btn btn-outline-secondary action-btn">
+                    <i class="fas fa-robot me-1"></i>Ask AI
+                </a>
+                <a href="{{ url_for('evaluate.evaluate_exam', course_id=course.id, week_num=week_num) }}" class="btn btn-outline-secondary action-btn">
+                    <i class="fas fa-graduation-cap me-1"></i>Evaluate Exam
+                </a>
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="btn btn-outline-primary action-btn">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Course
+                </a>
+            </div>
+
+            <!-- Week Details Sections -->
+            <div class="row">
+                <div class="col-md-12">
+                    <!-- Class Objectives -->
+                    <div class="section">
+                        <h5>Class Objectives</h5>
+                        <p>{{ week_data.get('Class Objectives', 'No objectives provided.') }}</p>
+                    </div>
+
+                    <!-- CLOs for This Week -->
+                    <div class="section">
+                        <h5>CLOs for This Week</h5>
+                        {% if week_clo_percentages %}
+                            {% set ns = namespace(found=false) %}
+                            <ul class="clo-list">
+                                {% for clo_full, pct in week_clo_percentages.items() if pct > 0 %}
+                                    {% set ns.found = true %}
+                                    <li class="clo-item">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <span class="clo-number">{{ clo_full }}</span>
+                                                <div class="clo-description">
+                                                    {% if clo_data.get(clo_full) %}
+                                                        {{ clo_data[clo_full] }}
+                                                    {% else %}
+                                                        Description not available.
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            <div class="ms-3" style="min-width: 120px;">
+                                                <div class="clo-percentage">{{ pct }}% of Week</div>
+                                                <div class="progress">
+                                                    <div class="progress-bar" 
+                                                         role="progressbar" 
+                                                         style="width: {{ pct }}%" 
+                                                         aria-valuenow="{{ pct }}" 
+                                                         aria-valuemin="0" 
+                                                         aria-valuemax="100">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                            {% if not ns.found %}
+                                <p>No CLOs with percentages for this week.</p>
+                            {% endif %}
+                        {% else %}
+                            <p>No CLO percentages available for this week.</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Activities/Assessment -->
+                    <div class="section">
+                        <h5>Activities/Assessment</h5>
+                        <p>{{ week_data.get('Activities/Assessment', 'No activities provided.') }}</p>
+                    </div>
+
+                    <!-- Assignments/Readings -->
+                    <div class="section">
+                        <h5>Assignments/Readings</h5>
+                        <p>{{ week_data.get('Assignments/Readings', 'No assignments provided.') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Attachments Sidebar -->
+        <div class="col-lg-3 col-md-4">
+            <div class="attachments-sidebar">
+                <h6 class="attachments-title">
+                    <i class="fas fa-paperclip me-2"></i>Week {{ week_num }} Attachments
+                </h6>
+                {% if attachments %}
+                    <ul class="attachments-list">
+                        {% for attachment in attachments %}
+                            <li class="attachment-item {% if attachment.is_quiz %}quiz-item{% elif attachment.document_type == 'video' %}video-item{% else %}document-item{% endif %}">
+                                <strong>{{ attachment.title }}</strong>
+                                <br><small class="text-muted">
+                                    {% if attachment.is_quiz %}
+                                        <i class="fas fa-question-circle me-1"></i>Quiz
+                                    {% elif attachment.document_type == 'video' %}
+                                        <i class="fas fa-video me-1"></i>Video
+                                    {% else %}
+                                        <i class="fas fa-file me-1"></i>Document
+                                    {% endif %}
+                                </small>
+
+                                {% if attachment.is_quiz %}
+                                    <!-- QUIZ BUTTONS -->
+                                    {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+                                        <br>
+                                        <a href="{{ url_for('syllabus.view_week_quiz', course_id=course.id, week_num=week_num, document_id=attachment.id) }}" class="quiz-btn">
+                                            <i class="fas fa-eye me-1"></i>View Quiz
+                                        </a>
+                                    {% else %}
+                                        <br>
+                                        <a href="{{ url_for('syllabus.take_week_quiz', course_id=course.id, week_num=week_num, document_id=attachment.id) }}" class="quiz-btn">
+                                            <i class="fas fa-play me-1"></i>Take Quiz
+                                        </a>
+                                    {% endif %}
+
+                                {% elif attachment.document_type == 'video' and attachment.file_path %}
+                                <!-- VIDEO BUTTONS -->
+                                <div class="video-thumbnail">
+                                    <i class="fas fa-play-circle"></i>
+                                </div>
+                                <button type="button" class="action-video-btn video-play-btn" 
+                                        data-video-src="{{ url_for('syllabus.uploaded_document', filename=attachment.file_path) }}"
+                                        data-video-title="{{ attachment.title }}"
+                                        onclick="openVideoModal(this)">
+                                    <i class="fas fa-play me-1"></i>Watch Video
+                                </button>
+                                
+                                                                <!-- NEW: Analysis Button -->
+                                <!-- SMART VIEW/ANALYZE BUTTON -->
+                                <a href="{{ url_for('syllabus.view_video_analysis', course_id=course.id, week_num=week_num, document_id=attachment.id) }}" 
+                                class="action-video-btn" style="background-color: #6f42c1; margin-top: 0.5rem; display: inline-block;">
+                                    {% if attachment.content_metadata %}
+                                        <i class="fas fa-chart-bar me-1"></i>View Analysis
+                                    {% else %}
+                                        <i class="fas fa-cog me-1"></i>Start Analysis
+                                    {% endif %}
+                                </a>
+
+                                {% if attachment.content_metadata %}
+                                    <div style="font-size: 0.75rem; color: #28a745; margin-top: 0.25rem;">
+                                        <i class="fas fa-check-circle"></i> Analysis Complete
+                                    </div>
+                                {% endif %}
+
+                                
+                                <br>
+                                <a href="{{ url_for('syllabus.uploaded_document', filename=attachment.file_path) }}" 
+                                class="attachment-link" target="_blank" style="font-size: 0.85rem;">
+                                    <i class="fas fa-download me-1"></i>Download
+                                </a>
+
+                                {% elif attachment.file_path and attachment.file_path.strip() %}
+                                    <!-- DOCUMENT DOWNLOAD -->
+                                    <br><a href="{{ url_for('syllabus.uploaded_document', filename=attachment.file_path) }}" 
+                                        class="attachment-link" target="_blank">
+                                        <i class="fas fa-download me-1"></i>{{ attachment.file_type.upper() or 'Download' }}
+                                    </a>
+
+                                {% else %}
+                                    <br><span class="text-muted" style="font-size: 0.85rem;">No file available</span>
+                                {% endif %}
+
+                                <!-- DELETE BUTTON -->
+                                {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+                                    <br><a href="{{ url_for('syllabus.delete_week_attachment', course_id=course.id, week_num=week_num, attachment_id=attachment.id) }}" 
+                                           class="delete-btn" 
+                                           onclick="return confirm('Delete this attachment? This cannot be undone.')">
+                                        <i class="fas fa-trash me-1"></i>Delete
+                                    </a>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted">No attachments yet. Upload one above.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VIDEO MODAL -->
+<div id="videoModal" class="video-modal">
+    <div class="video-modal-content">
+        <button type="button" class="video-modal-close" onclick="closeVideoModal()">&times;</button>
+        <video id="modalVideo" controls>
+            <source id="videoSource" src="" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <div class="video-modal-title" id="videoTitle"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openVideoModal(button) {
+    const videoSrc = button.getAttribute('data-video-src');
+    const videoTitle = button.getAttribute('data-video-title');
+    const modal = document.getElementById('videoModal');
+    const videoSource = document.getElementById('videoSource');
+    const video = document.getElementById('modalVideo');
+    const titleDiv = document.getElementById('videoTitle');
+    
+    videoSource.src = videoSrc;
+    titleDiv.textContent = videoTitle;
+    video.load();
+    
+    modal.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    
+    // Auto-play
+    video.play();
+}
+
+function closeVideoModal() {
+    const modal = document.getElementById('videoModal');
+    const video = document.getElementById('modalVideo');
+    
+    video.pause();
+    modal.classList.remove('show');
+    document.body.style.overflow = 'auto';
+}
+
+// Close modal when clicking outside the video
+document.getElementById('videoModal').addEventListener('click', function(event) {
+    if (event.target === this) {
+        closeVideoModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeVideoModal();
+    }
+});
+
+// Video Analysis Functions
+function startVideoAnalysis(event, documentId, videoTitle, courseId, weekNum) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const btn = event.target.closest('.analyze-video-btn');
+    if (!btn) return;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+    
+    // Show notification
+    showAnalysisNotification(`Starting analysis for "${videoTitle}". This may take 5-15 minutes...`, 'info');
+    
+    // Call analyze endpoint
+    fetch(`/syllabus/${courseId}/week/${weekNum}/video/${documentId}/analyze`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'processing') {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            // Start polling for completion
+            let checkCount = 0;
+            const maxChecks = 180; // 30 minutes max
+            
+            const statusCheck = setInterval(() => {
+                checkCount++;
+                
+                fetch(`/syllabus/${courseId}/week/${weekNum}/video/${documentId}/status`)
+                    .then(response => response.json())
+                    .then(status => {
+                        if (status.status === 'completed') {
+                            clearInterval(statusCheck);
+                            showAnalysisNotification(`Analysis complete! Reloading page...`, 'success');
+                            
+                            // Reload after 2 seconds
+                            setTimeout(() => location.reload(), 2000);
+                        }
+                    })
+                    .catch(err => console.error('Status check error:', err));
+                
+                // Timeout after 30 minutes
+                if (checkCount >= maxChecks) {
+                    clearInterval(statusCheck);
+                    showAnalysisNotification('Analysis is taking longer than expected. Please check back later.', 'warning');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-cog me-1"></i>Analyze Video';
+                }
+            }, 10000); // Check every 10 seconds
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-cog me-1"></i>Analyze Video';
+        showAnalysisNotification('Failed to start analysis: ' + error.message, 'error');
+    });
+}
+
+function showAnalysisNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type} alert-dismissible fade show`;
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.minWidth = '350px';
+    notification.innerHTML = `
+        <strong>${type === 'error' ? 'Error' : type === 'success' ? 'Success' : 'Info'}:</strong> ${message}
+        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 8 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 8000);
+}
+
+</script>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Syllabus Dashboard – {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+    .syllabus-section {
+        margin-bottom: 2rem;
+    }
+    .card-custom {
+        border-radius: 0.75rem;
+        padding: 1rem;
+        background-color: #f8f9fa;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .progress {
+        height: 20px;
+        border-radius: 10px;
+    }
+    .btn-toggle {
+        margin-right: 0.5rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+            <li class="breadcrumb-item active">Syllabus Dashboard</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Syllabus Dashboard – {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- CLO Percentages -->
+    <div class="syllabus-section">
+        <h3 class="text-danger">CLO Percentages</h3>
+        {% if syllabus.clo_stats %}
+            {% for clo, percentage in syllabus.clo_stats.items() %}
+            <div class="card-custom">
+                <strong>{{ clo }}</strong>
+                <div class="progress mt-2">
+                    <div class="progress-bar bg-danger" role="progressbar" style="width: {{ percentage }}%;" aria-valuenow="{{ percentage }}" aria-valuemin="0" aria-valuemax="100">
+                        {{ percentage }}%
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted">No CLO statistics available yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Buttons to toggle sections -->
+    <div class="mb-3">
+        <button class="btn btn-outline-danger btn-toggle" data-bs-toggle="collapse" data-bs-target="#cloSection" aria-expanded="false">CLOs</button>
+        <button class="btn btn-outline-danger btn-toggle" data-bs-toggle="collapse" data-bs-target="#ploSection" aria-expanded="false">PLOs</button>
+        <button class="btn btn-outline-danger btn-toggle" data-bs-toggle="collapse" data-bs-target="#weeklySection" aria-expanded="false">Weekly Plan</button>
+        <a href="{{ url_for('syllabus.upload_syllabus', course_id=course.id) }}" class="btn btn-danger ms-2">
+            <i class="fas fa-upload me-1"></i>Upload Syllabus
+        </a>
+    </div>
+
+    <!-- CLO Data -->
+    <div id="cloSection" class="collapse syllabus-section">
+        <h4>CLOs</h4>
+        {% if syllabus.clo_data %}
+            {% for clo in syllabus.clo_data %}
+            <div class="card-custom">
+                <p>{{ clo }}</p>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted">No CLOs provided.</p>
+        {% endif %}
+    </div>
+
+    <!-- PLO Data -->
+    <div id="ploSection" class="collapse syllabus-section">
+        <h4>PLOs</h4>
+        {% if syllabus.plo_data %}
+            {% for plo in syllabus.plo_data %}
+            <div class="card-custom">
+                <p>{{ plo }}</p>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted">No PLOs provided.</p>
+        {% endif %}
+    </div>
+
+    <!-- Weekly Plan -->
+    <div id="weeklySection" class="collapse syllabus-section">
+        <h4>Weekly Plan</h4>
+        {% if syllabus.weekly_plan %}
+            <div class="accordion" id="weeklyPlanAccordion">
+                {% for week in syllabus.weekly_plan %}
+                <div class="accordion-item card-custom">
+                    <h2 class="accordion-header" id="headingWeek{{ loop.index }}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWeek{{ loop.index }}" aria-expanded="false" aria-controls="collapseWeek{{ loop.index }}">
+                            Week {{ week.week }} – {{ week.topic }}
+                        </button>
+                    </h2>
+                    <div id="collapseWeek{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="headingWeek{{ loop.index }}" data-bs-parent="#weeklyPlanAccordion">
+                        <div class="accordion-body">
+                            <p><strong>Activities:</strong> {{ week.activities }}</p>
+                            <p><strong>Assessments:</strong> {{ week.assessments }}</p>
+
+                            {% if week.clo_mapping %}
+                            <h6 class="mt-3">CLO Mapping:</h6>
+                            <ul>
+                                {% for clo, perc in week.clo_mapping.items() %}
+                                <li>{{ clo }} – {{ perc }}%</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No weekly plan available.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,940 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Quiz - {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+* { box-sizing: border-box; }
+body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); min-height: 100vh; }
+.wizard-container { max-width: 950px; margin: 2rem auto; padding: 0 1rem; }
+
+.mode-selector-header {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}
+
+.header-left h1 { margin: 0; font-size: 1.8rem; color: #2c3e50; }
+.header-left p { margin: 0.25rem 0 0 0; color: #6c757d; font-size: 0.95rem; }
+
+.mode-toggles {
+    display: flex;
+    gap: 0.5rem;
+    background: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 8px;
+}
+
+.mode-btn {
+    padding: 0.7rem 1.5rem;
+    border: 2px solid transparent;
+    background: transparent;
+    color: #6c757d;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.mode-btn.active {
+    background: white;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.progress-header {
+    background: white;
+    border-radius: 12px 12px 0 0;
+    padding: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.progress-title { font-size: 1.6rem; font-weight: 600; color: #2c3e50; margin: 0 0 2rem 0; }
+
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+}
+
+.progress-steps::before {
+    content: '';
+    position: absolute;
+    top: 22px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #e0e0e0;
+    z-index: 0;
+}
+
+.step {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    flex: 1;
+}
+
+.step-circle {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 0.5rem;
+    font-weight: bold;
+    color: #999;
+    transition: all 0.3s ease;
+}
+
+.step.active .step-circle {
+    border-color: #dc3545;
+    color: white;
+    background: #dc3545;
+}
+
+.step.completed .step-circle {
+    background: #28a745;
+    border-color: #28a745;
+    color: white;
+}
+
+.step-label { font-size: 0.85rem; color: #999; }
+.step.active .step-label { color: #dc3545; font-weight: 600; }
+.step.completed .step-label { color: #28a745; font-weight: 600; }
+
+.step-content { display: none; }
+.step-content.active { display: block; animation: fadeIn 0.3s ease; }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.step-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.step-title {
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.75rem;
+}
+
+.step-description {
+    color: #6c757d;
+    margin-bottom: 2rem;
+}
+
+.week-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.week-card input[type="checkbox"] { display: none; }
+
+.week-card label {
+    display: block;
+    padding: 1.5rem 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: white;
+}
+
+.week-card label:hover {
+    border-color: #dc3545;
+    transform: translateY(-2px);
+}
+
+.week-card input:checked + label {
+    background: #dc3545;
+    color: white;
+    border-color: #c82333;
+}
+
+.week-number { font-size: 1.8rem; font-weight: bold; display: block; margin-bottom: 0.5rem; }
+.week-topic { font-size: 0.8rem; opacity: 0.85; }
+
+.quick-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.btn-sm {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    background: #e0e0e0;
+    color: #333;
+    transition: all 0.2s ease;
+}
+
+.btn-sm:hover { background: #d0d0d0; }
+
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.config-item {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+}
+
+.config-label {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.75rem;
+}
+
+.config-input {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.config-input input {
+    flex: 1;
+    padding: 0.85rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1.3rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.config-input input:focus {
+    outline: none;
+    border-color: #dc3545;
+    background: #fff5f5;
+}
+
+.total-box {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    margin: 1.5rem 0 2rem 0;
+}
+
+.total-label { font-size: 0.9rem; opacity: 0.9; text-transform: uppercase; font-weight: 600; }
+.total-value { font-size: 3rem; font-weight: bold; }
+
+.distribution-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.distribution-item {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.distribution-item:focus-within { border-color: #dc3545; }
+
+.dist-name { font-weight: 600; color: #2c3e50; margin-bottom: 1rem; }
+
+.dist-input {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.dist-input input {
+    width: 80px;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 600;
+}
+
+.dist-count { font-size: 0.85rem; color: #6c757d; }
+
+.total-indicator {
+    text-align: center;
+    padding: 1rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+}
+
+.total-indicator.valid {
+    background: #d4edda;
+    color: #155724;
+    border: 2px solid #28a745;
+}
+
+.total-indicator.invalid {
+    background: #f8d7da;
+    color: #721c24;
+    border: 2px solid #dc3545;
+}
+
+.bloom-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.bloom-item {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.bloom-level { font-weight: 600; color: #2c3e50; margin-bottom: 0.5rem; }
+.bloom-description { font-size: 0.8rem; color: #6c757d; margin-bottom: 1rem; font-style: italic; }
+
+.info-note {
+    background: #fff5f5;
+    border-left: 4px solid #dc3545;
+    padding: 1.25rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+}
+
+.info-note strong { color: #dc3545; }
+
+.review-summary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.review-item {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 4px solid #dc3545;
+}
+
+.review-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.review-value {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.nav-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 2rem;
+    gap: 1rem;
+}
+
+.btn {
+    padding: 0.9rem 2rem;
+    border-radius: 6px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+    transform: translateY(-2px);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 68, 0.3);
+}
+
+.btn:disabled {
+    background: #e0e0e0;
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.upload-area {
+    border: 3px dashed #0066cc;
+    border-radius: 12px;
+    padding: 3rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #f0f7ff;
+    margin-bottom: 1.5rem;
+}
+
+.upload-area:hover {
+    border-color: #0052a3;
+    background: #e6f0ff;
+}
+
+.upload-area input[type="file"] { display: none; }
+
+.file-info {
+    background: #e6f0ff;
+    border: 2px solid #0066cc;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    display: none;
+}
+
+.file-info.show { display: block; }
+
+.week-stats {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.stat-box {
+    text-align: center;
+}
+
+.stat-value { font-size: 2rem; font-weight: bold; color: #2c3e50; }
+.stat-label { font-size: 0.85rem; color: #6c757d; text-transform: uppercase; font-weight: 600; margin-top: 0.5rem; }
+
+@media (max-width: 768px) {
+    .config-grid, .distribution-grid, .bloom-grid, .review-summary { grid-template-columns: 1fr; }
+    .week-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+    .mode-selector-header { flex-direction: column; text-align: center; }
+    .nav-buttons { flex-direction: column; }
+    .btn { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wizard-container">
+    <!-- Mode Selector -->
+    <div class="mode-selector-header">
+        <div class="header-left">
+            <h1>✨ Generate Quiz</h1>
+            <p>{{ course.title }}</p>
+        </div>
+        <div class="mode-toggles">
+            <button type="button" class="mode-btn active" id="mode-manual-btn" onclick="switchToManual()">
+                ⚙️ Manual
+            </button>
+            <button type="button" class="mode-btn" id="mode-model-btn" onclick="switchToModel()">
+                📄 From Model
+            </button>
+        </div>
+    </div>
+
+    <!-- Progress Header -->
+    <div class="progress-header">
+        <h2 class="progress-title" id="progress-title">Manual Configuration</h2>
+        <div class="progress-steps" id="progress-steps">
+            <div class="step active" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-label">Weeks</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-label">Questions</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-label">Difficulty</div>
+            </div>
+            <div class="step" data-step="4">
+                <div class="step-circle">4</div>
+                <div class="step-label">Bloom</div>
+            </div>
+            <div class="step" data-step="5">
+                <div class="step-circle">5</div>
+                <div class="step-label">Review</div>
+            </div>
+        </div>
+    </div>
+
+    <form method="POST" id="quiz-form" enctype="multipart/form-data">
+        <!-- ========== STEP 1: SELECT WEEKS ========== -->
+        <div class="step-content active" data-step="1">
+            <div class="step-card">
+                <h2 class="step-title">📅 Select Weeks</h2>
+                <p class="step-description">Choose weeks to include in the quiz</p>
+
+                <div class="quick-actions">
+                    <button type="button" class="btn-sm" id="select-all">✓ Select All</button>
+                    <button type="button" class="btn-sm" id="deselect-all">✕ Clear All</button>
+                </div>
+
+                <div class="week-grid">
+                    {% for week in weeks %}
+                    <div class="week-card">
+                        <input type="checkbox" name="selected_weeks" value="{{ week['Week#'] }}" id="week-{{ week['Week#'] }}">
+                        <label for="week-{{ week['Week#'] }}">
+                            <span class="week-number">{{ week['Week#'] }}</span>
+                            <span class="week-topic">{{ week.get('Topic', 'N/A')[:30] }}</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="week-stats">
+                    <div class="stat-box">
+                        <div class="stat-value" id="selected-count">0</div>
+                        <div class="stat-label">Selected Weeks</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="clos-count">0</div>
+                        <div class="stat-label">CLOs Covered</div>
+                    </div>
+                </div>
+
+                <div class="nav-buttons">
+                    <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="btn btn-secondary">← Back</a>
+                    <button type="button" class="btn btn-primary" id="next-step-1" disabled onclick="showStep(2)">
+                        Next: Questions →
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== STEP 2: QUESTION CONFIGURATION ========== -->
+        <div class="step-content" data-step="2">
+            <div class="step-card">
+                <h2 class="step-title">❓ Question Configuration</h2>
+                <p class="step-description">Choose number of MCQ and open-ended questions</p>
+
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: #2c3e50;">Question Types</h3>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <div class="config-label">Multiple Choice (MCQ)</div>
+                            <div class="config-input">
+                                <input type="number" name="num_mcq" id="num-mcq" value="8" min="0" max="50" onchange="updateTotalQuestions()">
+                                <span style="color: #6c757d; font-weight: 600;">questions</span>
+                            </div>
+                        </div>
+                        <div class="config-item">
+                            <div class="config-label">Open-Ended</div>
+                            <div class="config-input">
+                                <input type="number" name="num_open" id="num-open" value="4" min="0" max="50" onchange="updateTotalQuestions()">
+                                <span style="color: #6c757d; font-weight: 600;">questions</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="total-box">
+                    <div class="total-label">Total Questions</div>
+                    <div class="total-value" id="total-questions">12</div>
+                </div>
+
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button>
+                    <button type="button" class="btn btn-primary" onclick="showStep(3)">Next: Difficulty →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== STEP 3: DIFFICULTY DISTRIBUTION ========== -->
+        <div class="step-content" data-step="3">
+            <div class="step-card">
+                <h2 class="step-title">📊 Difficulty Distribution</h2>
+                <p class="step-description">Set percentage for each difficulty level (must total 100%)</p>
+
+                <div class="distribution-grid">
+                    <div class="distribution-item">
+                        <div class="dist-name">Easy</div>
+                        <div class="dist-input"><input type="number" name="difficulty_easy" id="difficulty-easy" value="33" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                        <div class="dist-count"><span id="difficulty-easy-count">4</span> questions</div>
+                    </div>
+                    <div class="distribution-item">
+                        <div class="dist-name">Medium</div>
+                        <div class="dist-input"><input type="number" name="difficulty_medium" id="difficulty-medium" value="34" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                        <div class="dist-count"><span id="difficulty-medium-count">4</span> questions</div>
+                    </div>
+                    <div class="distribution-item">
+                        <div class="dist-name">Hard</div>
+                        <div class="dist-input"><input type="number" name="difficulty_hard" id="difficulty-hard" value="33" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                        <div class="dist-count"><span id="difficulty-hard-count">4</span> questions</div>
+                    </div>
+                </div>
+
+                <div class="total-indicator valid" id="difficulty-indicator">✓ Total: <span id="difficulty-total">100</span>%</div>
+
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="showStep(2)">← Back</button>
+                    <button type="button" class="btn btn-primary" id="next-step-3" onclick="showStep(4)">Next: Bloom →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== STEP 4: BLOOM'S TAXONOMY ========== -->
+        <div class="step-content" data-step="4">
+            <div class="step-card">
+                <h2 class="step-title">🏗️ Bloom's Taxonomy Distribution</h2>
+                <p class="step-description">Set cognitive levels (must total 100%)</p>
+
+                <div class="bloom-grid">
+                    <div class="bloom-item">
+                        <div class="bloom-level">Remember</div>
+                        <div class="bloom-description">Recall facts and definitions</div>
+                        <div class="dist-input"><input type="number" name="bloom_remember" id="bloom-remember" value="17" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                    </div>
+                    <div class="bloom-item">
+                        <div class="bloom-level">Understand</div>
+                        <div class="bloom-description">Explain ideas and concepts</div>
+                        <div class="dist-input"><input type="number" name="bloom_understand" id="bloom-understand" value="17" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                    </div>
+                    <div class="bloom-item">
+                        <div class="bloom-level">Apply</div>
+                        <div class="bloom-description">Use information in new situations</div>
+                        <div class="dist-input"><input type="number" name="bloom_apply" id="bloom-apply" value="17" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                    </div>
+                    <div class="bloom-item">
+                        <div class="bloom-level">Analyze</div>
+                        <div class="bloom-description">Draw connections among ideas</div>
+                        <div class="dist-input"><input type="number" name="bloom_analyze" id="bloom-analyze" value="17" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                    </div>
+                    <div class="bloom-item">
+                        <div class="bloom-level">Evaluate</div>
+                        <div class="bloom-description">Justify a stand or decision</div>
+                        <div class="dist-input"><input type="number" name="bloom_evaluate" id="bloom-evaluate" value="16" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                    </div>
+                    <div class="bloom-item">
+                        <div class="bloom-level">Create</div>
+                        <div class="bloom-description">Produce new or original work</div>
+                        <div class="dist-input"><input type="number" name="bloom_create" id="bloom-create" value="16" min="0" max="100" onchange="updateDistributions()"><span>%</span></div>
+                    </div>
+                </div>
+
+                <div class="total-indicator valid" id="bloom-indicator">✓ Total: <span id="bloom-total">100</span>%</div>
+
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="showStep(3)">← Back</button>
+                    <button type="button" class="btn btn-primary" id="next-step-4" onclick="generateReviewAndShow(5)">Review →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== STEP 5: REVIEW ========== -->
+        <div class="step-content" data-step="5">
+            <div class="step-card">
+                <h2 class="step-title">✅ Review Configuration</h2>
+                <p class="step-description">Double-check all settings before generating</p>
+
+                <div class="review-summary" id="review-summary"></div>
+
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="showStep(4)">← Back</button>
+                    <button type="submit" class="btn btn-primary" id="generate-btn" formaction="{{ url_for('syllabus.generate_multi_week_quiz', course_id=course.id) }}">
+                        ✨ Generate Quiz
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden inputs for form data -->
+        <input type="hidden" name="mode" id="mode-input" value="manual">
+        <input type="hidden" name="num_questions" id="num-questions-input" value="12">
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const weeksData = {{ weeks|tojson }};
+let currentStep = 1;
+
+// ============================================
+// STEP NAVIGATION
+// ============================================
+
+function showStep(step) {
+    document.querySelectorAll('.step-content').forEach((el, idx) => {
+        el.classList.remove('active');
+        if (idx === step - 1) {
+            el.classList.add('active');
+        }
+    });
+    
+    document.querySelectorAll('.step').forEach((s, i) => {
+        s.classList.remove('active', 'completed');
+        if (i < step - 1) s.classList.add('completed');
+        else if (i === step - 1) s.classList.add('active');
+    });
+    
+    currentStep = step;
+    window.scrollTo(0, 0);
+}
+
+function generateReviewAndShow(step) {
+    generateReview();
+    showStep(step);
+}
+
+// ============================================
+// WEEK SELECTION
+// ============================================
+
+const weekCheckboxes = document.querySelectorAll('input[name="selected_weeks"]');
+
+document.getElementById('select-all').addEventListener('click', (e) => {
+    e.preventDefault();
+    weekCheckboxes.forEach(cb => cb.checked = true);
+    updateWeekSelection();
+});
+
+document.getElementById('deselect-all').addEventListener('click', (e) => {
+    e.preventDefault();
+    weekCheckboxes.forEach(cb => cb.checked = false);
+    updateWeekSelection();
+});
+
+weekCheckboxes.forEach(cb => cb.addEventListener('change', updateWeekSelection));
+
+function updateWeekSelection() {
+    const selected = Array.from(weekCheckboxes).filter(cb => cb.checked).length;
+    document.getElementById('selected-count').textContent = selected;
+    
+    const closSet = new Set();
+    weekCheckboxes.forEach(cb => {
+        if (cb.checked) {
+            const weekData = weeksData.find(w => w['Week#'] === parseInt(cb.value));
+            if (weekData && weekData['Related CLOs']) {
+                weekData['Related CLOs'].forEach(clo => closSet.add(clo));
+            }
+        }
+    });
+    document.getElementById('clos-count').textContent = closSet.size;
+    document.getElementById('next-step-1').disabled = selected === 0;
+}
+
+// ============================================
+// QUESTION CONFIGURATION
+// ============================================
+
+function updateTotalQuestions() {
+    const mcq = parseInt(document.getElementById('num-mcq').value) || 0;
+    const open = parseInt(document.getElementById('num-open').value) || 0;
+    const total = mcq + open;
+    
+    document.getElementById('total-questions').textContent = total;
+    document.getElementById('num-questions-input').value = total;
+    updateDistributions();
+}
+
+// ============================================
+// DIFFICULTY DISTRIBUTION
+// ============================================
+
+function updateDistributions() {
+    updateDifficultyDistribution();
+    updateBloomDistribution();
+}
+
+function updateDifficultyDistribution() {
+    const easyVal = parseInt(document.getElementById('difficulty-easy').value) || 0;
+    const mediumVal = parseInt(document.getElementById('difficulty-medium').value) || 0;
+    const hardVal = parseInt(document.getElementById('difficulty-hard').value) || 0;
+    const total = easyVal + mediumVal + hardVal;
+    
+    document.getElementById('difficulty-total').textContent = total;
+    const indicator = document.getElementById('difficulty-indicator');
+    
+    if (total === 100) {
+        indicator.classList.remove('invalid');
+        indicator.classList.add('valid');
+        indicator.innerHTML = '✓ Total: <span id="difficulty-total">' + total + '</span>%';
+        document.getElementById('next-step-3').disabled = false;
+    } else {
+        indicator.classList.remove('valid');
+        indicator.classList.add('invalid');
+        indicator.innerHTML = '✗ Total: <span id="difficulty-total">' + total + '</span>%';
+        document.getElementById('next-step-3').disabled = true;
+    }
+    
+    // Update question counts
+    const totalQuestions = parseInt(document.getElementById('num-questions-input').value) || 12;
+    
+    const easyCount = Math.round((easyVal / 100) * totalQuestions);
+    const mediumCount = Math.round((mediumVal / 100) * totalQuestions);
+    const hardCount = Math.round((hardVal / 100) * totalQuestions);
+    
+    document.getElementById('difficulty-easy-count').textContent = easyCount;
+    document.getElementById('difficulty-medium-count').textContent = mediumCount;
+    document.getElementById('difficulty-hard-count').textContent = hardCount;
+}
+
+// ============================================
+// BLOOM DISTRIBUTION
+// ============================================
+
+function updateBloomDistribution() {
+    const rememberVal = parseInt(document.getElementById('bloom-remember').value) || 0;
+    const understandVal = parseInt(document.getElementById('bloom-understand').value) || 0;
+    const applyVal = parseInt(document.getElementById('bloom-apply').value) || 0;
+    const analyzeVal = parseInt(document.getElementById('bloom-analyze').value) || 0;
+    const evaluateVal = parseInt(document.getElementById('bloom-evaluate').value) || 0;
+    const createVal = parseInt(document.getElementById('bloom-create').value) || 0;
+    
+    const total = rememberVal + understandVal + applyVal + analyzeVal + evaluateVal + createVal;
+    
+    document.getElementById('bloom-total').textContent = total;
+    const indicator = document.getElementById('bloom-indicator');
+    
+    if (total === 100) {
+        indicator.classList.remove('invalid');
+        indicator.classList.add('valid');
+        indicator.innerHTML = '✓ Total: <span id="bloom-total">' + total + '</span>%';
+        document.getElementById('next-step-4').disabled = false;
+    } else {
+        indicator.classList.remove('valid');
+        indicator.classList.add('invalid');
+        indicator.innerHTML = '✗ Total: <span id="bloom-total">' + total + '</span>%';
+        document.getElementById('next-step-4').disabled = true;
+    }
+}
+
+// ============================================
+// REVIEW GENERATION
+// ============================================
+
+function generateReview() {
+    const selectedWeeks = Array.from(weekCheckboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value)
+        .join(', ');
+    
+    const mcq = parseInt(document.getElementById('num-mcq').value) || 0;
+    const open = parseInt(document.getElementById('num-open').value) || 0;
+    const total = mcq + open;
+    
+    const easyVal = parseInt(document.getElementById('difficulty-easy').value) || 0;
+    const mediumVal = parseInt(document.getElementById('difficulty-medium').value) || 0;
+    const hardVal = parseInt(document.getElementById('difficulty-hard').value) || 0;
+    
+    const rememberVal = parseInt(document.getElementById('bloom-remember').value) || 0;
+    const understandVal = parseInt(document.getElementById('bloom-understand').value) || 0;
+    const applyVal = parseInt(document.getElementById('bloom-apply').value) || 0;
+    const analyzeVal = parseInt(document.getElementById('bloom-analyze').value) || 0;
+    const evaluateVal = parseInt(document.getElementById('bloom-evaluate').value) || 0;
+    const createVal = parseInt(document.getElementById('bloom-create').value) || 0;
+    
+    const reviewHTML = `
+        <div class="review-item">
+            <div class="review-label">Selected Weeks</div>
+            <div class="review-value">${selectedWeeks || 'None'}</div>
+        </div>
+        <div class="review-item">
+            <div class="review-label">Total Questions</div>
+            <div class="review-value">${total}</div>
+        </div>
+        <div class="review-item">
+            <div class="review-label">Question Types</div>
+            <div class="review-value">${mcq} MCQ + ${open} Open-Ended</div>
+        </div>
+        <div class="review-item">
+            <div class="review-label">Difficulty</div>
+            <div class="review-value">
+                <span style="display: block;">Easy: ${easyVal}%</span>
+                <span style="display: block;">Medium: ${mediumVal}%</span>
+                <span style="display: block;">Hard: ${hardVal}%</span>
+            </div>
+        </div>
+        <div class="review-item">
+            <div class="review-label">Bloom Levels</div>
+            <div class="review-value">
+                <span style="display: block; font-size: 0.9rem;">Remember: ${rememberVal}% | Understand: ${understandVal}%</span>
+                <span style="display: block; font-size: 0.9rem;">Apply: ${applyVal}% | Analyze: ${analyzeVal}%</span>
+                <span style="display: block; font-size: 0.9rem;">Evaluate: ${evaluateVal}% | Create: ${createVal}%</span>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('review-summary').innerHTML = reviewHTML;
+}
+
+// ============================================
+// FORM SUBMISSION
+// ============================================
+
+document.getElementById('quiz-form').addEventListener('submit', function(e) {
+    const btn = document.getElementById('generate-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating...';
+});
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+updateWeekSelection();
+updateTotalQuestions();
+</script>
+{% endblock %}

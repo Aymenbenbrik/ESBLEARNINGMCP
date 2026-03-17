@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <title>Analyse de l'examen - Semaine {{ week_num }}</title>
+</head>
+<body>
+    <h1>Analyse de l'examen - {{ course.title }} - Semaine {{ week_num }}</h1>
+    <p>Date de génération : {{ now()|date("d/m/Y") }}</p>
+
+    <div class="section">
+        <h2>1. Objectifs et CLOs couverts jusqu'à la semaine {{ week_num }}</h2>
+        <ul>
+            {% for clo in covered_clos %}
+                <li>{{ clo }}</li>
+            {% else %}
+                <li>Aucun CLO défini pour cette période.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>2. Analyse des questions de l'examen</h2>
+        <p>Total de questions extraites : {{ total_questions }}</p>
+
+        <h3>Répartition par CLO</h3>
+        <table>
+            <thead><tr><th>CLO</th><th>Pourcentage (%)</th></tr></thead>
+            <tbody>
+                {% for clo, pct in clo_percentages.items() %}
+                <tr><td>{{ clo }}</td><td>{{ pct }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h3>Répartition par niveau de Bloom</h3>
+        <table>
+            <thead><tr><th>Niveau</th><th>Pourcentage (%)</th></tr></thead>
+            <tbody>
+                {% for level, pct in bloom_percentages.items() %}
+                <tr><td>{{ level }}</td><td>{{ pct }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if clo_not_covered %}
+        <p class="highlight">Attention : Les CLO suivants sont présents dans l'examen mais n'ont pas encore été couverts dans les semaines précédentes :</p>
+        <ul>
+            {% for clo in clo_not_covered %}
+                <li>{{ clo }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if clo_missing %}
+        <p class="highlight">Attention : Les CLO suivants ont été couverts dans les semaines précédentes mais ne sont pas présents dans l'examen :</p>
+        <ul>
+            {% for clo in clo_missing %}
+                <li>{{ clo }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>3. Évaluation de l'alignement et de l'équilibre</h2>
+        <p>Le rapport montre la couverture des CLOs et la distribution des niveaux de Bloom. Un bon examen doit :</p>
+        <ul>
+            <li>Couvrir les CLOs enseignés jusqu'à la semaine {{ week_num }} sans inclure de CLOs non encore abordés.</li>
+            <li>Présenter un équilibre entre les niveaux de Bloom, avec une proportion raisonnable de questions d'application, d'analyse et d'évaluation.</li>
+        </ul>
+        <p>Si des déséquilibres ou des lacunes sont détectés, il est recommandé d'ajuster la composition de l'examen.</p>
+    </div>
+
+    <div class="section">
+        <h2>4. Recommandations</h2>
+        <ul>
+            <li>Ajouter des questions sur les CLOs manquants pour assurer une couverture complète.</li>
+            <li>Réduire ou éliminer les questions sur des CLOs non encore enseignés.</li>
+            <li>Inclure davantage de questions aux niveaux supérieurs de Bloom (Analyser, Évaluer, Créer) pour renforcer la profondeur cognitive.</li>
+            <li>Varier les types de questions (QCM, questions ouvertes, études de cas) pour diversifier l’évaluation.</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>5. Annexes : Questions extraites</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Question</th>
+                    <th>CLO(s)</th>
+                    <th>Niveau Bloom</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in questions %}
+                <tr>
+                    <td>{{ q['Question#'] }}</td>
+                    <td>{{ q['Text'] }}</td>
+                    <td>{{ q['CLO#'] }}</td>
+                    <td>{{ q['Bloom_Level'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

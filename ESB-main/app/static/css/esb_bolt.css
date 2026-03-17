@@ -1,0 +1,126 @@
+/*
+  Bolt AI (Tailwind) inspired theme for the Flask/Bootstrap project.
+  Goal: keep Bootstrap, but make it look like the clean ESB/Bolt UI:
+  - light background
+  - soft borders
+  - subtle shadows
+  - consistent radius
+  - ...
+*/
+
+:root {
+  --esb-radius: 14px;
+  --esb-radius-sm: 10px;
+  --esb-shadow: 0 6px 24px rgba(17, 24, 39, 0.06);
+  --esb-shadow-sm: 0 4px 12px rgba(17, 24, 39, 0.05);
+  --esb-surface: #ffffff;
+  --esb-bg: #f8fafc;
+  --esb-line: #e5e7eb;
+  --esb-ink: #111827;
+  --esb-muted: #6b7280;
+  --esb-red: #d4181f;
+}
+
+/* Sidebar collapse */
+.esb-app.esb-collapsed .esb-sidebar { width: 88px; }
+.esb-app.esb-collapsed .esb-brand div { display: none; }
+.esb-app.esb-collapsed .esb-brand { justify-content: center; }
+.esb-app.esb-collapsed .esb-nav .nav-link span { display: none; }
+.esb-app.esb-collapsed .esb-nav .nav-link { justify-content: center; }
+.esb-app.esb-collapsed .esb-nav .nav-link i { margin: 0; }
+
+/* Cards */
+.card {
+  border: 1px solid var(--esb-line) !important;
+  border-radius: var(--esb-radius) !important;
+  box-shadow: var(--esb-shadow-sm) !important;
+  overflow: hidden;
+}
+.card .card-header {
+  background: var(--esb-surface) !important;
+  border-bottom: 1px solid var(--esb-line) !important;
+}
+.card .card-header.bg-danger {
+  background: linear-gradient(90deg, rgba(212,24,31,0.10), rgba(212,24,31,0.03)) !important;
+  color: var(--esb-ink) !important;
+}
+.card-title { font-weight: 800; }
+
+/* Buttons */
+.btn {
+  border-radius: 12px !important;
+}
+.btn-danger, .btn-esb {
+  background: var(--esb-red) !important;
+  border-color: var(--esb-red) !important;
+}
+.btn-danger:hover, .btn-esb:hover {
+  filter: brightness(0.92);
+}
+.btn-outline-secondary {
+  border-color: var(--esb-line) !important;
+  color: var(--esb-ink) !important;
+}
+.btn-outline-secondary:hover {
+  background: rgba(17,24,39,0.04) !important;
+}
+
+/* Tables */
+.table {
+  --bs-table-bg: transparent;
+}
+.table thead th {
+  color: var(--esb-muted);
+  font-weight: 700;
+  border-bottom: 1px solid var(--esb-line) !important;
+}
+.table tbody td {
+  border-color: var(--esb-line) !important;
+}
+
+/* Tabs */
+.nav-tabs {
+  border-bottom: 1px solid var(--esb-line) !important;
+}
+.nav-tabs .nav-link {
+  border: none !important;
+  border-radius: 12px 12px 0 0 !important;
+  color: var(--esb-muted);
+  font-weight: 700;
+}
+.nav-tabs .nav-link.active {
+  color: var(--esb-ink) !important;
+  background: var(--esb-surface) !important;
+  box-shadow: var(--esb-shadow-sm);
+}
+
+/* Badges */
+.badge {
+  border-radius: 999px !important;
+  padding: .45em .7em !important;
+  font-weight: 700;
+}
+.badge.bg-danger {
+  background: rgba(212,24,31,0.12) !important;
+  color: var(--esb-red) !important;
+}
+
+/* Alerts */
+.alert {
+  border-radius: var(--esb-radius) !important;
+  border: 1px solid var(--esb-line);
+  box-shadow: var(--esb-shadow-sm);
+}
+
+/* Forms */
+.form-control, .form-select {
+  border-radius: 12px !important;
+  border-color: var(--esb-line) !important;
+}
+.form-control:focus, .form-select:focus {
+  box-shadow: 0 0 0 .2rem rgba(212,24,31,0.12) !important;
+  border-color: rgba(212,24,31,0.35) !important;
+}
+
+/* Headings */
+.esb-heading { letter-spacing: -0.01em; }

@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard étudiant{% endblock %}
+
+{% block heading %}
+  {% if viewer_is_teacher %}
+    Dashboard — {{ student.username }}
+  {% else %}
+    Mon Dashboard
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <div class="text-muted small">Étudiant</div>
+      <div class="fw-semibold">
+        {{ student.username }}
+        <span class="text-muted">•</span>
+        {{ student.email }}
+        {% if student.classe %}
+          <span class="badge bg-secondary ms-1">Classe: {{ student.classe.name }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      {% if viewer_is_teacher %}
+        <a class="btn btn-outline-secondary" href="{{ url_for('auth.manage_students') }}">Retour étudiants</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('insights.student_insights', student_id=student.id) }}">Vue Insights (détaillée)</a>
+      {% else %}
+        <a class="btn btn-outline-secondary" href="{{ url_for('courses.index') }}">Mes cours</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-3">
+      <div class="card">
+        <div class="card-body bolt-kpi">
+          <div class="bolt-kpi-label">Moyenne (quiz)</div>
+          <div class="bolt-kpi-value">{{ avg_score }}%</div>
+          <div class="bolt-kpi-sub">sur {{ completed_quiz_count }} quiz terminés</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-3">
+      <div class="card">
+        <div class="card-body bolt-kpi">
+          <div class="bolt-kpi-label">Questions répondues</div>
+          <div class="bolt-kpi-value">{{ total_questions }}</div>
+          <div class="bolt-kpi-sub">toutes tentatives</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-3">
+      <div class="card">
+        <div class="card-body bolt-kpi">
+          <div class="bolt-kpi-label">Modules suivis</div>
+          <div class="bolt-kpi-value">{{ enrollments|length }}</div>
+          <div class="bolt-kpi-sub">inscrits</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-3">
+      <div class="card">
+        <div class="card-body bolt-kpi">
+          <div class="bolt-kpi-label">Recommandation rapide</div>
+          {% if bloom_stats and (bloom_stats|length) %}
+            {% set weakest = (bloom_stats|sort(attribute='success_rate'))[0] %}
+            <div class="fw-semibold">Focus: {{ weakest.name }}</div>
+            <div class="bolt-kpi-sub">Taux de réussite {{ weakest.success_rate }}%</div>
+          {% else %}
+            <div class="bolt-kpi-sub">Commence un quiz pour générer des stats.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Progression par module</h5>
+            <span class="text-muted small">Quiz terminés / docs</span>
+          </div>
+          {% if courses_summary %}
+            <div class="table-responsive mt-3">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th class="text-end">Docs</th>
+                    <th class="text-end">Quiz</th>
+                    <th class="text-end">Moyenne</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in courses_summary %}
+                    <tr>
+                      <td>
+                        <a href="{{ url_for('courses.view', course_id=row.course.id) }}" class="text-decoration-none">
+                          {{ row.course.title }}
+                        </a>
+                        {% if row.course.teacher %}
+                          <div class="text-muted small">Enseignant: {{ row.course.teacher.username }}</div>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">{{ row.documents }}</td>
+                      <td class="text-end">{{ row.completed_quizzes }}</td>
+                      <td class="text-end">
+                        {% if row.avg_score %}
+                          <span class="badge bg-primary">{{ row.avg_score }}%</span>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0 mt-2">Aucun module inscrit.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Derniers quiz</h5>
+            <span class="text-muted small">Clique pour voir le résultat</span>
+          </div>
+          {% if recent_quizzes %}
+            <div class="list-group list-group-flush mt-2">
+              {% for q in recent_quizzes %}
+                {% set doc = q.document %}
+                <a class="list-group-item list-group-item-action" href="{{ url_for('quiz.results', quiz_id=q.id) }}">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-semibold">{{ doc.title if doc else 'Document' }}</div>
+                      <div class="text-muted small">
+                        {% if q.completed_at %}{{ q.completed_at.strftime('%b %d, %Y') }}{% endif %}
+                        {% if doc and doc.chapter %}
+                          • {{ doc.chapter.course.title }}
+                        {% elif doc and doc.course_id %}
+                          {% set c = doc.course %}
+                          {% if c %}• {{ c.title }}{% endif %}
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="text-end">
+                      {% if q.score is not none %}
+                        <div class="fw-bold">{{ '%.1f'|format(q.score) }}%</div>
+                      {% else %}
+                        <div class="text-muted">—</div>
+                      {% endif %}
+                      <div class="text-muted small">{{ q.num_questions }} Q</div>
+                    </div>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted mb-0 mt-2">Aucun quiz terminé pour l’instant.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Bloom (Taxonomie)</h5>
+          {% if bloom_stats %}
+            {% for s in bloom_stats %}
+              <div class="d-flex justify-content-between">
+                <span class="small">{{ s.name }}</span>
+                <span class="small fw-semibold">{{ s.success_rate }}%</span>
+              </div>
+              <div class="progress mb-2" style="height: 8px;">
+                <div class="progress-bar" role="progressbar" style="width: {{ s.success_rate }}%"></div>
+              </div>
+            {% endfor %}
+            <div class="text-muted small">But: viser ≥ 70% sur Appliquer/Analyser.</div>
+          {% else %}
+            <p class="text-muted mb-0">Pas encore de données Bloom.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Difficulté</h5>
+          {% if difficulty_stats %}
+            {% for s in difficulty_stats %}
+              <div class="d-flex justify-content-between">
+                <span class="small">{{ s.name }}</span>
+                <span class="small fw-semibold">{{ s.success_rate }}%</span>
+              </div>
+              <div class="progress mb-2" style="height: 8px;">
+                <div class="progress-bar" role="progressbar" style="width: {{ s.success_rate }}%"></div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted mb-0">Pas encore de données Difficulté.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">AAA (AA) / Acquis</h5>
+          {% if clo_stats %}
+            <div class="table-responsive" style="max-height: 360px; overflow:auto;">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>AAA (AA)</th>
+                    <th class="text-end">Succès</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for s in clo_stats %}
+                    <tr>
+                      <td>{{ s.name }}</td>
+                      <td class="text-end fw-semibold">{{ s.success_rate }}%</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">Pas encore de données AAA (AA).</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h5 class="card-title mb-0">Bloom — graphique</h5>
+            <span class="badge bg-light text-dark border">%</span>
+          </div>
+          <div class="mt-3" style="height:260px;"><canvas id="bloomChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h5 class="card-title mb-0">Difficulté — graphique</h5>
+            <span class="badge bg-light text-dark border">%</span>
+          </div>
+          <div class="mt-3" style="height:260px;"><canvas id="diffChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h5 class="card-title mb-0">AAA (AA) — top acquis</h5>
+            <span class="text-muted small">Top 12 par réussite</span>
+          </div>
+          <div class="mt-3" style="height:320px;"><canvas id="aaChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    (function(){
+      const bloom = {{ (bloom_stats or [])|tojson }};
+      const diff = {{ (difficulty_stats or [])|tojson }};
+      const clo = {{ (clo_stats or [])|tojson }};
+
+      function bar(elId, items){
+        const el = document.getElementById(elId);
+        if(!el) return;
+        const labels = (items||[]).map(x=>x.name);
+        const values = (items||[]).map(x=>Number(x.success_rate||0));
+        new Chart(el, {
+          type: 'bar',
+          data: { labels, datasets: [{ label: 'Succès', data: values, borderWidth: 1 }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+            plugins: { legend: { display: false } }
+          }
+        });
+      }
+
+      // Sort AA by success desc, keep top 12
+      const cloTop = (clo||[]).slice().sort((a,b)=>Number(b.success_rate||0)-Number(a.success_rate||0)).slice(0,12);
+
+      bar('bloomChart', bloom);
+      bar('diffChart', diff);
+      bar('aaChart', cloTop);
+    })();
+  </script>
+{% endblock %}

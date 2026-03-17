@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Document{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('chapters.view', chapter_id=chapter.id) }}" class="text-decoration-none text-danger">{{ chapter.title }}</a></li>
+            <li class="breadcrumb-item active">Upload Document</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Upload Document to {{ chapter.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-file-upload me-2"></i>Upload Document
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" action="{{ url_for('chapters.upload_document', chapter_id=chapter.id) }}">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.title.label(class="form-label") }}
+                        {{ form.title(class="form-control", placeholder="Enter document title") }}
+                        {% for error in form.title.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-4">
+                        {{ form.file.label(class="form-label") }}
+                        <div class="input-group mb-3">
+                            {{ form.file(class="form-control", id="fileInput") }}
+                            <label class="input-group-text" for="fileInput">Browse</label>
+                        </div>
+                        <small class="form-text text-muted">Allowed file types: PDF, DOC, DOCX, PPT, PPTX</small>
+                        {% for error in form.file.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="alert alert-light" role="alert">
+                        <h5 class="alert-heading"><i class="fas fa-lightbulb me-2 text-warning"></i>AI Summary</h5>
+                        <p>After uploading, our AI will automatically generate a summary of the document content. This may take a few moments.</p>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('chapters.view', chapter_id=chapter.id) }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Chapter
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-upload me-2"></i>Upload Document
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Display selected filename
+        const fileInput = document.getElementById('fileInput');
+        
+        fileInput.addEventListener('change', function() {
+            const fileName = this.files[0].name;
+            const fileLabel = this.nextElementSibling;
+            
+            if (fileName) {
+                fileLabel.textContent = fileName;
+            } else {
+                fileLabel.textContent = 'Browse';
+            }
+        });
+    });
+</script>
+{% endblock %}

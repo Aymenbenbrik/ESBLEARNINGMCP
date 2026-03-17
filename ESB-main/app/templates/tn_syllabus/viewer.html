@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} — TN Syllabus{% endblock %}
+
+{% block heading %}TN Syllabus — {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+  .chip{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 10px;border-radius:999px;
+    border:1px solid rgba(0,0,0,.08);
+    background:#fff;
+    font-size:.88rem;
+  }
+  .chip b{background:var(--esb-red);color:#fff;padding:2px 8px;border-radius:999px;font-size:.82rem;}
+  .tab-pane .card{border-radius:16px;}
+  .aa-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  @media(max-width: 992px){.aa-grid{grid-template-columns:1fr;}}
+  .aa-item{border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:12px;background:#fff;}
+  .aa-item .code{display:inline-flex;align-items:center;gap:8px;background:var(--esb-red);color:#fff;font-weight:800;padding:6px 10px;border-radius:999px;}
+  .aa-item .desc{margin-top:8px;color:var(--esb-ink);line-height:1.45;}
+</style>
+{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <div class="text-muted small">Syllabus TN extrait (base de données)</div>
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        <span class="chip"><b>AAA</b>{{ aaa|length }}</span>
+        <span class="chip"><b>AAP</b>{{ aap_selected|length }}</span>
+        <span class="chip"><b>Ch</b>{{ chapters|length }}</span>
+        {% if syllabus and syllabus.updated_at %}
+          <span class="chip"><b>MAJ</b>{{ syllabus.updated_at.strftime('%d/%m/%Y') }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('tn_syllabus.course_home', course_id=course.id) }}">Retour</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('tn_syllabus.index') }}">Tous les syllabi</a>
+    </div>
+  </div>
+
+  <ul class="nav nav-pills gap-2 mb-3" id="tnTabs" role="tablist">
+    <li class="nav-item" role="presentation"><button class="nav-link active" id="tab-admin" data-bs-toggle="pill" data-bs-target="#pane-admin" type="button" role="tab">Administratif</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" id="tab-aaa" data-bs-toggle="pill" data-bs-target="#pane-aaa" type="button" role="tab">AAA (AA)</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" id="tab-aap" data-bs-toggle="pill" data-bs-target="#pane-aap" type="button" role="tab">AAP</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" id="tab-plan" data-bs-toggle="pill" data-bs-target="#pane-plan" type="button" role="tab">Plan (chapitres)</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" id="tab-eval" data-bs-toggle="pill" data-bs-target="#pane-eval" type="button" role="tab">Évaluation</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" id="tab-bib" data-bs-toggle="pill" data-bs-target="#pane-bib" type="button" role="tab">Bibliographie</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" id="tab-rec" data-bs-toggle="pill" data-bs-target="#pane-rec" type="button" role="tab">Recommandations</button></li>
+  </ul>
+
+  <div class="tab-content" id="tnTabsContent">
+    <!-- ADMIN -->
+    <div class="tab-pane fade show active" id="pane-admin" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          {% if admin %}
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="fw-semibold mb-2">Identité module</div>
+                <div class="text-muted small">Module, codes UE/ECUE, crédits, coefficient…</div>
+                <hr>
+                <div class="row g-2 small">
+                  <div class="col-5 text-muted">Module</div><div class="col-7 fw-semibold">{{ admin.module_name or '—' }}</div>
+                  <div class="col-5 text-muted">Code UE</div><div class="col-7">{{ admin.code_ue or '—' }}</div>
+                  <div class="col-5 text-muted">Code ECUE</div><div class="col-7">{{ admin.code_ecue or '—' }}</div>
+                  <div class="col-5 text-muted">Crédits</div><div class="col-7">{{ admin.credits or '—' }}</div>
+                  <div class="col-5 text-muted">Coefficient</div><div class="col-7">{{ admin.coefficient or '—' }}</div>
+                  <div class="col-5 text-muted">Présentiel</div><div class="col-7">{{ admin.volume_presentiel or '—' }}</div>
+                  <div class="col-5 text-muted">Personnel</div><div class="col-7">{{ admin.volume_personnel or '—' }}</div>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="fw-semibold mb-2">Contexte</div>
+                <div class="text-muted small">Filière, département, option, responsables…</div>
+                <hr>
+                <div class="row g-2 small">
+                  <div class="col-5 text-muted">Domaine</div><div class="col-7">{{ admin.field or '—' }}</div>
+                  <div class="col-5 text-muted">Département</div><div class="col-7">{{ admin.department or '—' }}</div>
+                  <div class="col-5 text-muted">Option</div><div class="col-7">{{ admin.option or '—' }}</div>
+                  <div class="col-5 text-muted">Responsable</div><div class="col-7">{{ admin.responsible or '—' }}</div>
+                </div>
+
+                {% if admin.teachers %}
+                  <hr>
+                  <div class="fw-semibold mb-2">Enseignants</div>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for t in admin.teachers %}
+                      <span class="chip">{{ t }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          {% else %}
+            <div class="alert alert-warning mb-0">Aucune information administrative extraite.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- AAA -->
+    <div class="tab-pane fade" id="pane-aaa" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <div class="fw-semibold">AAA (AA) — numéros + description</div>
+              <div class="text-muted small">Utilisé pour l’analyse des quiz / examens TN.</div>
+            </div>
+          </div>
+          <hr>
+          {% if aaa %}
+            <div class="aa-grid">
+              {% for it in aaa %}
+                <div class="aa-item">
+                  <div class="code">AA{{ it.number }}</div>
+                  <div class="desc">{{ it.description }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">Aucun AAA détecté.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- AAP -->
+    <div class="tab-pane fade" id="pane-aap" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          <div class="fw-semibold">AAP (programme)</div>
+          <div class="text-muted small">Si l’extraction AAP n’est pas fiable, ces descriptions restent des placeholders à remplacer par le référentiel ESB.</div>
+          <hr>
+
+          {% if aap_selected %}
+            <div class="fw-semibold mb-2">AAP sélectionnés</div>
+            <div class="d-flex flex-column gap-2">
+              {% for a in aap_selected %}
+                <div class="aa-item">
+                  <div class="code">AAP{{ a.number }}</div>
+                  <div class="desc">{{ a.description }}</div>
+                </div>
+              {% endfor %}
+            </div>
+            <hr>
+          {% endif %}
+
+          {% if aap_all %}
+            <div class="fw-semibold mb-2">Tous les AAP détectés</div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>AAP</th>
+                    <th>Description</th>
+                    <th class="text-center">Sélectionné</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for a in aap_all %}
+                    <tr>
+                      <td class="fw-semibold">AAP{{ a.number }}</td>
+                      <td class="text-muted">{{ a.description }}</td>
+                      <td class="text-center">
+                        {% if a.selected %}<span class="badge bg-danger">Oui</span>{% else %}<span class="badge bg-secondary">Non</span>{% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">Aucun AAP détecté.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAN -->
+    <div class="tab-pane fade" id="pane-plan" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          <div class="fw-semibold">Plan du cours (chapitres / sections)</div>
+          <div class="text-muted small">Chaque chapitre/section peut être lié à des AAA (AA).</div>
+          <hr>
+          {% if chapters %}
+            <div class="accordion" id="chapAccordion">
+              {% for ch in chapters %}
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="h{{ ch.index }}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c{{ ch.index }}">
+                      <span class="fw-semibold me-2">{{ ch.index }}.</span> {{ ch.title }}
+                    </button>
+                  </h2>
+                  <div id="c{{ ch.index }}" class="accordion-collapse collapse" data-bs-parent="#chapAccordion">
+                    <div class="accordion-body">
+                      {% if ch.aa %}
+                        <div class="fw-semibold mb-2">AAA du chapitre</div>
+                        <div class="d-flex flex-wrap gap-2">
+                          {% for a in ch.aa %}
+                            <span class="chip"><b>AA{{ a.number }}</b>{{ a.description }}</span>
+                          {% endfor %}
+                        </div>
+                        <hr>
+                      {% endif %}
+
+                      {% if ch.sections %}
+                        <div class="fw-semibold mb-2">Sections</div>
+                        <div class="d-flex flex-column gap-2">
+                          {% for s in ch.sections %}
+                            <div class="aa-item">
+                              <div class="d-flex justify-content-between flex-wrap gap-2">
+                                <div class="fw-semibold">{{ s.index }} — {{ s.title }}</div>
+                              </div>
+                              {% if s.aa %}
+                                <div class="d-flex flex-wrap gap-2 mt-2">
+                                  {% for a in s.aa %}
+                                    <span class="chip"><b>AA{{ a.number }}</b>{{ a.description }}</span>
+                                  {% endfor %}
+                                </div>
+                              {% else %}
+                                <div class="text-muted small mt-2">Aucun AAA associé à cette section.</div>
+                              {% endif %}
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">Aucun chapitre détecté.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- EVAL -->
+    <div class="tab-pane fade" id="pane-eval" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          <div class="fw-semibold">Évaluation</div>
+          <div class="text-muted small">Méthodes, critères, mesures, et formule finale (si détectée).</div>
+          <hr>
+          {% if evaluation %}
+            <div class="row g-3">
+              <div class="col-lg-4">
+                <div class="fw-semibold mb-1">Méthodes</div>
+                {% if evaluation.methods %}
+                  <ul class="mb-0 text-muted">
+                    {% for it in evaluation.methods %}<li>{{ it }}</li>{% endfor %}
+                  </ul>
+                {% else %}
+                  <div class="text-muted">—</div>
+                {% endif %}
+              </div>
+              <div class="col-lg-4">
+                <div class="fw-semibold mb-1">Critères</div>
+                {% if evaluation.criteria %}
+                  <ul class="mb-0 text-muted">
+                    {% for it in evaluation.criteria %}<li>{{ it }}</li>{% endfor %}
+                  </ul>
+                {% else %}
+                  <div class="text-muted">—</div>
+                {% endif %}
+              </div>
+              <div class="col-lg-4">
+                <div class="fw-semibold mb-1">Mesures</div>
+                {% if evaluation.measures %}
+                  <ul class="mb-0 text-muted">
+                    {% for it in evaluation.measures %}<li>{{ it }}</li>{% endfor %}
+                  </ul>
+                {% else %}
+                  <div class="text-muted">—</div>
+                {% endif %}
+              </div>
+            </div>
+            {% if evaluation.final_grade_formula %}
+              <hr>
+              <div class="fw-semibold mb-1">Formule finale</div>
+              <div class="text-muted">{{ evaluation.final_grade_formula }}</div>
+            {% endif %}
+          {% else %}
+            <div class="alert alert-info mb-0">Aucune rubrique évaluation détectée.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- BIB -->
+    <div class="tab-pane fade" id="pane-bib" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          <div class="fw-semibold">Bibliographie</div>
+          <div class="text-muted small">Liste des références détectées.</div>
+          <hr>
+          {% if bibliography %}
+            <ol class="mb-0">
+              {% for b in bibliography %}
+                <li class="mb-1">{{ b }}</li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <div class="alert alert-info mb-0">Aucune bibliographie détectée.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- RECS -->
+    <div class="tab-pane fade" id="pane-rec" role="tabpanel">
+      <div class="card">
+        <div class="card-body">
+          <div class="fw-semibold">Recommandations</div>
+          <div class="text-muted small">Automatique (heuristiques) pour améliorer la qualité du syllabus et du site.</div>
+          <hr>
+          {% if recommendations %}
+            <ul class="mb-0">
+              {% for r in recommendations %}<li>{{ r }}</li>{% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">—</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

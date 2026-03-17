@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if chapter %}Edit Chapter{% else %}Add Chapter{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+            <li class="breadcrumb-item active">
+                {% if chapter %}Edit Chapter{% else %}Add Chapter{% endif %}
+            </li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}
+{% if chapter %}Edit Chapter: {{ chapter.title }}{% else %}Add New Chapter to {{ course.title }}{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-book-medical me-2"></i>
+                {% if chapter %}Chapter Details{% else %}New Chapter{% endif %}
+            </div>
+            <div class="card-body">
+                <form method="POST" {% if chapter %}action="{{ url_for('chapters.edit', chapter_id=chapter.id) }}"{% else %}action="{{ url_for('chapters.create', course_id=course.id) }}"{% endif %}>
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.title.label(class="form-label") }}
+                        {{ form.title(class="form-control", placeholder="Enter chapter title") }}
+                        {% for error in form.title.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.order.label(class="form-label") }}
+                        {{ form.order(class="form-control", type="number", min=1) }}
+                        <small class="form-text text-muted">The order in which this chapter appears in the course.</small>
+                        {% for error in form.order.errors %}
+                        <span class="text-danger">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('courses.view', course_id=course.id) }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Course
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-save me-2"></i>
+                            {% if chapter %}Update Chapter{% else %}Save Chapter{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

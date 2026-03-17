@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ program.name }}</h1>
+      {% if program.description %}
+      <div class="text-muted">{{ program.description }}</div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('superuser.list_programs') }}">Back</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('superuser.edit_program', program_id=program.id) }}">Edit</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card bolt-card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h5 mb-0">Courses (Modules)</h2>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Teacher</th>
+                  <th class="text-muted">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in program_courses %}
+                <tr>
+                  <td>{{ c.title }}</td>
+                  <td>{{ c.teacher.username if c.teacher else '-' }}</td>
+                  <td class="text-muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="text-center text-muted py-4">No courses in this program yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <hr>
+
+          <form method="post" action="{{ url_for('superuser.program_create_course', program_id=program.id) }}" class="row g-2">
+            <div class="col-md-5">
+              <input class="form-control" name="title" placeholder="Course title" required>
+            </div>
+            <div class="col-md-4">
+              <select class="form-select" name="teacher_id" required>
+                <option value="">Select teacher...</option>
+                {% for t in teachers %}
+                  <option value="{{ t.id }}">{{ t.username }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <button class="btn btn-primary w-100" type="submit"><i class="fas fa-plus me-2"></i>Add</button>
+            </div>
+            <div class="col-12">
+              <textarea class="form-control" name="description" rows="2" placeholder="Description (optional)"></textarea>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card bolt-card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h5 mb-0">Classes</h2>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Year</th>
+                  <th class="text-end" style="width: 120px;">Students</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for cl in program_classes %}
+                <tr>
+                  <td>{{ cl.name }}</td>
+                  <td class="text-muted">{{ cl.academic_year or '-' }}</td>
+                  <td class="text-end">
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('superuser.class_students', class_id=cl.id) }}">Assign</a>
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="text-center text-muted py-4">No classes yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <hr>
+
+          <form method="post" action="{{ url_for('superuser.program_create_class', program_id=program.id) }}" class="row g-2">
+            <div class="col-md-7">
+              <input class="form-control" name="name" placeholder="Class name" required>
+            </div>
+            <div class="col-md-5">
+              <input class="form-control" name="academic_year" placeholder="Academic year (e.g., 2025-2026)">
+            </div>
+            <div class="col-12">
+              <textarea class="form-control" name="description" rows="2" placeholder="Description (optional)"></textarea>
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary w-100" type="submit"><i class="fas fa-plus me-2"></i>Create class</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}TN Quiz review{% endblock %}
+
+{% block content %}
+<style>
+  .qr-wrap{max-width:1100px;margin:0 auto;}
+  .qr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;}
+  .qr-card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:14px;box-shadow:0 8px 22px rgba(0,0,0,.04);}
+  .qr-card .hd{padding:.9rem 1rem;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+  .qr-card .bd{padding:1rem;}
+  .qbox{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:1rem;margin-bottom:.8rem;}
+  .pill{border:1px solid rgba(0,0,0,.12);background:#f8f9fa;border-radius:999px;padding:.2rem .55rem;font-size:.85rem;}
+  .muted{color:#6c757d;}
+  .katex-preview{white-space:pre-wrap;background:#f8f9fa;border:1px dashed rgba(0,0,0,.15);border-radius:10px;padding:.5rem .75rem;}
+  .katex-note{font-size:.85rem;color:#6c757d;}
+</style>
+
+<div class="qr-wrap">
+  <div class="qr-head">
+    <div>
+      <div class="h4 mb-0">Vérifier le quiz (TN)</div>
+      <div class="muted">Tu peux éditer les questions avant d'approuver.</div>
+      {% if selection_rows and selection_rows|length %}
+        <div class="mt-2 d-flex flex-wrap gap-2">
+          {% for r in selection_rows[:12] %}
+            <span class="pill">{{ r.label }} • {{ r.percent }}%</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('syllabus.tn_quiz_setup', course_id=course.id) }}">
+        <i class="fas fa-arrow-left me-1"></i>Retour
+      </a>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('syllabus.tn_approve_quiz', course_id=course.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="num_questions" value="{{ num_questions }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="selected_chapters" value="{{ (selected_chapter_orders|join(',')) if selected_chapter_orders else '' }}">
+
+    <div class="qr-card">
+      <div class="hd">
+        <div class="fw-semibold"><i class="fas fa-list-check me-2 text-danger"></i>{{ num_questions }} questions</div>
+        <button type="submit" class="btn btn-danger">
+          <i class="fas fa-check me-1"></i>Approuver & sauvegarder
+        </button>
+      </div>
+      <div class="bd">
+
+        {% for question in questions %}
+          <div class="qbox">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div class="fw-semibold">Question {{ loop.index }}</div>
+              <div class="d-flex flex-wrap gap-2">
+                <span class="pill">{{ (question.question_type or 'mcq')|upper }}</span>
+                <span class="pill">{{ question.clo or 'AA 1' }}</span>
+                <span class="pill">{{ (question.bloom_level or 'understand')|capitalize }}</span>
+                <span class="pill">{{ (question.difficulty_level or 'medium')|capitalize }}</span>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label class="form-label fw-semibold">Énoncé</label>
+              <div class="katex-note mb-1">Aperçu (LaTeX: utilise <code>$...$</code> ou <code>$$...$$</code>)</div>
+              <div class="katex-preview mb-2" id="pv_q_{{ loop.index }}"></div>
+              <textarea class="form-control katex-source" data-preview-id="pv_q_{{ loop.index }}" name="question_{{ loop.index }}" rows="3">{{ question.question }}</textarea>
+            </div>
+
+            <input type="hidden" name="question_type_{{ loop.index }}" value="{{ question.question_type or 'mcq' }}">
+            <input type="hidden" name="clo_{{ loop.index }}" value="{{ question.clo or 'AA 1' }}">
+            <input type="hidden" name="bloom_level_{{ loop.index }}" value="{{ question.bloom_level or 'understand' }}">
+            <input type="hidden" name="difficulty_level_{{ loop.index }}" value="{{ question.difficulty_level or 'medium' }}">
+            <input type="hidden" name="source_id_{{ loop.index }}" value="{{ question.source_id or 'SRC1' }}">
+            <input type="hidden" name="source_page_{{ loop.index }}" value="{{ question.source_page or 'Section 1' }}">
+            <input type="hidden" name="source_text_{{ loop.index }}" value="{{ question.source_text or '' }}">
+
+            {% if (question.question_type or 'mcq') == 'mcq' %}
+              <div class="row g-2 mt-2">
+                <div class="col-md-4">
+                  <label class="form-label small">Choix A</label>
+                  <div class="katex-preview mb-1" id="pv_a_{{ loop.index }}"></div>
+                  <input class="form-control katex-source" data-preview-id="pv_a_{{ loop.index }}" name="choice_a_{{ loop.index }}" value="{{ question.choice_a }}">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small">Choix B</label>
+                  <div class="katex-preview mb-1" id="pv_b_{{ loop.index }}"></div>
+                  <input class="form-control katex-source" data-preview-id="pv_b_{{ loop.index }}" name="choice_b_{{ loop.index }}" value="{{ question.choice_b }}">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small">Choix C</label>
+                  <div class="katex-preview mb-1" id="pv_c_{{ loop.index }}"></div>
+                  <input class="form-control katex-source" data-preview-id="pv_c_{{ loop.index }}" name="choice_c_{{ loop.index }}" value="{{ question.choice_c }}">
+                </div>
+                <div class="col-md-3 mt-2">
+                  <label class="form-label small">Réponse</label>
+                  <select class="form-select" name="correct_choice_{{ loop.index }}">
+                    {% set cc = (question.correct_choice or 'A') %}
+                    <option value="A" {% if cc == 'A' %}selected{% endif %}>A</option>
+                    <option value="B" {% if cc == 'B' %}selected{% endif %}>B</option>
+                    <option value="C" {% if cc == 'C' %}selected{% endif %}>C</option>
+                  </select>
+                </div>
+              </div>
+            {% else %}
+              <div class="mt-2">
+                <label class="form-label small">Model answer</label>
+                <div class="katex-preview mb-2" id="pv_ma_{{ loop.index }}"></div>
+                <textarea class="form-control katex-source" data-preview-id="pv_ma_{{ loop.index }}" name="model_answer_{{ loop.index }}" rows="3">{{ question.model_answer or '' }}</textarea>
+              </div>
+              <input type="hidden" name="open_ended_type_{{ loop.index }}" value="{{ question.open_ended_type or 'short_answer' }}">
+              <input type="hidden" name="evaluation_criteria_{{ loop.index }}" value="{% if question.evaluation_criteria %}{{ question.evaluation_criteria|join('\n') }}{% endif %}">
+              <input type="hidden" name="grading_rubric_{{ loop.index }}" value="{{ question.grading_rubric or '' }}">
+            {% endif %}
+
+            <div class="mt-2">
+              <label class="form-label small">Explication (optionnel)</label>
+              <div class="katex-preview mb-2" id="pv_expl_{{ loop.index }}"></div>
+              <textarea class="form-control katex-source" data-preview-id="pv_expl_{{ loop.index }}" name="explanation_{{ loop.index }}" rows="2">{{ question.explanation or '' }}</textarea>
+            </div>
+
+            {# Evidence / Source (file + chapter + excerpt) #}
+            {% set _src = (sources_map.get(question.source_id) if sources_map else None) %}
+            <details class="mt-3 source-details">
+              <summary class="small text-muted">Voir la source utilisée</summary>
+              <div class="source-box mt-2">
+                <div class="small"><strong>Fichier:</strong>
+                  {% if _src %}
+                    {{ _src.title or _src.file_name or question.source_id }}
+                  {% else %}
+                    {{ question.source_id or 'SRC1' }}
+                  {% endif %}
+                </div>
+                <div class="small"><strong>Chapitre/section:</strong> {{ question.source_page or '—' }}</div>
+                {% if question.source_text %}
+                  <div class="source-excerpt mt-2">{{ question.source_text }}</div>
+                {% else %}
+                  <div class="source-excerpt mt-2 text-muted">Aucun extrait disponible.</div>
+                {% endif %}
+              </div>
+            </details>
+          </div>
+        {% endfor %}
+
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Live KaTeX previews for editable fields (textareas/inputs)
+  function _sanitizeMathText(value) {
+    let v = value || '';
+
+    // Attempt to undo common mojibake when UTF-8 text was decoded as latin-1/cp1252 (browser-side).
+    // This is a best-effort helper; backend performs the same normalization before saving.
+    try {
+      if (/[ÃÂâÅ¿]/.test(v)) {
+        // Encode as latin1 bytes then decode as utf-8
+        const bytes = Uint8Array.from(v.split('').map(ch => ch.charCodeAt(0) & 0xFF));
+        const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        if (decoded && decoded.length && decoded.replace(/[ÃÂâÅ¿]/g,'').length >= v.replace(/[ÃÂâÅ¿]/g,'').length) {
+          v = decoded;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    // Fix common mojibake from PDF extraction: kÆ1 -> k=1
+    v = v.replace(/([A-Za-z])Æ(\d)/g, '$1=$2');
+    v = v.replace(/([A-Za-z])£(\d)/g, '$1=$2');
+
+    // Common mojibake for superscripts (e.g., k¿2 intended as k^2)
+    v = v.replace(/¿(\d+)/g, '^$1');
+
+    // Fix missing backslash for common LaTeX commands
+    v = v.replace(/(^|[^\\])rac\s*\{/g, '$1\\frac{');
+    v = v.replace(/(^|[^\\])frac\s*\{/g, '$1\\frac{');
+    v = v.replace(/(^|[^\\])ln\b/g, '$1\\ln');
+
+    // Convert "n X k=1" (sum) into LaTeX \sum_{k=1}^{n}
+    v = v.replace(/([A-Za-z0-9]+)\s*X\s*([A-Za-z])\s*=?\s*([A-Za-z0-9-]+)/g,
+      (match, up, variable, low) => `\\sum_{${variable}=${low}}^{${up}}`);
+
+    // Convert "n Y k=1" (product) into LaTeX \prod_{k=1}^{n}
+    v = v.replace(/([A-Za-z0-9]+)\s*Y\s*([A-Za-z])\s*=?\s*([A-Za-z0-9-]+)/g,
+      (match, up, variable, low) => `\\prod_{${variable}=${low}}^{${up}}`);
+
+    return v;
+  }
+
+  function _renderPreview(previewEl, value) {
+    if (!previewEl) return;
+    const cleaned = _sanitizeMathText(value);
+    previewEl.textContent = cleaned || '';
+    if (typeof renderMathInElement === 'function') {
+      renderMathInElement(previewEl, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false }
+        ],
+        throwOnError: false
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const sources = document.querySelectorAll('.katex-source[data-preview-id]');
+    sources.forEach((el) => {
+      const id = el.getAttribute('data-preview-id');
+      const pv = document.getElementById(id);
+      _renderPreview(pv, el.value);
+      el.addEventListener('input', () => _renderPreview(pv, el.value));
+    });
+  });
+</script>
+{% endblock %}

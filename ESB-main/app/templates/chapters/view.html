@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}{{ chapter.title }}{% endblock %}
+
+{% block styles %}
+<style>
+    .document-list {
+        list-style-type: none;
+        padding-left: 0;
+    }
+    
+    .document-item {
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        background-color: #f8f9fa;
+        border-radius: 0.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: background-color 0.2s ease;
+    }
+    
+    .document-item:hover {
+        background-color: #e9ecef;
+    }
+    
+    .document-icon {
+        font-size: 1.5rem;
+        margin-right: 1rem;
+    }
+    
+    .pdf-icon { color: #FF5722; }
+    .doc-icon { color: #2196F3; }
+    .ppt-icon { color: #FF9800; }
+    
+    .chapter-meta {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .summary-section {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid #ffc107;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></li>
+            <li class="breadcrumb-item active">{{ chapter.title }}</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block heading %}Chapter: {{ chapter.title }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="chapter-meta d-flex justify-content-between align-items-center">
+            <div>
+                <span class="badge bg-danger me-2">{{ chapter.order }}</span>
+                <span class="text-muted">Part of <a href="{{ url_for('courses.view', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a></span>
+            </div>
+            <div>
+                <span class="text-muted">Created on {{ chapter.created_at.strftime('%b %d, %Y') }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 text-md-end">
+        {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+        <div class="btn-group">
+            <a href="{{ url_for('chapters.upload_document', chapter_id=chapter.id) }}" class="btn btn-danger">
+                <i class="fas fa-upload me-2"></i>Upload Document
+            </a>
+            <button type="button" class="btn btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="visually-hidden">Toggle Dropdown</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <a href="{{ url_for('chapters.edit', chapter_id=chapter.id) }}" class="dropdown-item">
+                        <i class="fas fa-edit me-2"></i>Edit Chapter
+                    </a>
+                </li>
+                <li>
+                    <form action="{{ url_for('chapters.generate_chapter_summary', chapter_id=chapter.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="dropdown-item">
+                            <i class="fas fa-magic me-2"></i>Generate Summary
+                        </button>
+                    </form>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a href="#" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteChapterModal">
+                        <i class="fas fa-trash me-2"></i>Delete Chapter
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if tn_chapter and tn_chapter.sections and tn_chapter.sections|length %}
+<div 
+<!-- Question Bank generation (same setup as quiz, but non-noté + approval question par question) -->
+{% if current_user.is_teacher or current_user.is_superuser %}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <div class="fw-semibold"><i class="fas fa-database me-2"></i>Banque de questions — Générer pour ce chapitre</div>
+            <div class="text-muted small">
+              Même process que le quiz (MCQ + Open + Bloom + difficulté) mais <b>non noté</b>. Les questions sont <b>Pending</b> jusqu’à approbation.
+            </div>
+          </div>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('question_bank.index', course_id=course.id) }}">
+            <i class="fas fa-list me-1"></i>Ouvrir banque / filtres
+          </a>
+        </div>
+
+        <form class="row g-2 mt-3" method="post" action="{{ url_for('question_bank.generate') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="course_id" value="{{ course.id }}">
+          <input type="hidden" name="chapter_id" value="{{ chapter.id }}">
+
+          <div class="col-sm-3">
+            <label class="form-label small mb-1">MCQ</label>
+            <input type="number" class="form-control" name="num_mcq" value="8" min="0" max="50">
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label small mb-1">Open-ended</label>
+            <input type="number" class="form-control" name="num_open" value="4" min="0" max="50">
+          </div>
+                    <div class="col-sm-3 d-grid">
+            <label class="form-label small mb-1">&nbsp;</label>
+            <button class="btn btn-primary" type="submit">
+              <i class="fas fa-wand-magic-sparkles me-1"></i>Générer
+            </button>
+          </div>
+
+          <div class="col-12">
+            <details class="mt-2">
+              <summary class="small text-muted">Options Bloom & Difficulté (optionnel)</summary>
+              <div class="row g-2 mt-1">
+                <div class="col-md-6">
+                  <div class="small fw-semibold mb-1">Bloom (%)</div>
+                  <div class="row g-2">
+                    
+                    <div class="col-4"><input class="form-control form-control-sm" name="bloom_remember" placeholder="Remember" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="bloom_understand" placeholder="Understand" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="bloom_apply" placeholder="Apply" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="bloom_analyze" placeholder="Analyze" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="bloom_evaluate" placeholder="Evaluate" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="bloom_create" placeholder="Create" value=""></div>
+
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="small fw-semibold mb-1">Difficulté (%)</div>
+                  <div class="row g-2">
+                    <div class="col-4"><input class="form-control form-control-sm" name="difficulty_easy" placeholder="Easy" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="difficulty_medium" placeholder="Medium" value=""></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="difficulty_hard" placeholder="Hard" value=""></div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+class="row mb-4">
+  <div class="col-md-12">
+    <div class="summary-section" style="border-left-color:#dc3545;">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4><i class="fas fa-list me-2 text-danger"></i>Sections du chapitre</h4>
+      </div>
+      <ul class="mb-0">
+        {% for sec in tn_chapter.sections|sort(attribute="index") %}
+          <li class="mb-2">
+            <strong>{{ sec.index }}</strong> — {{ sec.title }}
+            {% if sec.aa_links and sec.aa_links|length %}
+              <div class="mt-1">
+                {% for l in sec.aa_links %}
+                  <span class="badge bg-light text-dark border">AA{{ l.aa.number }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if chapter.summary %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="summary-section">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h4><i class="fas fa-lightbulb me-2 text-warning"></i>Chapter Summary</h4>
+                <button class="btn btn-sm btn-outline-secondary" id="toggleSummary">
+                    <i class="fas fa-chevron-down" id="summaryIcon"></i>
+                </button>
+            </div>
+            <div id="summaryContent" class="collapse show">
+                <p>{{ chapter.summary | markdown }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('toggleSummary');
+    const summaryContent = document.getElementById('summaryContent');
+    const summaryIcon = document.getElementById('summaryIcon');
+    
+    toggleBtn.addEventListener('click', function() {
+        if (summaryContent.classList.contains('show')) {
+            summaryContent.classList.remove('show');
+            summaryIcon.classList.remove('fa-chevron-down');
+            summaryIcon.classList.add('fa-chevron-right');
+        } else {
+            summaryContent.classList.add('show');
+            summaryIcon.classList.remove('fa-chevron-right');
+            summaryIcon.classList.add('fa-chevron-down');
+        }
+    });
+});
+</script>
+{% elif current_user.is_teacher and course.teacher_id == current_user.id %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="alert alert-light">
+            <i class="fas fa-info-circle me-2 text-danger"></i>
+            <span>No chapter summary yet. You can generate a summary after adding some documents.</span>
+            <form action="{{ url_for('chapters.generate_chapter_summary', chapter_id=chapter.id) }}" method="POST" class="d-inline ms-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-magic me-1"></i>Generate Summary
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-12">
+        <h3 class="mb-4">Documents</h3>
+        
+        {% if documents %}
+        <ul class="document-list">
+            {% for document in documents %}
+            <li class="document-item">
+                <div class="d-flex align-items-center">
+                    {% if document.file_type == 'pdf' %}
+                    <i class="fas fa-file-pdf document-icon pdf-icon"></i>
+                    {% elif document.file_type in ['doc', 'docx'] %}
+                    <i class="fas fa-file-word document-icon doc-icon"></i>
+                    {% elif document.file_type in ['ppt', 'pptx'] %}
+                    <i class="fas fa-file-powerpoint document-icon ppt-icon"></i>
+                    {% else %}
+                    <i class="fas fa-file document-icon"></i>
+                    {% endif %}
+                    <div>
+                        <h5 class="mb-0">{{ document.title }}</h5>
+                        <small class="text-muted">Added on {{ document.created_at.strftime('%b %d, %Y') }}</small>
+                        {% if document.summary %}
+                        <span class="badge bg-success ms-2">AI Summary Available</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <a href="{{ url_for('chapters.view_document', document_id=document.id) }}" class="btn btn-sm btn-outline-danger me-1">
+                        <i class="fas fa-eye me-1"></i>View
+                    </a>
+                    <a href="{{ url_for('documents.view_extraction', document_id=document.id) }}" class="btn btn-sm btn-outline-secondary me-1">
+                        <i class="fas fa-microscope me-1"></i>Extraction
+                    </a>
+                    {% if document.analysis_report_path %}
+                    <a href="{{ url_for('documents.download_extraction_report', document_id=document.id) }}" class="btn btn-sm btn-outline-danger me-1">
+                        <i class="fas fa-file-pdf me-1"></i>PDF
+                    </a>
+                    {% endif %}
+                    <a href="{{ url_for('ai.chat', document_id=document.id) }}" class="btn btn-sm btn-danger">
+                        <i class="fas fa-robot me-1"></i>Ask AI
+                    </a>
+                    {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#deleteDocumentModal{{ document.id }}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    {% endif %}
+                </div>
+            </li>
+            
+            {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+            <!-- Delete Document Modal -->
+            <div class="modal fade" id="deleteDocumentModal{{ document.id }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Delete Document</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Are you sure you want to delete the document "{{ document.title }}"?</p>
+                            <p class="text-danger"><small>This action cannot be undone.</small></p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <form action="{{ url_for('chapters.delete_document', document_id=document.id) }}" method="POST">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="alert alert-light text-center">
+            <p>No documents in this chapter yet.</p>
+            {% if current_user.is_teacher and course.teacher_id == current_user.id %}
+            <a href="{{ url_for('chapters.upload_document', chapter_id=chapter.id) }}" class="btn btn-danger">
+                <i class="fas fa-upload me-2"></i>Upload Your First Document
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if current_user.is_teacher and course.teacher_id == current_user.id %}
+<!-- Delete Chapter Modal -->
+<div class="modal fade" id="deleteChapterModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Chapter</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the chapter "{{ chapter.title }}"?</p>
+                <p class="text-danger"><small>This will also delete all documents in this chapter. This action cannot be undone.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{{ url_for('chapters.delete', chapter_id=chapter.id) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

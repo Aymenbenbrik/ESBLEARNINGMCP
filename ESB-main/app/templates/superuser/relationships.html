@@ -1,0 +1,417 @@
+<!-- templates/superuser/relationships.html with bulk assignments and search -->
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+    .tab-content {
+        padding: 20px;
+        border-left: 1px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        border-bottom: 1px solid #dee2e6;
+        border-radius: 0 0 5px 5px;
+    }
+    
+    .student-checkbox {
+        margin-right: 10px;
+    }
+    
+    .student-search-result {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .student-search-result:hover {
+        background-color: #f8f9fa;
+    }
+    
+    #student-search-results {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>Teacher-Student Relationships</h1>
+        <div>
+            <a href="{{ url_for('superuser.list_classes') }}" class="btn btn-info me-2">Manage Classes</a>
+            <a href="{{ url_for('superuser.dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-lg-5">
+            <!-- Assignment Forms -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Add Student-Teacher Relationships</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Tab Navigation -->
+                    <ul class="nav nav-tabs" id="assignmentTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="individual-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#individual" type="button" role="tab">
+                                Individual
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="class-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#class" type="button" role="tab">
+                                By Class
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="search-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#search" type="button" role="tab">
+                                Search
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="assignmentTabsContent">
+                        <!-- Individual Assignment -->
+                        <div class="tab-pane fade show active" id="individual" role="tabpanel">
+                            <form action="{{ url_for('superuser.add_relationship') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="assignment_type" value="individual">
+                                
+                                <div class="mb-3">
+                                    <label for="teacher_id_individual" class="form-label">Teacher</label>
+                                    <select class="form-select" id="teacher_id_individual" name="teacher_id" required>
+                                        <option value="">Select a teacher</option>
+                                        {% for teacher in teachers %}
+                                        <option value="{{ teacher.id }}">{{ teacher.username }} ({{ teacher.email }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="student_id" class="form-label">Student</label>
+                                    <select class="form-select" id="student_id" name="student_id" required>
+                                        <option value="">Select a student</option>
+                                        <!-- Students will be loaded via AJAX when a class is selected -->
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="filter_class" class="form-label">Filter by Class</label>
+                                    <select class="form-select" id="filter_class">
+                                        <option value="">All Students</option>
+                                        {% for class_obj in classes %}
+                                        <option value="{{ class_obj.id }}">{{ class_obj.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">Add Relationship</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Class Assignment -->
+                        <div class="tab-pane fade" id="class" role="tabpanel">
+                            <form action="{{ url_for('superuser.add_relationship') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="assignment_type" value="class">
+                                
+                                <div class="mb-3">
+                                    <label for="teacher_id_class" class="form-label">Teacher</label>
+                                    <select class="form-select" id="teacher_id_class" name="teacher_id" required>
+                                        <option value="">Select a teacher</option>
+                                        {% for teacher in teachers %}
+                                        <option value="{{ teacher.id }}">{{ teacher.username }} ({{ teacher.email }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="class_id" class="form-label">Class</label>
+                                    <select class="form-select" id="class_id" name="class_id" required>
+                                        <option value="">Select a class</option>
+                                        {% for class_obj in classes %}
+                                        <option value="{{ class_obj.id }}">{{ class_obj.name }} ({{ class_student_counts[class_obj.id] }} students)</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <div class="form-text mb-2">
+                                        This will add all students from the selected class to the teacher.
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">Add All Class Students</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Search Assignment -->
+                        <div class="tab-pane fade" id="search" role="tabpanel">
+                            <form action="{{ url_for('superuser.add_relationship') }}" method="post" id="search-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="assignment_type" value="search">
+                                
+                                <div class="mb-3">
+                                    <label for="teacher_id_search" class="form-label">Teacher</label>
+                                    <select class="form-select" id="teacher_id_search" name="teacher_id" required>
+                                        <option value="">Select a teacher</option>
+                                        {% for teacher in teachers %}
+                                        <option value="{{ teacher.id }}">{{ teacher.username }} ({{ teacher.email }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="student_search" class="form-label">Search Students</label>
+                                    <input type="text" class="form-control" id="student_search" 
+                                           placeholder="Type to search by name or email">
+                                </div>
+                                
+                                <div id="student-search-results" class="mb-3" style="display: none;">
+                                    <!-- Search results will appear here -->
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <div class="form-text">
+                                        <span id="selected-count">0</span> students selected
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary" id="add-selected-btn" disabled>Add Selected Students</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-7">
+            <!-- Current Relationships -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Current Relationships</h5>
+                    <div class="input-group" style="width: 250px;">
+                        <input type="text" class="form-control" id="relationship-search" placeholder="Filter relationships">
+                        <button class="btn btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if relationships %}
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="relationships-table">
+                            <thead>
+                                <tr>
+                                    <th>Teacher</th>
+                                    <th>Student</th>
+                                    <th>Class</th>
+                                    <th>Created</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for relation in relationships %}
+                                <tr>
+                                    <td>{{ relation.teacher.username }}</td>
+                                    <td>{{ relation.student.username }}</td>
+                                    <td>{{ relation.student.classe.name if relation.student.classe else 'No Class' }}</td>
+                                    <td>{{ relation.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#deleteRelationModal{{ relation.teacher_id }}_{{ relation.student_id }}">
+                                            Remove
+                                        </button>
+                                        
+                                        <!-- Delete Relation Modal -->
+                                        <div class="modal fade" id="deleteRelationModal{{ relation.teacher_id }}_{{ relation.student_id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Confirm Removal</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-center text-muted">No teacher-student relationships found</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Individual assignment - Filter students by class
+        const filterClassSelect = document.getElementById('filter_class');
+        const studentSelect = document.getElementById('student_id');
+        
+        // Load students based on class filter
+        filterClassSelect.addEventListener('change', function() {
+            const classId = this.value;
+            
+            // Clear current options
+            studentSelect.innerHTML = '<option value="">Select a student</option>';
+            
+            // If no class selected, don't load students
+            if (!classId) {
+                fetch('{{ url_for("superuser.api_list_students") }}')
+                    .then(response => response.json())
+                    .then(students => {
+                        students.forEach(student => {
+                            const option = document.createElement('option');
+                            option.value = student.id;
+                            option.textContent = `${student.username} (${student.email}) - ${student.class_name || 'No Class'}`;
+                            studentSelect.appendChild(option);
+                        });
+                    });
+                return;
+            }
+            
+            // Load students for the selected class
+            fetch(`{{ url_for("superuser.class_students", class_id=0) }}`.replace('0', classId))
+                .then(response => response.json())
+                .then(students => {
+                    students.forEach(student => {
+                        const option = document.createElement('option');
+                        option.value = student.id;
+                        option.textContent = `${student.username} (${student.email})`;
+                        studentSelect.appendChild(option);
+                    });
+                });
+        });
+        
+        // Load all students by default
+        fetch('{{ url_for("superuser.api_list_students") }}')
+            .then(response => response.json())
+            .then(students => {
+                students.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.id;
+                    option.textContent = `${student.username} (${student.email}) - ${student.class_name || 'No Class'}`;
+                    studentSelect.appendChild(option);
+                });
+            });
+        
+        // Student search functionality
+        const studentSearch = document.getElementById('student_search');
+        const searchResults = document.getElementById('student-search-results');
+        const selectedCount = document.getElementById('selected-count');
+        const addSelectedBtn = document.getElementById('add-selected-btn');
+        const searchForm = document.getElementById('search-form');
+        
+        let selectedStudents = new Set();
+        
+        // Update selected count display
+        function updateSelectedCount() {
+            selectedCount.textContent = selectedStudents.size;
+            addSelectedBtn.disabled = selectedStudents.size === 0;
+        }
+        
+        // Handle student search
+        studentSearch.addEventListener('input', function() {
+            const searchTerm = this.value.trim();
+            
+            // Don't search if term is too short
+            if (searchTerm.length < 2) {
+                searchResults.style.display = 'none';
+                return;
+            }
+            
+            // Fetch matching students
+            fetch(`{{ url_for("superuser.search_students") }}?term=${encodeURIComponent(searchTerm)}`)
+                .then(response => response.json())
+                .then(students => {
+                    // Clear previous results
+                    searchResults.innerHTML = '';
+                    
+                    if (students.length === 0) {
+                        searchResults.innerHTML = '<div class="p-3 text-center text-muted">No students found</div>';
+                        searchResults.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Display results
+                    students.forEach(student => {
+                        const isSelected = selectedStudents.has(student.id.toString());
+                        
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = 'student-search-result d-flex align-items-center';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'student-checkbox form-check-input';
+                        checkbox.value = student.id;
+                        checkbox.checked = isSelected;
+                        
+                        const studentInfo = document.createElement('span');
+                        studentInfo.textContent = `${student.username} (${student.email}) - ${student.class_name || 'No Class'}`;
+                        
+                        resultDiv.appendChild(checkbox);
+                        resultDiv.appendChild(studentInfo);
+                        searchResults.appendChild(resultDiv);
+                        
+                        // Handle checkbox click
+                        checkbox.addEventListener('change', function() {
+                            if (this.checked) {
+                                selectedStudents.add(this.value);
+                            } else {
+                                selectedStudents.delete(this.value);
+                            }
+                            updateSelectedCount();
+                        });
+                    });
+                    
+                    searchResults.style.display = 'block';
+                });
+        });
+        
+        // Handle form submission for selected students
+        searchForm.addEventListener('submit', function(e) {
+            // Clear any previous hidden inputs
+            const previousInputs = this.querySelectorAll('input[name="selected_students"]');
+            previousInputs.forEach(input => input.remove());
+            
+            // Add hidden inputs for selected students
+            selectedStudents.forEach(studentId => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'selected_students';
+                input.value = studentId;
+                this.appendChild(input);
+            });
+        });
+        
+        // Filter relationships table
+        const relationshipSearch = document.getElementById('relationship-search');
+        const relationshipsTable = document.getElementById('relationships-table');
+        
+        relationshipSearch.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = relationshipsTable.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,561 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if week_num %}
+Take Week {{ week_num }} Quiz - {{ course.title }}
+{% else %}
+Take Quiz - {{ course.title }}
+{% endif %}
+{% endblock %}
+
+{% block styles %}
+<style>
+/* Quiz Container */
+.quiz-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.quiz-header {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    padding: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.quiz-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.quiz-progress-info {
+    text-align: right;
+}
+
+.quiz-progress-bar {
+    height: 8px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    width: 200px;
+}
+
+.quiz-progress-fill {
+    height: 100%;
+    background: #4CAF50;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.quiz-progress-text {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+/* Question Section */
+.quiz-body {
+    padding: 2rem;
+}
+
+.question-number-badge {
+    display: inline-block;
+    background: #dc3545;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.question-type-badge {
+    display: inline-block;
+    margin-left: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.badge-mcq {
+    background: #007bff;
+    color: white;
+}
+
+.badge-open {
+    background: #28a745;
+    color: white;
+}
+
+.question-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+/* MCQ Choices */
+.choices-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+.choice-option {
+    display: flex;
+    align-items: flex-start;
+    padding: 1rem;
+    background: #f8f9fa;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.choice-option:hover {
+    background: #e9ecef;
+    border-color: #dc3545;
+}
+
+.choice-option input[type="radio"] {
+    margin-right: 1rem;
+    margin-top: 0.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+}
+
+.choice-option input[type="radio"]:checked + label {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.choice-option input[type="radio"]:checked {
+    accent-color: #dc3545;
+}
+
+.choice-label {
+    font-weight: 700;
+    color: #212529;
+    min-width: 2rem;
+}
+
+.choice-text {
+    color: #495057;
+    line-height: 1.5;
+    transition: all 0.2s;
+    margin: 0;
+}
+
+/* Open-Ended Answer */
+.open-ended-container {
+    margin-bottom: 2rem;
+}
+
+.open-ended-textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: 1rem;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 1rem;
+    resize: vertical;
+    transition: all 0.2s;
+}
+
+.open-ended-textarea:focus {
+    outline: none;
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+/* Question Info Box */
+.question-info-box {
+    background: #e7f3ff;
+    border-left: 4px solid #0066cc;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+    color: #004085;
+}
+
+.question-info-box i {
+    margin-right: 0.5rem;
+}
+
+/* CLO & Metadata Tags */
+.question-metadata {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.meta-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.meta-tag-clo {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.meta-tag-bloom {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.meta-tag-difficulty {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Button Container */
+.quiz-footer {
+    padding: 2rem;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #dee2e6;
+    gap: 1rem;
+}
+
+.btn-quiz {
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+}
+
+.btn-prev {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-prev:hover {
+    background: #5a6268;
+    color: white;
+    text-decoration: none;
+}
+
+.btn-next {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-next:hover {
+    background: #c82333;
+}
+
+.btn-submit {
+    background: #28a745;
+    color: white;
+    font-size: 1.1rem;
+}
+
+.btn-submit:hover {
+    background: #218838;
+}
+
+.btn-submit:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .quiz-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 1rem;
+    }
+    
+    .quiz-progress-info {
+        text-align: center;
+    }
+    
+    .quiz-progress-bar {
+        width: 100%;
+    }
+    
+    .quiz-body {
+        padding: 1rem;
+    }
+    
+    .quiz-footer {
+        flex-direction: column;
+    }
+    
+    .quiz-footer button,
+    .quiz-footer a {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a>
+            </li>
+            {% if week_num %}
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_week_plan', course_id=course.id, week_num=week_num) }}" class="text-decoration-none text-danger">Week {{ week_num }}</a>
+            </li>
+            {% endif %}
+            <li class="breadcrumb-item active">Take Quiz</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="quiz-container">
+        <!-- Quiz Header -->
+        <div class="quiz-header">
+            <div>
+                <h1 class="quiz-title">
+                    <i class="fas fa-question-circle me-2"></i>
+                    {% if week_num %}
+                        Week {{ week_num }} Quiz
+                    {% else %}
+                        {{ document.title if document else 'Quiz' }}
+                    {% endif %}
+                </h1>
+            </div>
+            <div class="quiz-progress-info">
+                <div class="quiz-progress-bar">
+                    <div class="quiz-progress-fill" style="width: {{ progress }}%"></div>
+                </div>
+                <div class="quiz-progress-text">
+                    Question <strong>{{ question_index + 1 }}</strong> of <strong>{{ total_questions }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quiz Body -->
+        <div class="quiz-body">
+            {% if week_num %}
+            <div class="question-info-box">
+                <i class="fas fa-info-circle"></i>
+                This quiz is based on Week {{ week_num }} objectives, activities, and CLOs.
+            </div>
+            {% endif %}
+
+            <!-- Question Number & Type -->
+            <div>
+                <span class="question-number-badge">
+                    <i class="fas fa-question-circle me-1"></i>
+                    Question {{ question_index + 1 }}
+                </span>
+                
+                <!-- Type Badge -->
+                {% set is_mcq = (question.choice_a and question.choice_b and question.choice_c and question.correct_choice) %}
+                {% if is_mcq %}
+                <span class="question-type-badge badge-mcq">
+                    <i class="fas fa-list me-1"></i>
+                    Multiple Choice
+                </span>
+                {% else %}
+                <span class="question-type-badge badge-open">
+                    <i class="fas fa-keyboard me-1"></i>
+                    Open-Ended
+                </span>
+                {% endif %}
+            </div>
+
+            <!-- Metadata Tags -->
+            {% if question.clo or question.bloom_level or question.difficulty %}
+            <div class="question-metadata">
+                {% if question.clo and question.clo != 'N/A' %}
+                <span class="meta-tag meta-tag-clo">
+                    <i class="fas fa-bullseye"></i>{{ question.clo }}
+                </span>
+                {% endif %}
+                
+                {% if question.bloom_level and question.bloom_level != 'N/A' %}
+                <span class="meta-tag meta-tag-bloom">
+                    <i class="fas fa-layer-group"></i>{{ question.bloom_level|title }}
+                </span>
+                {% endif %}
+                
+                {% if question.difficulty and question.difficulty != 'N/A' %}
+                <span class="meta-tag meta-tag-difficulty">
+                    <i class="fas fa-signal"></i>{{ question.difficulty|title }}
+                </span>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Question Text -->
+            <h2 class="question-title">{{ question.question_text }}</h2>
+
+            <!-- Form -->
+            <form method="POST" id="quizForm" onsubmit="return handleFormSubmit(event)">
+                {{ form.hidden_tag() }}
+
+                <!-- MCQ Questions -->
+                {% if is_mcq %}
+                <div class="choices-container">
+                    <div class="choice-option">
+                        <input type="radio" id="choice_a" name="answer" value="A" 
+                               {% if question.student_choice == 'A' %}checked{% endif %}>
+                        <label for="choice_a" style="cursor: pointer; flex: 1; margin: 0;">
+                            <span class="choice-label">A.</span>
+                            <span class="choice-text">{{ question.choice_a }}</span>
+                        </label>
+                    </div>
+                    
+                    <div class="choice-option">
+                        <input type="radio" id="choice_b" name="answer" value="B"
+                               {% if question.student_choice == 'B' %}checked{% endif %}>
+                        <label for="choice_b" style="cursor: pointer; flex: 1; margin: 0;">
+                            <span class="choice-label">B.</span>
+                            <span class="choice-text">{{ question.choice_b }}</span>
+                        </label>
+                    </div>
+                    
+                    <div class="choice-option">
+                        <input type="radio" id="choice_c" name="answer" value="C"
+                               {% if question.student_choice == 'C' %}checked{% endif %}>
+                        <label for="choice_c" style="cursor: pointer; flex: 1; margin: 0;">
+                            <span class="choice-label">C.</span>
+                            <span class="choice-text">{{ question.choice_c }}</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Open-Ended Questions -->
+                {% else %}
+                <div class="open-ended-container">
+                    <label for="answer" style="display: block; margin-bottom: 0.75rem; font-weight: 600; color: #212529;">
+                        Your Answer:
+                    </label>
+                    <textarea 
+                        id="answer" 
+                        name="answer" 
+                        class="open-ended-textarea"
+                        placeholder="Type your answer here... Be clear and concise.">{{ question.student_choice or '' }}</textarea>
+                    <small class="text-muted d-block mt-2">
+                        <i class="fas fa-lightbulb me-1"></i>
+                        Take your time to provide a thoughtful, detailed answer.
+                    </small>
+                </div>
+                {% endif %}
+
+                <!-- Quiz Footer -->
+                <div class="quiz-footer">
+                    <!-- Previous Button -->
+                    {% if question_index > 0 %}
+                    <a href="{{ url_for('quiz.take', quiz_id=quiz.id, question_index=question_index - 1) }}" class="btn-quiz btn-prev">
+                        <i class="fas fa-arrow-left"></i>Previous Question
+                    </a>
+                    {% else %}
+                    <div></div>
+                    {% endif %}
+
+                    <!-- Submit/Next Button -->
+                    {% if question_index == total_questions - 1 %}
+                    <button type="submit" class="btn-quiz btn-submit" id="submitBtn">
+                        <i class="fas fa-check-circle"></i>Complete Quiz
+                    </button>
+                    {% else %}
+                    <button type="submit" class="btn-quiz btn-next" id="submitBtn">
+                        <i class="fas fa-arrow-right"></i>Next Question
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Handle form submission with validation
+function handleFormSubmit(event) {
+    const answerField = document.querySelector('input[name="answer"]:checked, textarea[name="answer"]');
+    
+    // Check if answer is provided
+    if (!answerField || !answerField.value || answerField.value.trim() === '') {
+        event.preventDefault();
+        alert('Please select or enter an answer before proceeding.');
+        return false;
+    }
+    
+    // Disable button and show loading state
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    
+    // Allow form to submit normally
+    return true;
+}
+
+// Auto-save functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('quizForm');
+    const questionIndex = {{ question_index }};
+    const quizId = {{ quiz.id }};
+    
+    const storageKey = `quiz_${quizId}_answers`;
+    const answers = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+    
+    // Save answer on change
+    const answerInputs = document.querySelectorAll('input[name="answer"], textarea[name="answer"]');
+    answerInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            answers[questionIndex] = this.value;
+            sessionStorage.setItem(storageKey, JSON.stringify(answers));
+        });
+        
+        input.addEventListener('input', function() {
+            answers[questionIndex] = this.value;
+            sessionStorage.setItem(storageKey, JSON.stringify(answers));
+        });
+    });
+    
+    // Clear storage when quiz is completed
+    const isLastQuestion = {{ 'true' if question_index == total_questions - 1 else 'false' }};
+    if (isLastQuestion) {
+        form.addEventListener('submit', function() {
+            sessionStorage.removeItem(storageKey);
+        });
+    }
+});
+</script>
+{% endblock %}

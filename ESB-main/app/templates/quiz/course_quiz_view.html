@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }} - {{ course.title }}{% endblock %}
+
+{% block styles %}
+<style>
+.quiz-header {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.quiz-info-card {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.question-preview-card {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    position: relative;
+}
+
+.question-number-badge {
+    background: #dc3545;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: bold;
+    display: inline-block;
+    margin-bottom: 1rem;
+}
+
+.question-type-badge {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.question-type-badge.mcq {
+    background: #007bff;
+    color: white;
+}
+
+.question-type-badge.open-ended {
+    background: #28a745;
+    color: white;
+}
+
+/* Activity Alignment Badge */
+.activity-alignment-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #856404;
+    margin-left: 0.5rem;
+}
+
+.activity-alignment-badge i {
+    font-size: 1.1rem;
+}
+
+/* Activity Alignment Info Box */
+.activity-alignment-info {
+    background: linear-gradient(135deg, #fff8f0 0%, #fffbf0 100%);
+    border-left: 4px solid #ffc107;
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 6px;
+    position: relative;
+}
+
+.activity-alignment-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.activity-alignment-header i {
+    font-size: 1.2rem;
+    color: #ffc107;
+}
+
+.activity-alignment-header strong {
+    color: #856404;
+    font-size: 1rem;
+}
+
+.activity-score-badge {
+    background: #ffc107;
+    color: #000;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    margin-left: auto;
+}
+
+.activity-keywords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.keyword-tag {
+    background: #ffc107;
+    color: #000;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+/* Choice Badges for MCQ */
+.choice-badge {
+    display: block;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    transition: all 0.2s;
+}
+
+.choice-badge:hover {
+    background: #e9ecef;
+}
+
+.choice-badge.correct {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+    font-weight: bold;
+    border-width: 2px;
+}
+
+.choice-badge strong {
+    margin-right: 0.5rem;
+}
+
+/* Open-Ended Sections */
+.open-ended-info {
+    background: #f0f8f0;
+    border-left: 4px solid #28a745;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.model-answer {
+    background: white;
+    border: 2px solid #28a745;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+}
+
+.model-answer-label {
+    font-weight: 600;
+    color: #28a745;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    font-size: 1.05rem;
+}
+
+.model-answer-label i {
+    margin-right: 0.5rem;
+}
+
+.model-answer-text {
+    color: #2c3e50;
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+.evaluation-criteria {
+    background: #fff8e1;
+    border-left: 4px solid #ffc107;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.criteria-title {
+    font-weight: 600;
+    color: #856404;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+}
+
+.criteria-title i {
+    margin-right: 0.5rem;
+}
+
+.criteria-list {
+    list-style: none;
+    padding-left: 0;
+    margin-bottom: 0;
+}
+
+.criteria-list li {
+    padding: 0.5rem 0;
+    color: #856404;
+    font-size: 0.95rem;
+    border-bottom: 1px solid rgba(133, 100, 4, 0.1);
+}
+
+.criteria-list li:last-child {
+    border-bottom: none;
+}
+
+.criteria-list li::before {
+    content: "✓";
+    color: #ffc107;
+    font-weight: bold;
+    margin-right: 0.75rem;
+    font-size: 1.2rem;
+}
+
+.grading-rubric {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.rubric-title {
+    font-weight: 600;
+    color: #1565c0;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.rubric-title i {
+    margin-right: 0.5rem;
+}
+
+.rubric-text {
+    color: #0d47a1;
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+/* Metadata Tags */
+.metadata-tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #dee2e6;
+}
+
+.meta-tag {
+    padding: 0.35rem 0.75rem;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+}
+
+.meta-tag i {
+    margin-right: 0.35rem;
+}
+
+.clo-tag {
+    background: #dc3545;
+    color: white;
+}
+
+.bloom-tag {
+    background: #6c757d;
+    color: white;
+}
+
+.difficulty-tag.easy {
+    background: #28a745;
+    color: white;
+}
+
+.difficulty-tag.medium {
+    background: #ffc107;
+    color: #000;
+}
+
+.difficulty-tag.hard {
+    background: #dc3545;
+    color: white;
+}
+
+/* Source Reference */
+.source-reference {
+    background: #fff8e1;
+    border-left: 4px solid #ffa000;
+    padding: 1rem;
+    margin-top: 1rem;
+    border-radius: 4px;
+}
+
+.source-title {
+    font-weight: 600;
+    color: #e65100;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+}
+
+.source-title i {
+    margin-right: 0.5rem;
+}
+
+.source-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.source-quote {
+    background: #fffbf0;
+    border-left: 3px solid #ffa000;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    font-style: italic;
+    color: #333;
+    border-radius: 4px;
+}
+
+.highlight-text {
+    background-color: #ffeb3b;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+}
+
+/* Explanation Box */
+.explanation-box {
+    background: #e7f3ff;
+    border-left: 4px solid #0066cc;
+    padding: 1rem;
+    margin-top: 1rem;
+    border-radius: 4px;
+}
+
+.explanation-label {
+    font-weight: 600;
+    color: #004085;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.explanation-label i {
+    margin-right: 0.5rem;
+}
+
+.explanation-text {
+    color: #004085;
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+/* Statistics Cards */
+.stats-card {
+    text-align: center;
+    padding: 1rem;
+    border-right: 1px solid #dee2e6;
+}
+
+.stats-card:last-child {
+    border-right: none;
+}
+
+.stats-number {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #dc3545;
+}
+
+.stats-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="bg-light py-2">
+    <div class="container">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('courses.index') }}" class="text-decoration-none text-danger">Courses</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="text-decoration-none text-danger">{{ course.title }}</a>
+            </li>
+            <li class="breadcrumb-item active">{{ document.title }}</li>
+        </ol>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="quiz-header">
+    <h2 class="mb-3">
+        <i class="fas fa-clipboard-list me-2"></i>{{ document.title }}
+    </h2>
+    <p class="mb-0">
+        <i class="fas fa-calendar-week me-2"></i>
+        Covered Weeks: {{ covered_weeks }}
+    </p>
+</div>
+
+<div class="quiz-info-card">
+    <div class="row">
+        {% set mcq_count = questions|selectattr('question_type', 'undefined')|list|length + questions|selectattr('question_type', 'equalto', 'mcq')|list|length %}
+        {% set open_count = questions|selectattr('question_type', 'equalto', 'open_ended')|list|length %}
+        {% set activity_inspired_count = questions|selectattr('_activity_inspired', 'equalto', True)|list|length %}
+        
+        <div class="col-md-3 stats-card">
+            <div class="stats-number">{{ questions|length }}</div>
+            <div class="stats-label">Total Questions</div>
+        </div>
+        <div class="col-md-3 stats-card">
+            <div class="stats-number text-primary">{{ mcq_count }}</div>
+            <div class="stats-label">Multiple Choice</div>
+        </div>
+        <div class="col-md-3 stats-card">
+            <div class="stats-number text-success">{{ open_count }}</div>
+            <div class="stats-label">Open-Ended</div>
+        </div>
+        <div class="col-md-3 stats-card">
+            <div class="stats-number text-info">{{ activity_inspired_count }}</div>
+            <div class="stats-label">Activity-Aligned</div>
+        </div>
+    </div>
+    {% if document.summary %}
+    <div class="mt-3 pt-3 border-top">
+        <strong><i class="fas fa-info-circle me-2"></i>Description:</strong>
+        <p class="mb-0 text-muted mt-1">{{ document.summary }}</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="text-danger">
+        <i class="fas fa-list-check me-2"></i>Quiz Questions Preview
+    </h4>
+    <div>
+        <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Course
+        </a>
+        <a href="{{ url_for('syllabus.delete_course_quiz', course_id=course.id, document_id=document.id) }}" 
+           class="btn btn-danger"
+           onclick="return confirm('Are you sure you want to delete this quiz? This action cannot be undone.');">
+            <i class="fas fa-trash me-2"></i>Delete Quiz
+        </a>
+    </div>
+</div>
+
+{% for question in questions %}
+<div class="question-preview-card">
+    <div class="d-flex align-items-center mb-3 flex-wrap">
+        <span class="question-number-badge">Question {{ loop.index }}</span>
+        
+        <!-- Question Type Badge -->
+        {% if question.question_type == 'open_ended' %}
+        <span class="question-type-badge open-ended">
+            <i class="fas fa-keyboard me-1"></i>
+            Open-Ended ({{ question.open_ended_type|replace('_', ' ')|title if question.open_ended_type else 'Short Answer' }})
+        </span>
+        {% else %}
+        <span class="question-type-badge mcq">
+            <i class="fas fa-list me-1"></i>
+            Multiple Choice
+        </span>
+        {% endif %}
+
+        <!-- ✅ Activity Alignment Badge -->
+        {% if question.get('_activity_inspired') %}
+        <span class="activity-alignment-badge">
+            <i class="fas fa-star"></i>
+            Activity Aligned ({{ question.get('_activity_alignment_score', 0)|round(1) }}%)
+        </span>
+        {% endif %}
+    </div>
+    
+    <h5 class="mb-3">{{ question.question }}</h5>
+    
+    {% if question.question_type == 'mcq' or not question.question_type %}
+        <!-- MCQ SECTION -->
+        <div class="choices mb-3">
+            <div class="choice-badge {% if question.correct_choice == 'A' %}correct{% endif %}">
+                <strong>A:</strong> {{ question.choice_a }}
+                {% if question.correct_choice == 'A' %}
+                <i class="fas fa-check-circle ms-2"></i>
+                {% endif %}
+            </div>
+            <div class="choice-badge {% if question.correct_choice == 'B' %}correct{% endif %}">
+                <strong>B:</strong> {{ question.choice_b }}
+                {% if question.correct_choice == 'B' %}
+                <i class="fas fa-check-circle ms-2"></i>
+                {% endif %}
+            </div>
+            <div class="choice-badge {% if question.correct_choice == 'C' %}correct{% endif %}">
+                <strong>C:</strong> {{ question.choice_c }}
+                {% if question.correct_choice == 'C' %}
+                <i class="fas fa-check-circle ms-2"></i>
+                {% endif %}
+            </div>
+        </div>
+    
+    {% elif question.question_type == 'open_ended' %}
+        <!-- OPEN-ENDED SECTION -->
+        <div class="open-ended-info">
+            <strong><i class="fas fa-info-circle me-1"></i>Question Type:</strong> 
+            {{ question.open_ended_type|replace('_', ' ')|title if question.open_ended_type else 'Short Answer' }}
+        </div>
+
+        {% if question.model_answer %}
+        <div class="model-answer">
+            <div class="model-answer-label">
+                <i class="fas fa-check-double"></i>
+                Model Answer (Expected Response):
+            </div>
+            <div class="model-answer-text">{{ question.model_answer }}</div>
+        </div>
+        {% endif %}
+
+        {% if question.evaluation_criteria %}
+        <div class="evaluation-criteria">
+            <div class="criteria-title">
+                <i class="fas fa-list-check"></i>
+                Evaluation Criteria (Key Points to Cover):
+            </div>
+            <ul class="criteria-list">
+                {% for criterion in question.evaluation_criteria %}
+                <li>{{ criterion }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if question.grading_rubric %}
+        <div class="grading-rubric">
+            <div class="rubric-title">
+                <i class="fas fa-clipboard-list"></i>
+                Grading Rubric:
+            </div>
+            <div class="rubric-text">{{ question.grading_rubric }}</div>
+        </div>
+        {% endif %}
+    {% endif %}
+    
+    <!-- ✅ Activity Alignment Details -->
+    {% if question.get('_activity_inspired') and question.get('_activity_matched_keywords') %}
+    <div class="activity-alignment-info">
+        <div class="activity-alignment-header">
+            <i class="fas fa-lightbulb"></i>
+            <strong>Activity File Alignment</strong>
+            <span class="activity-score-badge">{{ question.get('_activity_alignment_score', 0)|round(1) }}% Match</span>
+        </div>
+        <small style="color: #856404; display: block; margin-bottom: 0.75rem;">
+            This question aligns with patterns from your activity file and covers similar learning objectives.
+        </small>
+        <div>
+            <strong style="font-size: 0.9rem; color: #856404;">Matched Keywords:</strong>
+            <div class="activity-keywords">
+                {% for keyword in question.get('_activity_matched_keywords', []) %}
+                <span class="keyword-tag">{{ keyword }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Explanation (for both MCQ and Open-Ended) -->
+    {% if question.explanation %}
+    <div class="explanation-box">
+        <div class="explanation-label">
+            <i class="fas fa-lightbulb"></i>
+            Explanation / Additional Guidance:
+        </div>
+        <div class="explanation-text">{{ question.explanation }}</div>
+    </div>
+    {% endif %}
+    
+    <!-- Source Reference -->
+    {% if question.source_id and question.source_id != 'N/A' %}
+    <div class="source-reference">
+        <div class="source-title">
+            <i class="fas fa-book-open"></i>
+            Source Reference
+        </div>
+        
+        {% if sources_map and question.source_id in sources_map %}
+            <!-- Source found in map - display full details -->
+            {% set source = sources_map[question.source_id] %}
+            
+            <div class="source-meta mb-2">
+                <span>
+                    <i class="fas fa-file-pdf me-1" style="color: #dc3545;"></i>
+                    <strong>Source Document:</strong>
+                    <br>
+                    <span style="margin-left: 1.5rem; color: #2c3e50;">{{ source.get('title', 'Source Material') }}</span>
+                </span>
+            </div>
+            
+            {% if question.source_page and question.source_page != 'N/A' %}
+            <div class="source-meta mb-2">
+                <span>
+                    <i class="fas fa-bookmark me-1" style="color: #ffc107;"></i>
+                    <strong>Location:</strong>
+                    <br>
+                    <span style="margin-left: 1.5rem; color: #2c3e50;">{{ question.source_page }}</span>
+                </span>
+            </div>
+            {% endif %}
+            
+            {% if question.source_text and question.source_text != 'N/A' %}
+            <div>
+                <i class="fas fa-quote-left me-1" style="color: #666;"></i>
+                <strong>Referenced Text:</strong>
+                <div class="source-quote">
+                    <span class="highlight-text">{{ question.source_text }}</span>
+                </div>
+            </div>
+            {% endif %}
+        
+        {% else %}
+            <!-- Fallback: source_id is already formatted -->
+            <div class="source-meta mb-2">
+                <span>
+                    <i class="fas fa-file me-1"></i>
+                    <strong>Source ID:</strong>
+                    <br>
+                    <span style="margin-left: 1.5rem; color: #2c3e50;">{{ question.source_id }}</span>
+                </span>
+            </div>
+            
+            {% if question.source_page and question.source_page != 'N/A' %}
+            <div class="source-meta mb-2">
+                <span>
+                    <i class="fas fa-bookmark me-1" style="color: #ffc107;"></i>
+                    <strong>Location:</strong>
+                    <br>
+                    <span style="margin-left: 1.5rem; color: #2c3e50;">{{ question.source_page }}</span>
+                </span>
+            </div>
+            {% endif %}
+            
+            {% if question.source_text and question.source_text != 'N/A' %}
+            <div>
+                <i class="fas fa-quote-left me-1" style="color: #666;"></i>
+                <strong>Referenced Text:</strong>
+                <div class="source-quote">
+                    <span class="highlight-text">{{ question.source_text }}</span>
+                </div>
+            </div>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Metadata Tags -->
+    <div class="metadata-tags">
+        {% if question.clo and question.clo != 'N/A' %}
+        <span class="meta-tag clo-tag">
+            <i class="fas fa-bullseye"></i>
+            {{ question.clo }}
+        </span>
+        {% endif %}
+        
+        {% if question.bloom_level %}
+        <span class="meta-tag bloom-tag">
+            <i class="fas fa-layer-group"></i>
+            {{ question.bloom_level|title }}
+        </span>
+        {% endif %}
+        
+        {% if question.difficulty_level %}
+        <span class="meta-tag difficulty-tag {{ question.difficulty_level }}">
+            <i class="fas fa-signal"></i>
+            {{ question.difficulty_level|title }}
+        </span>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<div class="text-center mt-4 mb-5">
+    <a href="{{ url_for('syllabus.view_course', course_id=course.id) }}" class="btn btn-lg btn-outline-danger">
+        <i class="fas fa-arrow-left me-2"></i>Back to Course
+    </a>
+</div>
+{% endblock %}

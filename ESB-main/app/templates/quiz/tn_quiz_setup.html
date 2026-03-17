@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+
+{% block title %}TN Quiz setup{% endblock %}
+
+{% block content %}
+<style>
+  .tnq-wrap{max-width:1200px;margin:0 auto;}
+  .tnq-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;}
+  .tnq-card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:14px;box-shadow:0 8px 22px rgba(0,0,0,.04);}
+  .tnq-card h3{font-size:1.05rem;margin:0;}
+  .tnq-card .hd{padding:.9rem 1rem;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between;}
+  .tnq-card .bd{padding:1rem;}
+  .seg{display:flex;gap:.5rem;flex-wrap:wrap;}
+  .seg .btn{border-radius:999px;}
+  .aa-pill{display:inline-flex;align-items:center;gap:.4rem;border:1px solid rgba(0,0,0,.12);background:#f8f9fa;border-radius:999px;padding:.28rem .6rem;}
+  .aa-pill input{margin-top:0;}
+  .chapter-box{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:.75rem .9rem;margin-bottom:.6rem;background:#fff;}
+  .chapter-box .top{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;}
+  .chapter-box .title{display:flex;align-items:center;gap:.5rem;min-width:0;}
+  .chapter-box .title .t{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;}
+  .sections{margin-top:.6rem;padding-left:.15rem;display:grid;gap:.45rem;}
+  .section-row{border:1px dashed rgba(0,0,0,.12);border-radius:10px;padding:.55rem .65rem;background:#fcfcfd;}
+  .muted{color:#6c757d;}
+  .dist-row{display:flex;align-items:center;justify-content:space-between;font-size:.9rem;gap:.75rem;}
+  .dist-bar{height:8px;background:rgba(220,53,69,.10);border-radius:999px;overflow:hidden;}
+  .dist-bar > div{height:100%;background:#dc3545;}
+  .grid2{display:grid;grid-template-columns:1fr;gap:1rem;}
+  @media (min-width: 992px){.grid2{grid-template-columns:1.15fr .85fr;}}
+  .small-input{max-width:92px;}
+</style>
+
+<div class="tnq-wrap">
+  <div class="tnq-head">
+    <div>
+      <div class="h4 mb-0">Créer un quiz (TN)</div>
+      <div class="muted">Mode chapitre/sections ou mode AA. Bloom + difficulté inclus.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('courses.view', course_id=course.id) }}">
+        <i class="fas fa-arrow-left me-1"></i>Retour
+      </a>
+    </div>
+  </div>
+
+  <form class="grid2" method="POST" action="{{ url_for('syllabus.tn_generate_quiz', course_id=course.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" id="modeInput" name="mode" value="chapter">
+
+    <!-- LEFT: selection -->
+    <div class="tnq-card">
+      <div class="hd">
+        <h3><i class="fas fa-filter me-2 text-danger"></i>Sélection</h3>
+        <div class="seg">
+          <button type="button" class="btn btn-sm btn-danger" id="btnModeChapter">Par chapitres</button>
+          <button type="button" class="btn btn-sm btn-outline-danger" id="btnModeAA">Par AA</button>
+        </div>
+      </div>
+      <div class="bd">
+
+        <div id="modeChapter">
+          <div class="muted mb-2">Choisis un ou plusieurs chapitres. Optionnel: cocher des sections spécifiques.</div>
+          {% for ch in chapters_payload %}
+            <div class="chapter-box">
+              <div class="top">
+                <div class="title">
+                  <label class="aa-pill" style="background:#fff;">
+                    <input class="chapter-check" type="checkbox" name="chapters" value="{{ ch.course_chapter_id }}"
+                           {% if preselect_chapter_id and ch.course_chapter_id == preselect_chapter_id %}checked{% endif %}>
+                    <span class="badge bg-danger">Chapitre {{ ch.tn_chapter_index }}</span>
+                    <span class="t">{{ ch.title }}</span>
+                  </label>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  {% for n in ch.aa_numbers %}
+                    <span class="badge bg-light text-dark border">AA{{ n }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+              {% if ch.sections and ch.sections|length %}
+                <div class="sections">
+                  {% for sec in ch.sections %}
+                    <div class="section-row">
+                      <label class="d-flex align-items-start gap-2" style="cursor:pointer;">
+                        <input class="section-check" type="checkbox" name="sections" value="{{ sec.tn_section_id }}">
+                        <div style="min-width:0">
+                          <div class="fw-semibold">{{ sec.index }} — {{ sec.title }}</div>
+                          <div class="d-flex flex-wrap gap-2 mt-1">
+                            {% for n in sec.aa_numbers %}
+                              <span class="badge bg-light text-dark border">AA{{ n }}</span>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="muted mt-2">Aucune section détectée.</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <div id="modeAA" style="display:none;">
+          <div class="muted mb-2">Choisis les AA (acquis). Le système retrouve automatiquement les chapitres/sections concernés.</div>
+          <div class="d-flex flex-wrap gap-2">
+            {% for aa in aa_payload %}
+              <label class="aa-pill">
+                <input class="aa-check" type="checkbox" name="aa_numbers" value="{{ aa.number }}">
+                <span class="fw-semibold">{{ aa.label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="mt-2 small muted">Astuce: sélectionne 3-6 AA pour un quiz équilibré.</div>
+        </div>
+
+        <hr>
+
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">MCQ</label>
+            <input class="form-control" type="number" name="num_mcq" value="8" min="0" max="50">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Open</label>
+            <input class="form-control" type="number" name="num_open" value="4" min="0" max="50">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Style d'examen (optionnel)</label>
+            <select class="form-select" name="exam_style_id">
+              <option value="">Aucun</option>
+              {% for d in exam_docs %}
+                <option value="{{ d.id }}">{{ d.title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <div class="fw-semibold mb-2">Bloom (doit totaliser 100%)</div>
+          <div class="d-flex flex-wrap gap-2">
+            <div><label class="form-label small mb-0">Remember</label><input class="form-control form-control-sm small-input" type="number" name="bloom_remember" value="17" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Understand</label><input class="form-control form-control-sm small-input" type="number" name="bloom_understand" value="25" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Apply</label><input class="form-control form-control-sm small-input" type="number" name="bloom_apply" value="25" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Analyze</label><input class="form-control form-control-sm small-input" type="number" name="bloom_analyze" value="20" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Evaluate</label><input class="form-control form-control-sm small-input" type="number" name="bloom_evaluate" value="8" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Create</label><input class="form-control form-control-sm small-input" type="number" name="bloom_create" value="5" min="0" max="100"></div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <div class="fw-semibold mb-2">Difficulté (doit totaliser 100%)</div>
+          <div class="d-flex flex-wrap gap-2">
+            <div><label class="form-label small mb-0">Easy</label><input class="form-control form-control-sm small-input" type="number" name="difficulty_easy" value="33" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Medium</label><input class="form-control form-control-sm small-input" type="number" name="difficulty_medium" value="34" min="0" max="100"></div>
+            <div><label class="form-label small mb-0">Hard</label><input class="form-control form-control-sm small-input" type="number" name="difficulty_hard" value="33" min="0" max="100"></div>
+          </div>
+        </div>
+
+        <div class="mt-4 d-flex justify-content-end">
+          <button type="submit" class="btn btn-danger btn-lg">
+            <i class="fas fa-wand-magic-sparkles me-1"></i>Générer
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: distributions -->
+    <div class="tnq-card">
+      <div class="hd">
+        <h3><i class="fas fa-chart-pie me-2 text-danger"></i>Distribution</h3>
+        <span class="badge bg-light text-dark border">AA</span>
+      </div>
+      <div class="bd">
+        <div class="fw-semibold mb-2">Dans tout le module</div>
+        {% if overall_aa_distribution and overall_aa_distribution|length %}
+          <div class="d-grid gap-2 mb-3">
+            {% for r in overall_aa_distribution[:10] %}
+              <div>
+                <div class="dist-row">
+                  <div class="fw-semibold">{{ r.label }}</div>
+                  <div class="muted">{{ r.percent }}%</div>
+                </div>
+                <div class="dist-bar"><div style="width: {{ r.percent }}%"></div></div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="muted">Pas de distribution disponible.</div>
+        {% endif %}
+
+        <div class="fw-semibold mb-2">Sur ta sélection</div>
+        <div id="selectionDist" class="muted">Sélectionne des chapitres/sections ou des AA…</div>
+        <div class="small muted mt-3">Cette distribution est utilisée pour répartir les questions automatiquement.</div>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  const chaptersPayload = {{ chapters_payload|tojson }};
+
+  const modeInput = document.getElementById('modeInput');
+  const modeChapter = document.getElementById('modeChapter');
+  const modeAA = document.getElementById('modeAA');
+  const btnModeChapter = document.getElementById('btnModeChapter');
+  const btnModeAA = document.getElementById('btnModeAA');
+  const selectionDist = document.getElementById('selectionDist');
+
+  function setMode(m){
+    modeInput.value = m;
+    if(m === 'aaa'){
+      modeChapter.style.display = 'none';
+      modeAA.style.display = '';
+      btnModeAA.classList.remove('btn-outline-danger');
+      btnModeAA.classList.add('btn-danger');
+      btnModeChapter.classList.remove('btn-danger');
+      btnModeChapter.classList.add('btn-outline-danger');
+    } else {
+      modeChapter.style.display = '';
+      modeAA.style.display = 'none';
+      btnModeChapter.classList.remove('btn-outline-danger');
+      btnModeChapter.classList.add('btn-danger');
+      btnModeAA.classList.remove('btn-danger');
+      btnModeAA.classList.add('btn-outline-danger');
+    }
+    renderSelectionDist();
+  }
+
+  btnModeChapter.addEventListener('click', () => setMode('chapter'));
+  btnModeAA.addEventListener('click', () => setMode('aaa'));
+
+  // When a chapter is checked, check all its sections for clarity (still optional)
+  document.querySelectorAll('.chapter-check').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const box = chk.closest('.chapter-box');
+      if(!box) return;
+      box.querySelectorAll('.section-check').forEach(s => { s.checked = chk.checked; });
+      renderSelectionDist();
+    });
+  });
+  document.querySelectorAll('.section-check').forEach(chk => chk.addEventListener('change', renderSelectionDist));
+  document.querySelectorAll('.aa-check').forEach(chk => chk.addEventListener('change', renderSelectionDist));
+
+  function computeAAWeightsFromSelection(){
+    const weights = {};
+    const mode = modeInput.value;
+    if(mode === 'aaa'){
+      document.querySelectorAll('.aa-check:checked').forEach(el => {
+        const n = parseInt(el.value, 10);
+        if(!Number.isFinite(n)) return;
+        const k = `AA ${n}`;
+        weights[k] = (weights[k] || 0) + 1;
+      });
+      return weights;
+    }
+
+    // chapter/section mode: count per selected section (each section link weight 1)
+    const selectedSectionIds = new Set(Array.from(document.querySelectorAll('.section-check:checked')).map(e => parseInt(e.value, 10)));
+    chaptersPayload.forEach(ch => {
+      (ch.sections || []).forEach(sec => {
+        if(!selectedSectionIds.has(sec.tn_section_id)) return;
+        (sec.aa_numbers || []).forEach(n => {
+          const k = `AA ${n}`;
+          weights[k] = (weights[k] || 0) + 1;
+        });
+      });
+    });
+    return weights;
+  }
+
+  function renderSelectionDist(){
+    const weights = computeAAWeightsFromSelection();
+    const entries = Object.entries(weights);
+    if(entries.length === 0){
+      selectionDist.innerHTML = '<div class="muted">Sélectionne des chapitres/sections ou des AA…</div>';
+      return;
+    }
+    const total = entries.reduce((s, [,v]) => s + v, 0) || 1;
+    entries.sort((a,b) => b[1]-a[1]);
+    const top = entries.slice(0, 12);
+
+    let html = '<div class="d-grid gap-2">';
+    top.forEach(([label, w]) => {
+      const pct = Math.round((w/total)*1000)/10;
+      html += `
+        <div>
+          <div class="dist-row"><div class="fw-semibold">${label}</div><div class="muted">${pct}%</div></div>
+          <div class="dist-bar"><div style="width:${pct}%"></div></div>
+        </div>`;
+    });
+    html += '</div>';
+    if(entries.length > top.length){
+      html += `<div class="small muted mt-2">+${entries.length-top.length} autres AA</div>`;
+    }
+    selectionDist.innerHTML = html;
+  }
+
+  // init
+  const initialMode = "{{ (initial_mode or 'chapter')|lower }}";
+  setMode(initialMode === 'aaa' ? 'aaa' : 'chapter');
+</script>
+{% endblock %}
