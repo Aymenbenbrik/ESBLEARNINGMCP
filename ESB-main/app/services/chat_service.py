@@ -299,19 +299,29 @@ def get_chat_response(
         normalized_history = _normalize_chat_history(chat_history)
 
         # --- Validate document / course ---
-        if not document_id and not course_id:
+        if not document_id and not document_ids and not course_id:
             return {
                 "response": "Error: No document or course specified.",
                 "citations": [],
                 "sources_used": [],
             }
 
-        # --- Multi-document best-doc selection ---
-        if document_ids and len(document_ids) > 1:
-            document_id, vs, doc_name, course_name = _select_best_document(
-                document_ids, user_message
-            )
-            document = Document.query.get(document_id)
+        # --- Multi-document or single-document selection ---
+        if document_ids:
+            if len(document_ids) > 1:
+                document_id, vs, doc_name, course_name = _select_best_document(
+                    document_ids, user_message
+                )
+                document = Document.query.get(document_id)
+            else:
+                # Single document passed as list
+                document_id = document_ids[0]
+                vs = VectorStore(document_id=str(document_id))
+                document = Document.query.get(document_id)
+                doc_name = document.title if document else f"Document {document_id}"
+                course_name = (
+                    document.course.title if document and document.course else None
+                )
         elif document_id:
             vs = VectorStore(document_id=str(document_id))
             document = Document.query.get(document_id)
@@ -325,6 +335,8 @@ def get_chat_response(
                 "citations": [],
                 "sources_used": [],
             }
+
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
         # --- Collection check + summary fallback ---
         collection_exists = vs.collection_exists()
@@ -347,7 +359,7 @@ def get_chat_response(
                 }
             # With only a summary we skip the multi-stage pipeline
             llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
+                model=gemini_model,
                 google_api_key=api_key,
                 temperature=0.7,
                 max_tokens=3000,
@@ -366,7 +378,7 @@ def get_chat_response(
 
         # --- Initialize LLM early (needed for classification) ---
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model=gemini_model,
             google_api_key=api_key,
             temperature=0.7,
             max_tokens=3000,
