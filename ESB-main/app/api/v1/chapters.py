@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 import os
 from app import db
-from app.models import Course, Chapter, Document, Enrollment, User
+from app.models import Course, Chapter, Document, Enrollment, User, TNAA, TNChapter, TNChapterAAA
 from app.services.file_service import save_file, allowed_file
 from app.services.ai_service import generate_summary
 from app.services.syllabus_service import SyllabusService
@@ -397,8 +397,12 @@ def generate_chapter_summary(chapter_id):
         if course.teacher_id != user.id:
             return jsonify({'error': 'Access denied'}), 403
 
+        # Allow force regeneration via body param
+        body = request.get_json(silent=True) or {}
+        force = bool(body.get('force', False))
+
         # Check if summary already exists
-        if chapter.summary:
+        if chapter.summary and not force:
             return jsonify({
                 'message': 'Summary already exists',
                 'summary': chapter.summary
@@ -493,6 +497,171 @@ def get_chapter_summary(chapter_id):
 
     except Exception as e:
         logger.error(f"Error getting chapter summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+
+# ---------------------------------------------------------------------------
+# AA matching endpoints
+# ---------------------------------------------------------------------------
+
+@chapters_api_bp.route('/<int:chapter_id>/aa-matching', methods=['GET'])
+@jwt_required()
+def get_aa_matching(chapter_id):
+    """
+    Return all AAs from the TN syllabus + the current chapter AA links.
+    Accessible to teacher and enrolled students.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+        is_teacher = user.is_teacher and course.teacher_id == user.id
+        is_enrolled = Enrollment.query.filter_by(student_id=user.id, course_id=course.id).first()
+        if not is_teacher and not is_enrolled:
+            return jsonify({'error': 'Access denied'}), 403
+
+        tn_chapter, syllabus = _get_tn_chapter_for(chapter)
+        if not syllabus:
+            return jsonify({'error': 'No TN syllabus found for this course'}), 404
+        if not tn_chapter:
+            return jsonify({'error': 'No TN chapter matches this course chapter'}), 404
+
+        all_aas = sorted(getattr(syllabus, 'tn_aa', []), key=lambda a: int(a.number))
+        current_aa_ids = [link.aa_id for link in (tn_chapter.aa_links or [])]
+
+        return jsonify({
+            'tn_chapter_id': tn_chapter.id,
+            'all_aas': [
+                {'id': aa.id, 'number': aa.number, 'description': aa.description}
+                for aa in all_aas
+            ],
+            'current_aa_ids': current_aa_ids,
+            'can_edit': is_teacher,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting AA matching: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@chapters_api_bp.route('/<int:chapter_id>/aa-matching/propose', methods=['POST'])
+@jwt_required()
+def propose_aa_matching(chapter_id):
+    """
+    Use Gemini to propose which AAs best match this chapter.
+    Returns a list of proposed aa_ids (not saved).
+    Teachers only.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+        if not (user.is_teacher and course.teacher_id == user.id):
+            return jsonify({'error': 'Access denied'}), 403
+
+        tn_chapter, syllabus = _get_tn_chapter_for(chapter)
+        if not syllabus or not tn_chapter:
+            return jsonify({'error': 'No TN syllabus / TN chapter found'}), 404
+
+        all_aas = sorted(getattr(syllabus, 'tn_aa', []), key=lambda a: int(a.number))
+        if not all_aas:
+            return jsonify({'error': 'No AAs found in syllabus'}), 404
+
+        # Build context: chapter title + section titles
+        section_titles = [f"- {s.index}: {s.title}" for s in (tn_chapter.sections or [])]
+        sections_text = "\n".join(section_titles) if section_titles else "(aucune section)"
+        aa_list_text = "\n".join([f"AA{aa.number}: {aa.description}" for aa in all_aas])
+
+        prompt = (
+            f"Tu es un expert pédagogique. Voici un chapitre de cours:\n"
+            f"Titre du chapitre: {tn_chapter.title}\n"
+            f"Sections:\n{sections_text}\n\n"
+            f"Voici la liste des Acquis d'Apprentissage (AA) du syllabus:\n{aa_list_text}\n\n"
+            f"Indique UNIQUEMENT les numéros des AA qui correspondent à ce chapitre, "
+            f"sous forme d'une liste JSON de nombres entiers. "
+            f"Exemple: [1, 3, 5]. Ne fournis rien d'autre que ce tableau JSON."
+        )
+
+        api_key = current_app.config.get('GOOGLE_API_KEY')
+        model_name = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
+        llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0.1, max_tokens=512)
+        response = llm.invoke([
+            SystemMessage(content="Tu es un expert pédagogique. Réponds uniquement avec un tableau JSON d'entiers."),
+            HumanMessage(content=prompt),
+        ])
+
+        import json, re
+        raw = response.content.strip()
+        match = re.search(r'\[[\d,\s]*\]', raw)
+        if not match:
+            return jsonify({'error': 'Model did not return a valid JSON array', 'raw': raw}), 500
+
+        proposed_numbers = json.loads(match.group(0))
+        aa_number_to_id = {aa.number: aa.id for aa in all_aas}
+        proposed_ids = [aa_number_to_id[n] for n in proposed_numbers if n in aa_number_to_id]
+
+        return jsonify({'proposed_aa_ids': proposed_ids}), 200
+
+    except Exception as e:
+        logger.error(f"Error proposing AA matching: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@chapters_api_bp.route('/<int:chapter_id>/aa-matching', methods=['PUT'])
+@jwt_required()
+def save_aa_matching(chapter_id):
+    """
+    Save (replace) the chapter's AA links.
+    Body: { "aa_ids": [<int>, ...] }
+    Teachers only.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+        if not (user.is_teacher and course.teacher_id == user.id):
+            return jsonify({'error': 'Access denied'}), 403
+
+        tn_chapter, syllabus = _get_tn_chapter_for(chapter)
+        if not syllabus or not tn_chapter:
+            return jsonify({'error': 'No TN syllabus / TN chapter found'}), 404
+
+        body = request.get_json(silent=True) or {}
+        new_aa_ids = set(int(i) for i in body.get('aa_ids', []))
+
+        # Validate that all submitted IDs belong to this syllabus
+        valid_ids = {aa.id for aa in getattr(syllabus, 'tn_aa', [])}
+        invalid = new_aa_ids - valid_ids
+        if invalid:
+            return jsonify({'error': f'Unknown AA ids: {invalid}'}), 400
+
+        # Delete old links then create new ones
+        TNChapterAAA.query.filter_by(chapter_id=tn_chapter.id).delete()
+        for aa_id in new_aa_ids:
+            db.session.add(TNChapterAAA(chapter_id=tn_chapter.id, aa_id=aa_id))
+        db.session.commit()
+
+        return jsonify({
+            'message': 'AA matching saved',
+            'aa_ids': list(new_aa_ids),
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error saving AA matching: {e}")
         return jsonify({'error': str(e)}), 500
 
 

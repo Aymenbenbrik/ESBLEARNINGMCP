@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { ChapterHeader } from '@/components/chapters/ChapterHeader';
 import { DocumentsList } from '@/components/chapters/DocumentsList';
 import { ChapterSummary } from '@/components/chapters/ChapterSummary';
+import { ChapterAAMatching } from '@/components/chapters/ChapterAAMatching';
 import { DeleteChapterDialog } from '@/components/chapters/DeleteChapterDialog';
 import { ChapterReferences } from '@/components/chapters/ChapterReferences';
 import { SectionContentPanel } from '@/components/chapters/SectionContentPanel';
@@ -38,7 +39,11 @@ export default function ChapterDetailPage() {
   };
 
   const handleGenerateSummary = () => {
-    generateSummaryMutation.mutate(chapterId);
+    generateSummaryMutation.mutate({ id: chapterId });
+  };
+
+  const handleRegenerateSummary = () => {
+    generateSummaryMutation.mutate({ id: chapterId, force: true });
   };
 
   if (isLoading) {
@@ -114,8 +119,12 @@ export default function ChapterDetailPage() {
             summary={chapter.summary}
             canGenerate={chapter.can_edit}
             onGenerate={handleGenerateSummary}
+            onRegenerate={handleRegenerateSummary}
             isGenerating={generateSummaryMutation.isPending}
           />
+
+          {/* ── AA Matching ───────────────────────────────────────────── */}
+          <ChapterAAMatching chapterId={chapterId} canEdit={chapter.can_edit} />
 
           <DocumentsList documents={documents} chapterId={chapterId} canEdit={chapter.can_edit} />
 
