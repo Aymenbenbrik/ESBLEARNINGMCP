@@ -494,3 +494,245 @@ def get_chapter_summary(chapter_id):
     except Exception as e:
         logger.error(f"Error getting chapter summary: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Section restructuring from uploaded document
+# ---------------------------------------------------------------------------
+
+def _get_tn_chapter_for(chapter):
+    """Return the TNChapter linked to a Chapter, or None."""
+    syllabus = SyllabusService.get_syllabus_by_course(chapter.course_id)
+    if not syllabus or (syllabus.syllabus_type or '').lower() != 'tn':
+        return None, None
+    for tnc in (syllabus.tn_chapters or []):
+        if tnc.index == chapter.order:
+            return tnc, syllabus
+    return None, syllabus
+
+
+@chapters_api_bp.route('/<int:chapter_id>/sections/extract-from-document', methods=['POST'])
+@jwt_required()
+def extract_sections_from_document(chapter_id):
+    """
+    Analyse the latest uploaded document of a chapter with Gemini
+    and return a proposed section structure (preview only, nothing saved).
+
+    Optional body: { "document_id": <int> }  to use a specific document.
+
+    Response:
+      {
+        "proposed_sections": [
+          { "index": "1.1", "title": "..." },
+          ...
+        ],
+        "source_document": { "id": ..., "title": ... },
+        "current_sections": [ { "index": "1.1", "title": "..." }, ... ]
+      }
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+
+        if not (user.is_teacher and course.teacher_id == user.id) and not user.is_superuser:
+            return jsonify({'error': 'Access denied'}), 403
+
+        # Pick the document to analyse
+        data = request.get_json(silent=True) or {}
+        doc_id = data.get('document_id')
+        if doc_id:
+            doc = Document.query.filter_by(id=doc_id, chapter_id=chapter_id).first()
+            if not doc:
+                return jsonify({'error': 'Document not found in this chapter'}), 404
+        else:
+            # Most recently uploaded document
+            doc = chapter.documents.order_by(Document.created_at.desc()).first()
+            if not doc:
+                return jsonify({'error': 'No documents uploaded to this chapter yet'}), 400
+
+        if not doc.file_path:
+            return jsonify({'error': 'Document has no associated file'}), 400
+
+        # Extract text
+        from app.services.file_service import get_file_path, extract_text_from_file
+        full_path = get_file_path(doc.file_path.replace('\\', '/'))
+        if not os.path.exists(full_path):
+            return jsonify({'error': 'File not found on disk'}), 404
+
+        text = extract_text_from_file(full_path)
+        if not text or len(text.strip()) < 50:
+            return jsonify({'error': 'Could not extract readable text from document'}), 422
+
+        # Current sections (for comparison in frontend)
+        tn_chapter, _ = _get_tn_chapter_for(chapter)
+        current_sections = []
+        if tn_chapter:
+            current_sections = [
+                {'index': s.index, 'title': s.title}
+                for s in sorted(tn_chapter.sections, key=lambda s: s.index)
+            ]
+
+        # Determine chapter index label (e.g. "I", "II", or numeric)
+        chapter_label = str(chapter.order)
+
+        # Call Gemini to extract structure
+        api_key = current_app.config.get('GOOGLE_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'GOOGLE_API_KEY not configured'}), 500
+
+        model = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
+        llm = ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=0)
+
+        prompt = f"""Tu analyses le contenu d'un document de cours universitaire (chapitre {chapter_label} : "{chapter.title}").
+
+Ton objectif : identifier la structure hiérarchique (sections et sous-sections) du document.
+
+RÈGLES STRICTES :
+1. Retourne UNIQUEMENT un tableau JSON valide, rien d'autre.
+2. Chaque élément a exactement deux clés : "index" (string, ex: "1.1") et "title" (string).
+3. L'indexation suit le schéma : sections principales = "{chapter_label}.1", "{chapter_label}.2"... sous-sections = "{chapter_label}.1.1", "{chapter_label}.1.2"...
+4. Maximum 15 sections/sous-sections au total.
+5. Les titres sont en français ou dans la langue du document.
+6. Si le document ne contient pas de structure claire, génère-en une cohérente avec le contenu.
+
+CONTENU DU DOCUMENT (premiers 6000 caractères) :
+{text[:6000]}
+
+RÉPONSE (JSON pur uniquement) :"""
+
+        response = llm.invoke([
+            SystemMessage(content="Tu es un expert en structuration de contenus pédagogiques universitaires. Tu réponds uniquement en JSON valide."),
+            HumanMessage(content=prompt),
+        ])
+
+        raw = response.content.strip()
+        # Clean markdown code blocks if present
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        import json as _json
+        try:
+            proposed = _json.loads(raw)
+        except _json.JSONDecodeError:
+            # Try to extract array from text
+            import re
+            match = re.search(r'\[.*\]', raw, re.DOTALL)
+            if match:
+                proposed = _json.loads(match.group())
+            else:
+                return jsonify({'error': 'Gemini returned invalid JSON', 'raw': raw[:500]}), 500
+
+        # Validate structure
+        if not isinstance(proposed, list):
+            return jsonify({'error': 'Expected a JSON array from Gemini', 'raw': raw[:300]}), 500
+
+        clean = []
+        for item in proposed:
+            if isinstance(item, dict) and 'index' in item and 'title' in item:
+                clean.append({'index': str(item['index']), 'title': str(item['title'])})
+
+        if not clean:
+            return jsonify({'error': 'No valid sections extracted from document'}), 422
+
+        return jsonify({
+            'proposed_sections': clean,
+            'source_document': {'id': doc.id, 'title': doc.title},
+            'current_sections': current_sections,
+        })
+
+    except Exception as e:
+        logger.error(f"Error extracting sections from document: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@chapters_api_bp.route('/<int:chapter_id>/sections/apply-structure', methods=['POST'])
+@jwt_required()
+def apply_section_structure(chapter_id):
+    """
+    Replace TNSection records with a teacher-validated structure.
+
+    Body:
+      {
+        "sections": [
+          { "index": "1.1", "title": "..." },
+          ...
+        ]
+      }
+
+    - Deletes existing TNSection rows (and their AA links / SectionContent)
+    - Creates new TNSection rows
+    - Returns updated tn_chapter with sections
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+
+        if not (user.is_teacher and course.teacher_id == user.id) and not user.is_superuser:
+            return jsonify({'error': 'Access denied'}), 403
+
+        data = request.get_json() or {}
+        sections_data = data.get('sections', [])
+
+        if not sections_data or not isinstance(sections_data, list):
+            return jsonify({'error': 'sections array is required'}), 400
+
+        # Validate each section
+        validated = []
+        seen_indexes = set()
+        for item in sections_data:
+            idx = str(item.get('index', '')).strip()
+            title = str(item.get('title', '')).strip()
+            if not idx or not title:
+                return jsonify({'error': f'Each section needs a non-empty index and title. Got: {item}'}), 400
+            if idx in seen_indexes:
+                return jsonify({'error': f'Duplicate section index: {idx}'}), 400
+            seen_indexes.add(idx)
+            validated.append({'index': idx, 'title': title})
+
+        # Find TNChapter
+        tn_chapter, syllabus = _get_tn_chapter_for(chapter)
+        if not tn_chapter:
+            return jsonify({'error': 'No TN syllabus or TNChapter found for this chapter'}), 404
+
+        from app.models import TNSection, SectionContent
+
+        # Delete existing sections (cascades to TNSectionAAA and SectionContent)
+        TNSection.query.filter_by(chapter_id=tn_chapter.id).delete()
+        db.session.flush()
+
+        # Create new sections
+        new_sections = []
+        for item in validated:
+            s = TNSection(
+                chapter_id=tn_chapter.id,
+                index=item['index'],
+                title=item['title'],
+            )
+            db.session.add(s)
+            new_sections.append(s)
+
+        db.session.commit()
+
+        return jsonify({
+            'message': f'{len(new_sections)} sections applied successfully',
+            'tn_chapter_id': tn_chapter.id,
+            'sections': [{'id': s.id, 'index': s.index, 'title': s.title} for s in new_sections],
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error applying section structure: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500

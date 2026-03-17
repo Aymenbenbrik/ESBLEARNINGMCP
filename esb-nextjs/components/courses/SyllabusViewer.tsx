@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Syllabus } from '@/lib/types/course';
-import { FileText, Download, Upload, BookOpen, Target, Calendar, GraduationCap, List } from 'lucide-react';
+import { FileText, Download, Upload, BookOpen, Target, Calendar, GraduationCap, List, History, GitBranch, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,6 +10,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SyllabusUploadDialog } from './SyllabusUploadDialog';
 import { useSyllabus } from '@/lib/hooks/useSyllabus';
 import { TNChapter, TNStructured } from '@/lib/api/syllabus';
+import { SyllabusVersionHistory } from '@/components/syllabus/SyllabusVersionHistory';
+import { ProposeRevisionDialog } from '@/components/syllabus/ProposeRevisionDialog';
+import { syllabusVersionsApi } from '@/lib/api/syllabusVersions';
+import type { SyllabusSnapshot } from '@/lib/types/syllabusVersions';
 
 interface SyllabusViewerProps {
   syllabus: Syllabus | null;
@@ -192,6 +196,24 @@ export function SyllabusViewer({ syllabus, syllabusType, courseId, canEdit = fal
     syllabus ? courseId : 0
   );
 
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [liveSnapshot, setLiveSnapshot] = useState<SyllabusSnapshot | undefined>(undefined);
+
+  const openPropose = async () => {
+    try {
+      // Load the latest version snapshot to pre-fill the form
+      const res = await syllabusVersionsApi.list(courseId);
+      const latest = res.versions.at(-1);
+      if (latest) {
+        const detail = await syllabusVersionsApi.get(courseId, latest.id);
+        setLiveSnapshot(detail.snapshot);
+      }
+    } catch {
+      // proceed without pre-fill
+    }
+    setProposeOpen(true);
+  };
+
   const getDownloadUrl = () => {
     if (!syllabus?.file_path) return null;
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -251,6 +273,13 @@ export function SyllabusViewer({ syllabus, syllabusType, courseId, canEdit = fal
             {hasStructure && <Badge variant="secondary" className="text-xs">Extrait</Badge>}
           </div>
           <div className="flex items-center gap-2">
+            {canEdit && isTN && (
+              <Button size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                onClick={openPropose}>
+                <PlusCircle className="h-4 w-4 mr-1" />
+                Proposer une révision
+              </Button>
+            )}
             {canEdit && (
               <SyllabusUploadDialog
                 courseId={courseId}
@@ -279,9 +308,22 @@ export function SyllabusViewer({ syllabus, syllabusType, courseId, canEdit = fal
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : isTN && hasTNStructure ? (
-          <TNSyllabusView tn={tnStructured!} />
-        ) : !isTN && hasBGAStructure ? (
+        ) : (
+          <Tabs defaultValue="content">
+            <TabsList className="mb-4">
+              <TabsTrigger value="content" className="flex items-center gap-1">
+                <BookOpen className="h-3 w-3" /> Contenu
+              </TabsTrigger>
+              <TabsTrigger value="versions" className="flex items-center gap-1">
+                <History className="h-3 w-3" /> Versions
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Content tab ── */}
+            <TabsContent value="content">
+              {isTN && hasTNStructure ? (
+                <TNSyllabusView tn={tnStructured!} />
+              ) : !isTN && hasBGAStructure ? (
           <Tabs defaultValue={weeklyPlan.length > 0 ? 'weekly' : cloData.length > 0 ? 'clo' : 'plo'}>
             <TabsList className="mb-4">
               {weeklyPlan.length > 0 && (
@@ -404,17 +446,37 @@ export function SyllabusViewer({ syllabus, syllabusType, courseId, canEdit = fal
               </TabsContent>
             )}
           </Tabs>
-        ) : (
-          <div className="flex items-center gap-3 p-4 rounded-lg border bg-accent/50">
-            <FileText className="h-8 w-8 text-muted-foreground" />
-            <div className="flex-1">
-              <p className="font-medium">Syllabus du cours</p>
-              <p className="text-sm text-muted-foreground">
-                {syllabus.syllabus_type?.toUpperCase()} — pas encore extrait
-              </p>
-            </div>
-          </div>
+              ) : (
+                <div className="flex items-center gap-3 p-4 rounded-lg border bg-accent/50">
+                  <FileText className="h-8 w-8 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="font-medium">Syllabus du cours</p>
+                    <p className="text-sm text-muted-foreground">
+                      {syllabus.syllabus_type?.toUpperCase()} — pas encore extrait
+                    </p>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Versions tab ── */}
+            <TabsContent value="versions">
+              <SyllabusVersionHistory
+                courseId={courseId}
+                canEdit={canEdit}
+                canValidate={canEdit}
+              />
+            </TabsContent>
+          </Tabs>
         )}
+
+        {/* Propose revision dialog */}
+        <ProposeRevisionDialog
+          open={proposeOpen}
+          onOpenChange={setProposeOpen}
+          courseId={courseId}
+          currentSnapshot={liveSnapshot}
+        />
       </CardContent>
     </Card>
   );

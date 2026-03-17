@@ -107,7 +107,7 @@ export default function DashboardPage() {
               <div className="mt-4 grid grid-cols-3 gap-4">
                 <div>
                   <p className="text-xs text-slate-500">Modules</p>
-                  <p className="text-3xl font-bold text-slate-900">{safeNumber(stats?.total_courses ?? teacherData?.courses?.length)}</p>
+                  <p className="text-3xl font-bold text-slate-900">{safeNumber((stats as any)?.total_courses ?? teacherData?.courses?.length)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Quiz récents</p>

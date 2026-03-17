@@ -9,6 +9,8 @@ import { ChapterHeader } from '@/components/chapters/ChapterHeader';
 import { DocumentsList } from '@/components/chapters/DocumentsList';
 import { ChapterSummary } from '@/components/chapters/ChapterSummary';
 import { DeleteChapterDialog } from '@/components/chapters/DeleteChapterDialog';
+import { ChapterReferences } from '@/components/chapters/ChapterReferences';
+import { SectionContentPanel } from '@/components/chapters/SectionContentPanel';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, MessageSquare, ClipboardList, Users, ChevronRight, Upload } from 'lucide-react';
@@ -117,6 +119,13 @@ export default function ChapterDetailPage() {
 
           <DocumentsList documents={documents} chapterId={chapterId} canEdit={chapter.can_edit} />
 
+          {/* ── References ─────────────────────────────────────────────── */}
+          <ChapterReferences
+            courseId={courseId}
+            chapterId={chapterId}
+            canEdit={chapter.can_edit}
+          />
+
           {tn_chapter && tn_chapter.sections.length > 0 && (
             <Card className="rounded-[24px] border-bolt-line shadow-sm">
               <CardHeader>
@@ -195,6 +204,12 @@ export default function ChapterDetailPage() {
                             </Link>
                           </Button>
                         ) : null}
+
+                        {/* ── AI Section Content ──────────────────────── */}
+                        <SectionContentPanel
+                          sectionId={section.id}
+                          canEdit={chapter.can_edit}
+                        />
                       </div>
                     </details>
                   ))}
