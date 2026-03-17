@@ -15,6 +15,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Send, Trash2, History, Sparkles, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkGfm from 'remark-gfm';
 
 interface ChatPanelProps {
   mode: 'document' | 'chapter';
@@ -280,7 +283,12 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
           }`}
         >
           <div className={`prose prose-sm sm:prose-base max-w-none break-words leading-7 ${isUser ? 'prose-invert' : ''}`}>
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {message.content}
+            </ReactMarkdown>
           </div>
         </div>
         <p className="mt-1 px-1 text-xs text-muted-foreground">
