@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useSectionContent, useGenerateSectionContent, useUpdateSectionContent } from '@/lib/hooks/useReferences';
+import { useSectionContent, useGenerateSectionContent, useUpdateSectionContent, useExtractSectionContent } from '@/lib/hooks/useReferences';
 import { SectionContent } from '@/lib/types/references';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, CheckCircle2, XCircle, Pencil, Eye } from 'lucide-react';
+import { Sparkles, CheckCircle2, XCircle, Pencil, Eye, FileDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface SectionContentPanelProps {
@@ -53,6 +53,7 @@ export function SectionContentPanel({ sectionId, canEdit }: SectionContentPanelP
   const { data: contentData, isLoading } = useSectionContent(sectionId);
   const generateMutation = useGenerateSectionContent();
   const updateMutation = useUpdateSectionContent();
+  const extractMutation = useExtractSectionContent();
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -60,6 +61,12 @@ export function SectionContentPanel({ sectionId, canEdit }: SectionContentPanelP
 
   const handleGenerate = () => {
     generateMutation.mutate(sectionId, {
+      onSuccess: () => setExpanded(true),
+    });
+  };
+
+  const handleExtract = () => {
+    extractMutation.mutate({ sectionId }, {
       onSuccess: () => setExpanded(true),
     });
   };
@@ -92,6 +99,7 @@ export function SectionContentPanel({ sectionId, canEdit }: SectionContentPanelP
   const sc = contentData as SectionContent | null;
   const statusCfg = sc ? STATUS_CONFIG[sc.status] : null;
   const isGenerating = generateMutation.isPending;
+  const isExtracting = extractMutation.isPending;
 
   return (
     <div className="mt-3 rounded-[16px] border border-bolt-line bg-white">
@@ -184,10 +192,21 @@ export function SectionContentPanel({ sectionId, canEdit }: SectionContentPanelP
                 size="sm"
                 className="h-7 rounded-full px-3 text-xs"
                 onClick={handleGenerate}
-                disabled={isGenerating}
+                disabled={isGenerating || isExtracting}
               >
                 <Sparkles className="mr-1 h-3.5 w-3.5" />
                 {isGenerating ? 'Génération...' : sc ? 'Regénérer' : 'Générer'}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 rounded-full px-3 text-xs"
+                onClick={handleExtract}
+                disabled={isExtracting || isGenerating}
+              >
+                <FileDown className="mr-1 h-3.5 w-3.5" />
+                {isExtracting ? 'Extraction...' : 'Extraire du document'}
               </Button>
             </>
           )}

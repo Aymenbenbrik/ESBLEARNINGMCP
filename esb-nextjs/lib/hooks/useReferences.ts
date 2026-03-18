@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { referencesApi, sectionContentApi } from '../api/references';
+import { referencesApi, sectionContentApi, sectionActivitiesApi, sectionQuizApi } from '../api/references';
 import {
   CourseReference,
   ChapterReferenceLink,
@@ -8,6 +8,7 @@ import {
   UpdateChapterReferenceData,
   SectionContent,
   UpdateSectionContentData,
+  SectionQuizQuestion,
 } from '../types/references';
 import { toast } from 'sonner';
 
@@ -170,5 +171,144 @@ export function useUpdateSectionContent() {
       else if (data.status === 'rejected') toast.info('Contenu rejeté');
     },
     onError: () => toast.error('Erreur lors de la validation'),
+  });
+}
+
+/** Extract section content from chapter document */
+export function useExtractSectionContent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sectionId, documentId }: { sectionId: number; documentId?: number }) =>
+      sectionContentApi.extractFromDocument(sectionId, documentId),
+    onSuccess: ({ content }) => {
+      qc.setQueryData(sectionContentKeys.forSection(content.section_id), content);
+      toast.success('Contenu extrait du document — en attente de validation');
+    },
+    onError: () => toast.error('Erreur lors de l\'extraction'),
+  });
+}
+
+// ─── Section Activities ───────────────────────────────────────────────────────
+
+export const sectionActivityKeys = {
+  all: ['section-activities'] as const,
+  forSection: (sectionId: number) => [...sectionActivityKeys.all, sectionId] as const,
+};
+
+export const sectionQuizKeys = {
+  all: ['section-quiz'] as const,
+  forSection: (sectionId: number) => [...sectionQuizKeys.all, sectionId] as const,
+};
+
+export function useSectionActivities(sectionId: number) {
+  return useQuery({
+    queryKey: sectionActivityKeys.forSection(sectionId),
+    queryFn: () => sectionActivitiesApi.list(sectionId),
+    enabled: !!sectionId,
+  });
+}
+
+export function useAddYoutubeActivity(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ url, title }: { url: string; title?: string }) =>
+      sectionActivitiesApi.addYoutube(sectionId, url, title),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionActivityKeys.forSection(sectionId) });
+      toast.success('Vidéo YouTube ajoutée');
+    },
+    onError: () => toast.error('URL YouTube invalide ou erreur serveur'),
+  });
+}
+
+export function useDeleteActivity(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (activityId: number) => sectionActivitiesApi.deleteActivity(sectionId, activityId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionActivityKeys.forSection(sectionId) });
+      toast.success('Activité supprimée');
+    },
+    onError: () => toast.error('Erreur lors de la suppression'),
+  });
+}
+
+// ─── Section Quiz ─────────────────────────────────────────────────────────────
+
+export function useSectionQuiz(sectionId: number) {
+  return useQuery({
+    queryKey: sectionQuizKeys.forSection(sectionId),
+    queryFn: () => sectionQuizApi.get(sectionId),
+    enabled: !!sectionId,
+  });
+}
+
+export function useGenerateSectionQuiz(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (numQuestions: number) => sectionQuizApi.generate(sectionId, numQuestions),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      toast.success('Questions générées — validez-les avant de publier');
+    },
+    onError: () => toast.error('Erreur lors de la génération du quiz'),
+  });
+}
+
+export function useUpdateQuizQuestion(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ questionId, data }: { questionId: number; data: Partial<SectionQuizQuestion> & { status?: string } }) =>
+      sectionQuizApi.updateQuestion(sectionId, questionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+    },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
+  });
+}
+
+export function usePublishSectionQuiz(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => sectionQuizApi.publish(sectionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      qc.invalidateQueries({ queryKey: sectionActivityKeys.forSection(sectionId) });
+      toast.success('Quiz publié ✓');
+    },
+    onError: () => toast.error('Impossible de publier — approuvez au moins une question'),
+  });
+}
+
+export function useDeleteSectionQuiz(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => sectionQuizApi.deleteQuiz(sectionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      qc.invalidateQueries({ queryKey: sectionActivityKeys.forSection(sectionId) });
+      toast.success('Quiz supprimé');
+    },
+    onError: () => toast.error('Erreur lors de la suppression'),
+  });
+}
+
+export function useTakeQuiz(sectionId: number) {
+  return useQuery({
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'take'],
+    queryFn: () => sectionQuizApi.take(sectionId),
+    enabled: !!sectionId,
+  });
+}
+
+export function useSubmitSectionQuiz(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (answers: Record<string, string>) => sectionQuizApi.submit(sectionId, answers),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      toast.success(`Résultat : ${data.score}/${data.max_score} (${data.percent}%)`);
+    },
+    onError: () => toast.error('Erreur lors de la soumission'),
   });
 }

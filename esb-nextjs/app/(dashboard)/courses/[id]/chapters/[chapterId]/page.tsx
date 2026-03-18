@@ -12,6 +12,7 @@ import { ChapterAAMatching } from '@/components/chapters/ChapterAAMatching';
 import { DeleteChapterDialog } from '@/components/chapters/DeleteChapterDialog';
 import { ChapterReferences } from '@/components/chapters/ChapterReferences';
 import { SectionContentPanel } from '@/components/chapters/SectionContentPanel';
+import { SectionActivities } from '@/components/chapters/SectionActivities';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, MessageSquare, ClipboardList, Users, ChevronRight, Upload } from 'lucide-react';
@@ -216,6 +217,12 @@ export default function ChapterDetailPage() {
 
                         {/* ── AI Section Content ──────────────────────── */}
                         <SectionContentPanel
+                          sectionId={section.id}
+                          canEdit={chapter.can_edit}
+                        />
+
+                        {/* ── Section Activities (YouTube + Quiz) ──────── */}
+                        <SectionActivities
                           sectionId={section.id}
                           canEdit={chapter.can_edit}
                         />

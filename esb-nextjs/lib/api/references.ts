@@ -8,6 +8,11 @@ import {
   ImportBibResult,
   SectionContent,
   UpdateSectionContentData,
+  SectionActivity,
+  SectionQuiz,
+  SectionQuizQuestion,
+  SectionQuizSubmission,
+  TakeQuizResponse,
 } from '../types/references';
 
 // ─── Course References ────────────────────────────────────────────────────────
@@ -119,6 +124,105 @@ export const sectionContentApi = {
     const res = await apiClient.put<SectionContent>(
       `/api/v1/sections/${sectionId}/content`,
       data
+    );
+    return res.data;
+  },
+
+  /** Extract content from chapter document using Gemini */
+  extractFromDocument: async (sectionId: number, documentId?: number): Promise<{ content: SectionContent; source_document: { id: number; title: string } }> => {
+    const res = await apiClient.post<{ content: SectionContent; source_document: { id: number; title: string } }>(
+      `/api/v1/sections/${sectionId}/content/extract-from-document`,
+      documentId ? { document_id: documentId } : {}
+    );
+    return res.data;
+  },
+};
+
+// ─── Section Activities ───────────────────────────────────────────────────────
+
+export const sectionActivitiesApi = {
+  list: async (sectionId: number): Promise<SectionActivity[]> => {
+    const res = await apiClient.get<{ activities: SectionActivity[] }>(
+      `/api/v1/sections/${sectionId}/activities`
+    );
+    return res.data.activities;
+  },
+
+  addYoutube: async (sectionId: number, url: string, title?: string): Promise<SectionActivity> => {
+    const res = await apiClient.post<SectionActivity>(
+      `/api/v1/sections/${sectionId}/activities/youtube`,
+      { url, title }
+    );
+    return res.data;
+  },
+
+  deleteActivity: async (sectionId: number, activityId: number): Promise<void> => {
+    await apiClient.delete(`/api/v1/sections/${sectionId}/activities/${activityId}`);
+  },
+};
+
+// ─── Section Quiz ─────────────────────────────────────────────────────────────
+
+export const sectionQuizApi = {
+  get: async (sectionId: number): Promise<SectionQuiz | null> => {
+    const res = await apiClient.get<{ quiz: SectionQuiz | null }>(
+      `/api/v1/sections/${sectionId}/quiz`
+    );
+    return res.data.quiz;
+  },
+
+  generate: async (sectionId: number, numQuestions = 5): Promise<{ message: string; quiz: SectionQuiz }> => {
+    const res = await apiClient.post<{ message: string; quiz: SectionQuiz }>(
+      `/api/v1/sections/${sectionId}/quiz/generate`,
+      { num_questions: numQuestions }
+    );
+    return res.data;
+  },
+
+  updateQuestion: async (
+    sectionId: number,
+    questionId: number,
+    data: Partial<SectionQuizQuestion> & { status?: string }
+  ): Promise<SectionQuizQuestion> => {
+    const res = await apiClient.put<{ question: SectionQuizQuestion }>(
+      `/api/v1/sections/${sectionId}/quiz/questions/${questionId}`,
+      data
+    );
+    return res.data.question;
+  },
+
+  publish: async (sectionId: number): Promise<SectionQuiz> => {
+    const res = await apiClient.put<{ quiz: SectionQuiz }>(
+      `/api/v1/sections/${sectionId}/quiz/publish`
+    );
+    return res.data.quiz;
+  },
+
+  deleteQuiz: async (sectionId: number): Promise<void> => {
+    await apiClient.delete(`/api/v1/sections/${sectionId}/quiz`);
+  },
+
+  take: async (sectionId: number): Promise<TakeQuizResponse> => {
+    const res = await apiClient.get<TakeQuizResponse>(
+      `/api/v1/sections/${sectionId}/quiz/take`
+    );
+    return res.data;
+  },
+
+  submit: async (
+    sectionId: number,
+    answers: Record<string, string>
+  ): Promise<{ score: number; max_score: number; percent: number; result: SectionQuizSubmission }> => {
+    const res = await apiClient.post<{ score: number; max_score: number; percent: number; result: SectionQuizSubmission }>(
+      `/api/v1/sections/${sectionId}/quiz/submit`,
+      { answers }
+    );
+    return res.data;
+  },
+
+  getResult: async (sectionId: number): Promise<{ submitted: boolean; result?: SectionQuizSubmission }> => {
+    const res = await apiClient.get<{ submitted: boolean; result?: SectionQuizSubmission }>(
+      `/api/v1/sections/${sectionId}/quiz/result`
     );
     return res.data;
   },

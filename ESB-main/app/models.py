@@ -1110,3 +1110,145 @@ class PracticeQuizQuestion(db.Model):
     def __repr__(self):
         return f'<PracticeQuizQuestion {self.id} quiz={self.practice_quiz_id}>'
 
+
+# ---------------------------------------------------------------------------
+# Section Activities (YouTube & graded Section Quiz)
+# ---------------------------------------------------------------------------
+
+class SectionQuiz(db.Model):
+    """
+    Teacher-defined graded quiz for a section.
+    Students take it and the score contributes to their chapter grade.
+    """
+    __tablename__ = 'section_quiz'
+
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(20), default='draft')   # draft | published
+    max_score = db.Column(db.Float, default=10.0)
+    weight_percent = db.Column(db.Float, default=10.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    section = db.relationship('TNSection', backref=db.backref('section_quizzes', cascade='all, delete-orphan'))
+    questions = db.relationship('SectionQuizQuestion', backref='quiz',
+                                cascade='all, delete-orphan', order_by='SectionQuizQuestion.position')
+    submissions = db.relationship('SectionQuizSubmission', backref='quiz',
+                                  cascade='all, delete-orphan')
+
+    def to_dict(self, include_questions=False):
+        d = {
+            'id': self.id,
+            'section_id': self.section_id,
+            'title': self.title,
+            'status': self.status,
+            'max_score': self.max_score,
+            'weight_percent': self.weight_percent,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'question_count': len(self.questions),
+            'approved_count': sum(1 for q in self.questions if q.status == 'approved'),
+        }
+        if include_questions:
+            d['questions'] = [q.to_dict() for q in self.questions]
+        return d
+
+
+class SectionQuizQuestion(db.Model):
+    __tablename__ = 'section_quiz_question'
+
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('section_quiz.id'), nullable=False)
+    question_text = db.Column(db.Text, nullable=False)
+    question_type = db.Column(db.String(20), default='mcq')
+    choice_a = db.Column(db.Text)
+    choice_b = db.Column(db.Text)
+    choice_c = db.Column(db.Text)
+    choice_d = db.Column(db.Text)
+    correct_choice = db.Column(db.String(1))
+    explanation = db.Column(db.Text)
+    points = db.Column(db.Float, default=1.0)
+    status = db.Column(db.String(20), default='pending')   # pending | approved | rejected
+    bloom_level = db.Column(db.String(50))
+    position = db.Column(db.Integer, default=0)
+
+    def to_dict(self, hide_answer=False):
+        d = {
+            'id': self.id,
+            'quiz_id': self.quiz_id,
+            'question_text': self.question_text,
+            'question_type': self.question_type,
+            'choice_a': self.choice_a,
+            'choice_b': self.choice_b,
+            'choice_c': self.choice_c,
+            'choice_d': self.choice_d,
+            'explanation': None if hide_answer else self.explanation,
+            'points': self.points,
+            'status': self.status,
+            'bloom_level': self.bloom_level,
+            'position': self.position,
+        }
+        if not hide_answer:
+            d['correct_choice'] = self.correct_choice
+        return d
+
+
+class SectionQuizSubmission(db.Model):
+    __tablename__ = 'section_quiz_submission'
+
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('section_quiz.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    answers = db.Column(db.JSON)
+    score = db.Column(db.Float)
+    max_score = db.Column(db.Float)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('User', backref=db.backref('section_quiz_submissions', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('quiz_id', 'student_id', name='uq_section_quiz_submission'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'quiz_id': self.quiz_id,
+            'student_id': self.student_id,
+            'answers': self.answers,
+            'score': self.score,
+            'max_score': self.max_score,
+            'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
+        }
+
+
+class SectionActivity(db.Model):
+    """An activity attached to a TNSection: YouTube video or a graded SectionQuiz."""
+    __tablename__ = 'section_activity'
+
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=False)
+    activity_type = db.Column(db.String(20), nullable=False)   # 'youtube' | 'quiz'
+    title = db.Column(db.String(200), nullable=False)
+    position = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    youtube_url = db.Column(db.String(500))
+    youtube_embed_id = db.Column(db.String(50))
+    section_quiz_id = db.Column(db.Integer, db.ForeignKey('section_quiz.id'), nullable=True)
+
+    section = db.relationship('TNSection', backref=db.backref('activities', cascade='all, delete-orphan',
+                                                              order_by='SectionActivity.position'))
+    section_quiz_rel = db.relationship('SectionQuiz', foreign_keys=[section_quiz_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'section_id': self.section_id,
+            'activity_type': self.activity_type,
+            'title': self.title,
+            'position': self.position,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'youtube_url': self.youtube_url,
+            'youtube_embed_id': self.youtube_embed_id,
+            'section_quiz_id': self.section_quiz_id,
+        }
+
