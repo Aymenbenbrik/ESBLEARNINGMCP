@@ -417,16 +417,33 @@ def create_quiz_from_bank(section_id):
 
     new_questions = []
     for i, bq in enumerate(selected):
+        q_type = bq.question_type or 'open_ended'
+        # Only copy choices for MCQ/true_false types
+        if q_type == 'mcq':
+            ca = bq.choice_a or ''
+            cb = bq.choice_b or ''
+            cc = bq.choice_c or ''
+            cd = ''
+            correct = (bq.correct_choice or 'a').lower()[:1]
+        elif q_type == 'true_false':
+            ca = 'Vrai'
+            cb = 'Faux'
+            cc = ''
+            cd = ''
+            correct = (bq.correct_choice or 'a').lower()[:1]
+        else:
+            ca = cb = cc = cd = ''
+            correct = ''
         q = SectionQuizQuestion(
             quiz_id=quiz.id,
             question_text=bq.question_text,
-            question_type='mcq',
-            choice_a=bq.choice_a or '',
-            choice_b=bq.choice_b or '',
-            choice_c=bq.choice_c or '',
-            choice_d='',           # QuestionBankQuestion has only 3 choices
-            correct_choice=(bq.correct_choice or 'a').lower()[:1],
-            explanation=bq.explanation or '',
+            question_type=q_type,
+            choice_a=ca,
+            choice_b=cb,
+            choice_c=cc,
+            choice_d=cd,
+            correct_choice=correct,
+            explanation=bq.explanation or bq.answer or '',
             bloom_level=bq.bloom_level or '',
             difficulty=bq.difficulty or 'medium',
             aa_code=_normalize_aa(bq.clo),

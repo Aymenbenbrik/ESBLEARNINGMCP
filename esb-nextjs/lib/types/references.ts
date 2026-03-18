@@ -111,11 +111,11 @@ export interface SectionQuizQuestion {
   id: number;
   quiz_id: number;
   question_text: string;
-  question_type: 'mcq';
-  choice_a: string;
-  choice_b: string;
-  choice_c: string;
-  choice_d: string;
+  question_type: 'mcq' | 'true_false' | 'open_ended' | 'code' | 'drag_drop';
+  choice_a: string | null;
+  choice_b: string | null;
+  choice_c: string | null;
+  choice_d: string | null;
   correct_choice?: string;   // hidden from students
   explanation?: string;
   points: number;
