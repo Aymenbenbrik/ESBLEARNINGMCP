@@ -73,6 +73,24 @@ export interface GenerateCourseQBankResponse {
   questions: CourseQBankQuestion[];
 }
 
+export interface CreateCourseQBankData {
+  aa_code: string;
+  bloom_level: string;
+  difficulty: string;
+  question_type: QuestionType;
+  question_text: string;
+  choice_a?: string;
+  choice_b?: string;
+  choice_c?: string;
+  correct_choice?: string;
+  explanation?: string;
+  answer?: string;
+}
+
+export interface CreateCourseQBankResponse {
+  question: CourseQBankQuestion;
+}
+
 export interface UpdateCourseQBankData {
   action?: 'approve' | 'reject';
   question_text?: string;

@@ -454,6 +454,48 @@ def generate_course_qbank(course_id):
     }), 200
 
 
+@api_v1_bp.route('/courses/<int:course_id>/question-bank', methods=['POST'])
+@jwt_required()
+def create_course_qbank_question(course_id):
+    """Manually create a single question (no AI generation)."""
+    user = _get_user()
+    is_teacher, _, course = _course_access(course_id, user)
+    if not course:
+        return jsonify({'error': 'Cours introuvable'}), 404
+    if not is_teacher:
+        return jsonify({'error': 'Réservé aux enseignants'}), 403
+
+    body          = request.get_json(silent=True) or {}
+    question_text = (body.get('question_text') or '').strip()
+    if not question_text:
+        return jsonify({'error': 'Le texte de la question est requis'}), 400
+
+    question_type = (body.get('question_type') or 'mcq').strip()
+    if question_type not in VALID_QUESTION_TYPES:
+        return jsonify({'error': f'Type invalide : {", ".join(VALID_QUESTION_TYPES)}'}), 400
+
+    aa_code = (body.get('aa_code') or '').strip()
+    clo_val = aa_code if aa_code.upper().startswith('AA') else (f'AA {aa_code}' if aa_code else 'AA 1')
+
+    q = QuestionBankQuestion(
+        course_id      = course_id,
+        question_text  = question_text,
+        question_type  = question_type,
+        bloom_level    = (body.get('bloom_level') or 'remember').strip(),
+        difficulty     = (body.get('difficulty') or 'medium').strip(),
+        clo            = clo_val,
+        choice_a       = body.get('choice_a') or None,
+        choice_b       = body.get('choice_b') or None,
+        choice_c       = body.get('choice_c') or None,
+        correct_choice = (body.get('correct_choice') or '')[:5].lower() or None,
+        explanation    = body.get('explanation') or None,
+        answer         = body.get('answer') or None,
+    )
+    db.session.add(q)
+    db.session.commit()
+    return jsonify({'question': _serialize(q, is_teacher=True)}), 201
+
+
 @api_v1_bp.route('/courses/<int:course_id>/question-bank/<int:question_id>', methods=['PUT'])
 @jwt_required()
 def update_course_qbank_question(course_id, question_id):

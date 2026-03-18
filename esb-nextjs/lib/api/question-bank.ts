@@ -17,6 +17,8 @@ import {
   CourseQBankResponse,
   GenerateCourseQBankData,
   GenerateCourseQBankResponse,
+  CreateCourseQBankData,
+  CreateCourseQBankResponse,
   CourseQBankQuestion,
   UpdateCourseQBankData,
   CourseAAListResponse,
@@ -190,6 +192,14 @@ export const courseQBankApi = {
   generate: async (courseId: number, data: GenerateCourseQBankData): Promise<GenerateCourseQBankResponse> => {
     const res = await apiClient.post<GenerateCourseQBankResponse>(
       `/api/v1/courses/${courseId}/question-bank/generate`,
+      data
+    );
+    return res.data;
+  },
+
+  create: async (courseId: number, data: CreateCourseQBankData): Promise<CreateCourseQBankResponse> => {
+    const res = await apiClient.post<CreateCourseQBankResponse>(
+      `/api/v1/courses/${courseId}/question-bank`,
       data
     );
     return res.data;

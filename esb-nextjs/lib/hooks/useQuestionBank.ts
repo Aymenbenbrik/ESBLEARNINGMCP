@@ -16,6 +16,7 @@ import {
   CreateRevisionQuizResponse,
   aaCodesResponse,
   GenerateCourseQBankData,
+  CreateCourseQBankData,
   UpdateCourseQBankData,
 } from '../types/question-bank';
 import { toast } from 'sonner';
@@ -211,6 +212,20 @@ export function useGenerateCourseQBank(courseId: number) {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Erreur lors de la generation');
+    },
+  });
+}
+
+export function useCreateCourseQBankQuestion(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateCourseQBankData) => courseQBankApi.create(courseId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: courseQBankKeys.all(courseId) });
+      toast.success('Question créée — en attente de validation.');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Erreur lors de la création');
     },
   });
 }
