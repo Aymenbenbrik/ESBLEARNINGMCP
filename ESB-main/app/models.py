@@ -1027,6 +1027,12 @@ class QuestionBankQuestion(db.Model):
     # We keep the DB column name `clo` for backward-compatibility.
     clo = db.Column(db.String(255), nullable=True)
     difficulty = db.Column(db.String(20), nullable=True)
+    # answer: model answer validated/edited by the teacher.
+    # - QCM/VF:       the explanation of the correct choice
+    # - drag_drop:    JSON string of [{left, right}] pairs
+    # - open_ended:   the model written answer
+    # - code:         the complete code solution
+    answer = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

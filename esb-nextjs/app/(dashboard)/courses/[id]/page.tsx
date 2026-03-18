@@ -15,7 +15,7 @@ import { DeleteCourseDialog } from '@/components/courses/DeleteCourseDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { BarChart3, BookOpen } from 'lucide-react';
+import { BarChart3, BookOpen, Database } from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { safeNumber, safePercent } from '@/lib/format';
 
@@ -94,12 +94,20 @@ export default function CourseDetailPage() {
                 <h2 className="text-xl font-semibold">Home KPI</h2>
                 <p className="text-sm text-muted-foreground">Résumé rapide du dashboard directement dans la home du module.</p>
               </div>
-              <Button asChild variant="outline" size="sm" className="rounded-full">
-                <Link href={`/courses/${courseId}/dashboard`}>
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  Ouvrir dashboard
-                </Link>
-              </Button>
+              <div className="flex gap-2">
+                <Button asChild variant="outline" size="sm" className="rounded-full">
+                  <Link href={`/courses/${courseId}/question-bank`}>
+                    <Database className="mr-2 h-4 w-4" />
+                    Banque de questions
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="sm" className="rounded-full">
+                  <Link href={`/courses/${courseId}/dashboard`}>
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Ouvrir dashboard
+                  </Link>
+                </Button>
+              </div>
             </div>
             <div className="grid gap-3 md:grid-cols-4">
               {[

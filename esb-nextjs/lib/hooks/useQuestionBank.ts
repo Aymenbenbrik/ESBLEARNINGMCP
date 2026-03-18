@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { questionBankApi } from '../api/question-bank';
+import { questionBankApi, courseQBankApi } from '../api/question-bank';
 import {
   QuestionBankListResponse,
   QuestionBankFilters,
@@ -15,6 +15,8 @@ import {
   RevisionQuizFilters,
   CreateRevisionQuizResponse,
   aaCodesResponse,
+  GenerateCourseQBankData,
+  UpdateCourseQBankData,
 } from '../types/question-bank';
 import { toast } from 'sonner';
 
@@ -172,5 +174,59 @@ export function useCreateRevisionQuiz() {
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to create revision quiz');
     },
+  });
+}
+
+// ─── Course-scoped Question Bank hooks ────────────────────────────────────────
+
+export const courseQBankKeys = {
+  all: (courseId: number) => ['course-qbank', courseId] as const,
+};
+
+export function useCourseQBank(courseId: number) {
+  return useQuery({
+    queryKey: courseQBankKeys.all(courseId),
+    queryFn: () => courseQBankApi.list(courseId),
+    enabled: !!courseId,
+  });
+}
+
+export function useGenerateCourseQBank(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: GenerateCourseQBankData) => courseQBankApi.generate(courseId, data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: courseQBankKeys.all(courseId) });
+      toast.success(data.message);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Erreur lors de la generation');
+    },
+  });
+}
+
+export function useUpdateCourseQBankQuestion(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ questionId, data }: { questionId: number; data: UpdateCourseQBankData }) =>
+      courseQBankApi.update(courseId, questionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: courseQBankKeys.all(courseId) });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Erreur lors de la mise a jour');
+    },
+  });
+}
+
+export function useDeleteCourseQBankQuestion(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (questionId: number) => courseQBankApi.delete(courseId, questionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: courseQBankKeys.all(courseId) });
+      toast.success('Question supprimee');
+    },
+    onError: () => toast.error('Erreur lors de la suppression'),
   });
 }

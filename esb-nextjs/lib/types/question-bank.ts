@@ -2,6 +2,8 @@
 // QUESTION BANK TYPES
 // ============================================================================
 
+export type QuestionType = 'mcq' | 'true_false' | 'drag_drop' | 'open_ended' | 'code';
+
 export interface QuestionBankQuestion {
   id: number;
   question_text: string;
@@ -17,6 +19,63 @@ export interface QuestionBankQuestion {
   choice_a: string | null;
   choice_b: string | null;
   choice_c: string | null;
+}
+
+// ─── Course-scoped Question Bank (new in-module bank) ────────────────────────
+
+export interface CourseQBankQuestion {
+  id: number;
+  question_text: string;
+  question_type: QuestionType;
+  bloom_level: string | null;
+  difficulty: 'easy' | 'medium' | 'hard' | string;
+  aa_code: string;
+  choice_a: string | null;
+  choice_b: string | null;
+  choice_c: string | null;
+  correct_choice: string | null;   // null for students
+  explanation: string | null;
+  answer: string | null;           // model answer (all types)
+  is_approved: boolean;
+  approved_at: string | null;
+  created_at: string | null;
+}
+
+export interface CourseQBankGroup {
+  [aa_code: string]: CourseQBankQuestion[];
+}
+
+export interface CourseQBankResponse {
+  groups: CourseQBankGroup;
+  total: number;
+  aa_codes: string[];
+}
+
+export interface GenerateCourseQBankData {
+  aa_code: string;
+  bloom_level: string;
+  difficulty: string;
+  question_type: QuestionType;
+  num_questions: number;
+}
+
+export interface GenerateCourseQBankResponse {
+  message: string;
+  questions: CourseQBankQuestion[];
+}
+
+export interface UpdateCourseQBankData {
+  action?: 'approve' | 'reject';
+  question_text?: string;
+  choice_a?: string;
+  choice_b?: string;
+  choice_c?: string;
+  correct_choice?: string;
+  explanation?: string;
+  answer?: string;
+  bloom_level?: string;
+  difficulty?: string;
+  aa_code?: string;
 }
 
 export interface QuestionBankListResponse {

@@ -14,6 +14,11 @@ import {
   RevisionQuizFilters,
   CreateRevisionQuizResponse,
   aaCodesResponse,
+  CourseQBankResponse,
+  GenerateCourseQBankData,
+  GenerateCourseQBankResponse,
+  CourseQBankQuestion,
+  UpdateCourseQBankData,
 } from '../types/question-bank';
 
 const BASE_URL = '/api/v1/question-bank';
@@ -165,5 +170,34 @@ export const questionBankApi = {
       { params: { course_id: courseId } }
     );
     return response.data;
+  },
+};
+
+// ─── Course-scoped Question Bank API ─────────────────────────────────────────
+
+export const courseQBankApi = {
+  list: async (courseId: number): Promise<CourseQBankResponse> => {
+    const res = await apiClient.get<CourseQBankResponse>(`/api/v1/courses/${courseId}/question-bank`);
+    return res.data;
+  },
+
+  generate: async (courseId: number, data: GenerateCourseQBankData): Promise<GenerateCourseQBankResponse> => {
+    const res = await apiClient.post<GenerateCourseQBankResponse>(
+      `/api/v1/courses/${courseId}/question-bank/generate`,
+      data
+    );
+    return res.data;
+  },
+
+  update: async (courseId: number, questionId: number, data: UpdateCourseQBankData): Promise<{ question: CourseQBankQuestion }> => {
+    const res = await apiClient.put<{ question: CourseQBankQuestion }>(
+      `/api/v1/courses/${courseId}/question-bank/${questionId}`,
+      data
+    );
+    return res.data;
+  },
+
+  delete: async (courseId: number, questionId: number): Promise<void> => {
+    await apiClient.delete(`/api/v1/courses/${courseId}/question-bank/${questionId}`);
   },
 };
