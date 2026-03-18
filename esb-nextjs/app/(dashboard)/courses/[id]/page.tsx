@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { BarChart3, BookOpen, Database } from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { safeNumber, safePercent } from '@/lib/format';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 export default function CourseDetailPage() {
   const params = useParams();
@@ -28,6 +29,8 @@ export default function CourseDetailPage() {
   const { data: dashboardData } = useCourseDashboard(courseId);
   const uploadModuleMutation = useUploadModule();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { user } = useAuth();
+  const isTeacher = !!(user?.is_teacher || user?.is_superuser);
 
   const handleDelete = () => {
     deleteMutation.mutate(courseId, {
@@ -95,12 +98,14 @@ export default function CourseDetailPage() {
                 <p className="text-sm text-muted-foreground">Résumé rapide du dashboard directement dans la home du module.</p>
               </div>
               <div className="flex gap-2">
+                {isTeacher && (
                 <Button asChild variant="outline" size="sm" className="rounded-full">
                   <Link href={`/courses/${courseId}/question-bank`}>
                     <Database className="mr-2 h-4 w-4" />
                     Banque de questions
                   </Link>
                 </Button>
+                )}
                 <Button asChild variant="outline" size="sm" className="rounded-full">
                   <Link href={`/courses/${courseId}/dashboard`}>
                     <BarChart3 className="mr-2 h-4 w-4" />

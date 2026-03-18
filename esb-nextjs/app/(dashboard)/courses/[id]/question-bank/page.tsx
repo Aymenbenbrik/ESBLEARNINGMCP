@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/contexts/AuthContext';
 import {
   useCourseQBank,
   useCourseAAList,
@@ -910,9 +911,20 @@ function StatsBar({ groups }: { groups: Record<string, CourseQBankQuestion[]> })
 export default function CourseQuestionBankPage() {
   const params   = useParams<{ id: string }>();
   const courseId = Number(params.id);
+  const router   = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
 
   const { data, isLoading } = useCourseQBank(courseId);
   const [activeForm, setActiveForm] = useState<'generate' | 'manual' | null>(null);
+
+  // Redirect students — question bank is for teachers only
+  useEffect(() => {
+    if (!authLoading && user && !user.is_teacher && !user.is_superuser) {
+      router.replace(`/courses/${courseId}`);
+    }
+  }, [user, authLoading, router, courseId]);
+
+  if (authLoading || (!user?.is_teacher && !user?.is_superuser)) return null;
 
   const groups   = data?.groups ?? {};
   const aaCodes  = data?.aa_codes ?? [];

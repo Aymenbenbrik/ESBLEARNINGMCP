@@ -687,6 +687,8 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<{ score: number; max_score: number; percent: number } | null>(null);
 
+  const [started, setStarted] = useState(false);
+
   if (isLoading) return <Skeleton className="h-24 rounded-[12px]" />;
   if (!takeData) return null;
 
@@ -720,6 +722,28 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
         <p className="text-emerald-700 mt-1">
           Score : {result.score}/{result.max_score} — {result.percent}%
         </p>
+      </div>
+    );
+  }
+
+  // ── "Start quiz" screen — shown before revealing questions ──────────────────
+  if (!started) {
+    return (
+      <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-6 text-center">
+        <BookOpen className="mx-auto mb-3 h-10 w-10 text-bolt-accent" />
+        <p className="text-base font-semibold text-bolt-ink">{takeData.quiz.title}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {takeData.quiz.question_count} question(s) · {takeData.quiz.max_score} point(s)
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Une fois commencé, vous devrez répondre à toutes les questions avant de soumettre.
+        </p>
+        <Button
+          className="mt-5 rounded-full px-8"
+          onClick={() => setStarted(true)}
+        >
+          Commencer le quiz
+        </Button>
       </div>
     );
   }
