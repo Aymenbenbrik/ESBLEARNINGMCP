@@ -1234,10 +1234,14 @@ class SectionActivity(db.Model):
     youtube_url = db.Column(db.String(500))
     youtube_embed_id = db.Column(db.String(50))
     section_quiz_id = db.Column(db.Integer, db.ForeignKey('section_quiz.id'), nullable=True)
+    # RAG: document created from YouTube transcript (indexed in ChromaDB)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=True)
+    transcript_status = db.Column(db.String(30), default=None)  # None | 'indexing' | 'indexed' | 'failed'
 
     section = db.relationship('TNSection', backref=db.backref('activities', cascade='all, delete-orphan',
                                                               order_by='SectionActivity.position'))
     section_quiz_rel = db.relationship('SectionQuiz', foreign_keys=[section_quiz_id])
+    document_rel = db.relationship('Document', foreign_keys=[document_id])
 
     def to_dict(self):
         return {
@@ -1250,5 +1254,7 @@ class SectionActivity(db.Model):
             'youtube_url': self.youtube_url,
             'youtube_embed_id': self.youtube_embed_id,
             'section_quiz_id': self.section_quiz_id,
+            'document_id': self.document_id,
+            'transcript_status': self.transcript_status,
         }
 

@@ -205,6 +205,14 @@ export function useSectionActivities(sectionId: number) {
     queryKey: sectionActivityKeys.forSection(sectionId),
     queryFn: () => sectionActivitiesApi.list(sectionId),
     enabled: !!sectionId,
+    // Poll every 4 seconds while any YouTube video is still being indexed
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (Array.isArray(data) && data.some((a) => a.transcript_status === 'indexing')) {
+        return 4_000;
+      }
+      return false;
+    },
   });
 }
 

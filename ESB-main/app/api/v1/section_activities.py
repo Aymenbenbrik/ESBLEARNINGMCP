@@ -128,6 +128,21 @@ def add_youtube_activity(section_id):
     if not title:
         title = f'Vidéo YouTube — {embed_id}'
 
+    # Resolve chapter + course for the Document record
+    chapter_obj = section.chapter
+    syllabus = chapter_obj.syllabus
+    chapter_id_for_doc = None
+    course_id_for_doc = None
+    if syllabus and syllabus.course:
+        from app.models import Chapter
+        course_id_for_doc = syllabus.course.id
+        target = next(
+            (c for c in Chapter.query.filter_by(course_id=course_id_for_doc).all()
+             if c.order == chapter_obj.index), None
+        )
+        if target:
+            chapter_id_for_doc = target.id
+
     max_pos = db.session.query(db.func.max(SectionActivity.position)).filter_by(section_id=section_id).scalar() or 0
     activity = SectionActivity(
         section_id=section_id,
@@ -136,9 +151,47 @@ def add_youtube_activity(section_id):
         youtube_url=url,
         youtube_embed_id=embed_id,
         position=max_pos + 1,
+        transcript_status='indexing',
     )
     db.session.add(activity)
     db.session.commit()
+    activity_id = activity.id
+
+    # --- Background thread: fetch transcript + index in ChromaDB ---
+    import threading
+    from flask import current_app
+
+    app = current_app._get_current_object()
+
+    def _index_video(app, activity_id, embed_id, title, chapter_id_for_doc, course_id_for_doc):
+        with app.app_context():
+            from app import db
+            from app.models import SectionActivity
+            from app.services.youtube_rag_service import process_youtube_activity
+            act = SectionActivity.query.get(activity_id)
+            if not act:
+                return
+            try:
+                doc_id = process_youtube_activity(
+                    video_id=embed_id,
+                    video_title=title,
+                    chapter_id=chapter_id_for_doc,
+                    course_id=course_id_for_doc,
+                )
+                act.document_id = doc_id
+                act.transcript_status = 'indexed' if doc_id else 'failed'
+            except Exception as e:
+                logger.error(f"YouTube RAG indexing failed: {e}")
+                act.transcript_status = 'failed'
+            db.session.commit()
+
+    t = threading.Thread(
+        target=_index_video,
+        args=(app, activity_id, embed_id, title, chapter_id_for_doc, course_id_for_doc),
+        daemon=True,
+    )
+    t.start()
+
     return jsonify(activity.to_dict()), 201
 
 
@@ -152,6 +205,20 @@ def delete_section_activity(section_id, activity_id):
         return jsonify({'error': 'Teachers only'}), 403
 
     activity = SectionActivity.query.filter_by(id=activity_id, section_id=section_id).first_or_404()
+
+    # Clean up ChromaDB collection + Document record for YouTube videos
+    if activity.activity_type == 'youtube' and activity.document_id:
+        try:
+            from app.services.vector_store import VectorStore
+            vs = VectorStore(document_id=str(activity.document_id))
+            vs.delete_collection()
+        except Exception as e:
+            logger.warning(f"Could not delete ChromaDB collection for doc {activity.document_id}: {e}")
+        from app.models import Document
+        doc = Document.query.get(activity.document_id)
+        if doc:
+            db.session.delete(doc)
+
     db.session.delete(activity)
     db.session.commit()
     return jsonify({'message': 'Activity deleted'}), 200

@@ -39,7 +39,13 @@ interface SectionActivitiesProps {
 
 // ─── YouTube Embed ─────────────────────────────────────────────────────────────
 
-function YoutubeEmbed({ embedId, title }: { embedId: string; title: string }) {
+const TRANSCRIPT_STATUS = {
+  indexing: { label: '⏳ Indexation transcript...', className: 'bg-yellow-100 text-yellow-700' },
+  indexed:  { label: '✓ Disponible dans le chatbot', className: 'bg-emerald-100 text-emerald-700' },
+  failed:   { label: '✗ Transcript indisponible', className: 'bg-red-100 text-red-600' },
+} as const;
+
+function YoutubeEmbed({ embedId, title, transcriptStatus }: { embedId: string; title: string; transcriptStatus?: string | null }) {
   return (
     <div className="overflow-hidden rounded-[12px] border border-bolt-line">
       <iframe
@@ -49,7 +55,14 @@ function YoutubeEmbed({ embedId, title }: { embedId: string; title: string }) {
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
       />
-      <p className="px-3 py-2 text-xs text-muted-foreground">{title}</p>
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <p className="text-xs text-muted-foreground">{title}</p>
+        {transcriptStatus && TRANSCRIPT_STATUS[transcriptStatus as keyof typeof TRANSCRIPT_STATUS] && (
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${TRANSCRIPT_STATUS[transcriptStatus as keyof typeof TRANSCRIPT_STATUS].className}`}>
+            {TRANSCRIPT_STATUS[transcriptStatus as keyof typeof TRANSCRIPT_STATUS].label}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -467,6 +480,7 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
               <YoutubeEmbed
                 embedId={activity.youtube_embed_id!}
                 title={activity.title}
+                transcriptStatus={activity.transcript_status}
               />
               {canEdit && (
                 <button

@@ -87,6 +87,8 @@ export interface SectionActivity {
   youtube_embed_id?: string | null;
   section_quiz_id?: number | null;
   quiz?: SectionQuiz;
+  document_id?: number | null;
+  transcript_status?: 'indexing' | 'indexed' | 'failed' | null;
 }
 
 export type QuizStatus = 'draft' | 'published';
