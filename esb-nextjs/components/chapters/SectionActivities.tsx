@@ -690,6 +690,16 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
   if (isLoading) return <Skeleton className="h-24 rounded-[12px]" />;
   if (!takeData) return null;
 
+  // Questions that require an explicit answer before submitting
+  const requiredCount = takeData.questions.filter(
+    (q: SectionQuizQuestion) => q.question_type !== 'open_ended' && q.question_type !== 'code'
+  ).length;
+  const answeredRequired = takeData.questions.filter(
+    (q: SectionQuizQuestion) =>
+      q.question_type !== 'open_ended' && q.question_type !== 'code' && !!answers[String(q.id)]
+  ).length;
+  const canSubmit = answeredRequired >= requiredCount;
+
   if (takeData.already_submitted && takeData.result) {
     const r = takeData.result;
     const pct = Math.round((r.score / r.max_score) * 100);
@@ -732,29 +742,66 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
       </div>
 
       <div className="space-y-4">
-        {takeData.questions.map((q, idx) => (
+        {takeData.questions.map((q: SectionQuizQuestion, idx: number) => (
           <div key={q.id} className="rounded-[10px] border border-bolt-line p-3">
             <p className="text-sm font-medium mb-2">{idx + 1}. {q.question_text}</p>
-            <div className="space-y-1">
-              {(['a', 'b', 'c', 'd'] as const).map((k) => {
-                const text = q[`choice_${k}` as keyof SectionQuizQuestion] as string;
-                if (!text) return null;
-                const chosen = answers[String(q.id)] === k;
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setAnswers((prev) => ({ ...prev, [String(q.id)]: k }))}
-                    className={`flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-left text-sm transition-colors ${
-                      chosen ? 'bg-bolt-accent text-white' : 'bg-gray-50 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className="w-5 font-bold">{k.toUpperCase()}.</span>
-                    <span>{text}</span>
-                  </button>
-                );
-              })}
-            </div>
+
+            {/* MCQ and True/False — render choice buttons */}
+            {(q.question_type === 'mcq' || q.question_type === 'true_false' || !q.question_type) && (
+              <div className="space-y-1">
+                {(['a', 'b', 'c', 'd'] as const).map((k) => {
+                  const text = q[`choice_${k}` as keyof SectionQuizQuestion] as string;
+                  if (!text) return null;
+                  const chosen = answers[String(q.id)] === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setAnswers((prev) => ({ ...prev, [String(q.id)]: k }))}
+                      className={`flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-left text-sm transition-colors ${
+                        chosen ? 'bg-bolt-accent text-white' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="w-5 font-bold">{k.toUpperCase()}.</span>
+                      <span>{text}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Open-ended — text area */}
+            {q.question_type === 'open_ended' && (
+              <textarea
+                rows={3}
+                placeholder="Votre réponse…"
+                value={answers[String(q.id)] ?? ''}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
+                className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-bolt-accent resize-none"
+              />
+            )}
+
+            {/* Code — monospace text area */}
+            {q.question_type === 'code' && (
+              <textarea
+                rows={5}
+                placeholder="// Votre code…"
+                value={answers[String(q.id)] ?? ''}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
+                className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-bolt-accent resize-y"
+              />
+            )}
+
+            {/* Drag & drop — simple text for now */}
+            {q.question_type === 'drag_drop' && (
+              <textarea
+                rows={2}
+                placeholder="Décrivez l'ordre ou les correspondances…"
+                value={answers[String(q.id)] ?? ''}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
+                className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-bolt-accent resize-none"
+              />
+            )}
           </div>
         ))}
       </div>
@@ -762,15 +809,15 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
       <Button
         className="mt-4 w-full rounded-full"
         onClick={handleSubmit}
-        disabled={Object.keys(answers).length < takeData.questions.length || submitMutation.isPending}
+        disabled={!canSubmit || submitMutation.isPending}
       >
         <Send className="mr-2 h-4 w-4" />
         {submitMutation.isPending ? 'Envoi...' : 'Soumettre le quiz'}
       </Button>
 
-      {Object.keys(answers).length < takeData.questions.length && (
+      {!canSubmit && (
         <p className="mt-1 text-center text-xs text-muted-foreground">
-          Répondez à toutes les questions avant de soumettre.
+          Répondez à toutes les questions à choix avant de soumettre.
         </p>
       )}
     </div>

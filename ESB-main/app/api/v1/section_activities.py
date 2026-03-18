@@ -750,7 +750,7 @@ def submit_section_quiz(section_id):
     max_score = sum(q.points for q in approved_questions)
     for q in approved_questions:
         student_ans = str(answers.get(str(q.id), '')).lower().strip()
-        if q.question_type == 'mcq' and student_ans == q.correct_choice:
+        if q.question_type in ('mcq', 'true_false') and student_ans == q.correct_choice:
             score += q.points
 
     submission = SectionQuizSubmission(
