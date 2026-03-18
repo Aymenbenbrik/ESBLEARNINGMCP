@@ -290,7 +290,7 @@ def create_app(config_name=None):
     from app.api.v1.practice_quiz import practice_quiz_api_bp
     from app.api.v1.dashboards import dashboards_api_bp
     from app.api.v1.class_chat import class_chat_api_bp
-    import app.api.v1.course_question_bank  # noqa: F401 – registers routes on api_v1_bp
+    from app.api.v1 import course_question_bank as _cqb  # noqa: F401 – registers routes on api_v1_bp
     api_v1_bp.register_blueprint(auth_api_bp)
     api_v1_bp.register_blueprint(users_api_bp)
     api_v1_bp.register_blueprint(courses_api_bp)

@@ -136,6 +136,8 @@ def get_chapter(chapter_id):
                         'aaa': [{
                             'number': int(link.aa.number),
                             'label': f"AA {int(link.aa.number)}",
+                            'description': (link.description_override or getattr(link.aa, 'description', '') or '')
+                        } for link in sorted((tnc.aa_links or []), key=lambda l: int(l.aa.number))],
                         'aap': [{
                             'number': int(a.number),
                             'label': f"AAP {int(a.number)}",
@@ -148,6 +150,8 @@ def get_chapter(chapter_id):
                             'aaa': [{
                                 'number': int(link.aa.number),
                                 'label': f"AA {int(link.aa.number)}",
+                                'description': (link.description_override or getattr(link.aa, 'description', '') or '')
+                            } for link in sorted((section.aa_links or []), key=lambda l: int(l.aa.number))]
                         } for section in (tnc.sections or [])]
                     }
                     break
