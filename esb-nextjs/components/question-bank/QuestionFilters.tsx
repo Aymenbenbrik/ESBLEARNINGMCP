@@ -58,12 +58,12 @@ export function QuestionFilters({
   // Fetch chapters for selected course
   const { data: courseData } = useCourse(selectedCourseId || 0);
 
-  // Fetch AAA codes for selected course (teachers only)
-  const { data: aaaData } = useAAAs(selectedCourseId);
+  // Fetch AA codes for selected course (teachers only)
+  const { data: aaData } = useAAAs(selectedCourseId);
 
   // Parse current filter values from URL
   const chapterIds = searchParams.get('chapter_id')?.split(',').filter(Boolean) || [];
-  const aaaCodes = searchParams.get('aaa')?.split(',').filter(Boolean) || [];
+  const aaCodes = searchParams.get('aaa')?.split(',').filter(Boolean) || [];
   const bloomLevel = searchParams.get('bloom_level') || '';
   const difficulty = searchParams.get('difficulty') || '';
   const approved = searchParams.get('approved') || '';
@@ -78,13 +78,13 @@ export function QuestionFilters({
   }, [courseData]);
 
   // Convert AA codes to MultiSelect options
-  const aaaOptions: MultiSelectOption[] = useMemo(() => {
-    if (!aaaData?.aaas) return [];
-    return aaaData.aaas.map((aa: { code: string }) => ({
+  const aaOptions: MultiSelectOption[] = useMemo(() => {
+    if (!aaData?.aaas) return [];
+    return aaData.aaas.map((aa: { code: string }) => ({
       value: aa.code,
       label: aa.code,
     }));
-  }, [aaaData]);
+  }, [aaData]);
 
   // Update URL with filter changes
   const updateFilters = (updates: Record<string, string | undefined>) => {
@@ -110,8 +110,8 @@ export function QuestionFilters({
     updateFilters({ chapter_id: value });
   };
 
-  // Handle AAA selection
-  const handleAAAChange = (selected: (string | number)[]) => {
+  // Handle AA selection
+  const handleAAChange = (selected: (string | number)[]) => {
     const value = selected.length > 0 ? selected.join(',') : undefined;
     updateFilters({ aaa: value });
   };
@@ -146,7 +146,7 @@ export function QuestionFilters({
   // Check if any filters are active
   const hasActiveFilters =
     chapterIds.length > 0 ||
-    aaaCodes.length > 0 ||
+    aaCodes.length > 0 ||
     bloomLevel !== '' ||
     difficulty !== '' ||
     approved !== '';
@@ -198,17 +198,17 @@ export function QuestionFilters({
           />
         )}
 
-        {/* AAA Code Filter (Teachers only) */}
+        {/* AA Code Filter (Teachers only) */}
         {selectedCourseId && user?.is_teacher && (
           <MultiSelect
-            label="AAA Codes"
-            options={aaaOptions}
-            selected={aaaCodes}
-            onChange={handleAAAChange}
-            placeholder="Select AAA codes"
-            defaultLabel="All AAA Codes"
+            label="AA Codes"
+            options={aaOptions}
+            selected={aaCodes}
+            onChange={handleAAChange}
+            placeholder="Sélectionner des AA"
+            defaultLabel="Tous les AA"
             searchable
-            disabled={aaaOptions.length === 0}
+            disabled={aaOptions.length === 0}
           />
         )}
 

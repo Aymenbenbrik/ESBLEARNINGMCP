@@ -72,7 +72,7 @@ export function QuestionCard({
               {question.difficulty}
             </Badge>
 
-            {/* TN Norms: display AAA codes (never show CLO for TN usage) */}
+            {/* AA code */}
             <Badge variant="secondary">
               {(question.clo || '').replace(/^CLO/i, 'AA')}
             </Badge>

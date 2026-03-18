@@ -6,15 +6,16 @@ import { redirect } from 'next/navigation';
  * We redirect to the existing course-level quiz generator.
  * If a Question Bank chapter filter is present, we forward it so the generator can pre-select chapters.
  */
-export default function QuizGenerateRedirectPage({
+export default async function QuizGenerateRedirectPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams?: { [key: string]: string | string[] | undefined };
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const courseId = params.id;
-  const chapterParam = searchParams?.chapter_id;
+  const { id: courseId } = await params;
+  const resolvedSearch = searchParams ? await searchParams : {};
+  const chapterParam = resolvedSearch?.chapter_id;
 
   // Normalize chapter_id (can be string or string[])
   const chapterId = Array.isArray(chapterParam) ? chapterParam.join(',') : chapterParam;
