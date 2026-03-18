@@ -14,6 +14,7 @@ Endpoints:
 
 import json
 import logging
+import os
 from datetime import datetime
 
 from flask import request, jsonify, current_app
@@ -23,7 +24,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.api.v1 import api_v1_bp
 from app import db
-from app.models import User, Course, QuestionBankQuestion, Enrollment, Syllabus, TNAA
+from app.models import User, Course, QuestionBankQuestion, Enrollment, Syllabus, TNAA, Document
 
 logger = logging.getLogger(__name__)
 
@@ -165,12 +166,90 @@ def _llm():
                                   temperature=0.6, max_tokens=6000)
 
 
+def _extract_pdf_text(file_path: str, max_chars: int = 6000) -> str:
+    """Extract plain text from a PDF file using pypdf (fast, no dependencies)."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(file_path)
+        pages_text = []
+        total = 0
+        for page in reader.pages:
+            text = (page.extract_text() or '').strip()
+            if text:
+                pages_text.append(text)
+                total += len(text)
+                if total >= max_chars:
+                    break
+        full = '\n\n'.join(pages_text)
+        return full[:max_chars]
+    except Exception as exc:
+        logger.warning('PDF text extraction failed for %s: %s', file_path, exc)
+        return ''
+
+
+def _get_course_context(course_id: int, max_total_chars: int = 20000) -> str:
+    """
+    Build a RAG context string from the course's uploaded documents.
+    Prioritises module_attachment (textbook) then chapter/section documents.
+    Returns a trimmed text block ready to inject into the generation prompt.
+    """
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+    docs = (Document.query
+            .filter_by(course_id=course_id)
+            .order_by(Document.document_type.asc(), Document.created_at.asc())
+            .all())
+
+    if not docs:
+        return ''
+
+    sections_text = []
+    total_chars = 0
+
+    for doc in docs:
+        if not doc.file_path or not doc.file_path.endswith('.pdf'):
+            # Use summary if available and no PDF text yet
+            if doc.summary and total_chars < max_total_chars:
+                chunk = f'[{doc.title}]\n{doc.summary}'
+                sections_text.append(chunk)
+                total_chars += len(chunk)
+            continue
+
+        full_path = os.path.join(upload_folder, doc.file_path)
+        if not os.path.exists(full_path):
+            continue
+
+        remaining = max_total_chars - total_chars
+        if remaining <= 0:
+            break
+
+        per_doc_limit = min(5000, remaining)
+        text = _extract_pdf_text(full_path, max_chars=per_doc_limit)
+        if text:
+            chunk = f'[Document : {doc.title}]\n{text}'
+            sections_text.append(chunk)
+            total_chars += len(chunk)
+
+    return '\n\n---\n\n'.join(sections_text)
+
+
 def _build_prompt(course_title: str, aa_code: str, bloom_level: str,
-                  difficulty: str, question_type: str, num_q: int) -> str:
+                  difficulty: str, question_type: str, num_q: int,
+                  course_context: str = '') -> str:
     bloom_lbl = BLOOM_LABELS.get(bloom_level, bloom_level)
     diff_lbl  = DIFFICULTY_LABELS.get(difficulty, difficulty)
     fmt       = _TYPE_FORMAT.get(question_type, _TYPE_FORMAT['mcq'])
     type_lbl  = QUESTION_TYPE_LABELS.get(question_type, question_type)
+
+    context_block = ''
+    if course_context:
+        context_block = f"""
+Contenu pédagogique de référence (extraits des documents du cours) :
+\"\"\"
+{course_context}
+\"\"\"
+
+Les questions doivent s'appuyer sur ce contenu et être ancrées dans les notions abordées dans ces documents.
+"""
 
     return f"""Tu es un expert en ingénierie pédagogique universitaire.
 
@@ -180,7 +259,7 @@ Paramètres pédagogiques :
 - Acquis d'Apprentissage (AA) ciblé : {aa_code}
 - Niveau Taxonomie de Bloom        : {bloom_lbl}
 - Difficulté                       : {diff_lbl}
-
+{context_block}
 Format de réponse attendu :
 {fmt}
 
@@ -190,6 +269,7 @@ Règles impératives :
 - Rédige en français avec un vocabulaire académique universitaire
 - Les questions doivent évaluer le niveau Bloom « {bloom_lbl} » et non pas un niveau inférieur
 - La difficulté « {diff_lbl} » doit se ressentir dans la complexité de la question
+- Si du contenu pédagogique est fourni, les questions doivent porter sur des notions réellement présentes dans ce contenu
 """
 
 
@@ -317,10 +397,19 @@ def generate_course_qbank(course_id):
     if question_type not in VALID_QUESTION_TYPES:
         return jsonify({'error': f'Type invalide. Valeurs acceptées : {", ".join(VALID_QUESTION_TYPES)}'}), 400
 
+    # ── RAG: build course context from uploaded documents ──────────────────────
+    try:
+        course_context = _get_course_context(course_id)
+        logger.info('RAG context built: %d chars for course %d', len(course_context), course_id)
+    except Exception as exc:
+        logger.warning('Could not build RAG context: %s', exc)
+        course_context = ''
+
     all_saved = []
     for aa_code in aa_codes_raw:
         clo_val = aa_code if aa_code.upper().startswith('AA') else f'AA {aa_code}'
-        prompt = _build_prompt(course.title, clo_val, bloom_level, difficulty, question_type, num_q)
+        prompt = _build_prompt(course.title, clo_val, bloom_level, difficulty, question_type, num_q,
+                               course_context=course_context)
         try:
             llm      = _llm()
             response = llm.invoke([
