@@ -683,70 +683,89 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
 function SectionQuizTaker({ sectionId }: { sectionId: number }) {
   const { data: takeData, isLoading } = useTakeQuiz(sectionId);
   const submitMutation = useSubmitSectionQuiz(sectionId);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const [result, setResult] = useState<{ score: number; max_score: number; percent: number } | null>(null);
 
-  const [started, setStarted] = useState(false);
+  const [started,   setStarted]   = useState(false);
+  const [currentQ,  setCurrentQ]  = useState(0);
+  const [answers,   setAnswers]   = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [result,    setResult]    = useState<{ score: number; max_score: number; percent: number } | null>(null);
 
   if (isLoading) return <Skeleton className="h-24 rounded-[12px]" />;
-  if (!takeData) return null;
+  if (!takeData)  return null;
 
-  // Questions that require an explicit answer before submitting
-  const requiredCount = takeData.questions.filter(
-    (q: SectionQuizQuestion) => q.question_type !== 'open_ended' && q.question_type !== 'code'
-  ).length;
-  const answeredRequired = takeData.questions.filter(
-    (q: SectionQuizQuestion) =>
-      q.question_type !== 'open_ended' && q.question_type !== 'code' && !!answers[String(q.id)]
-  ).length;
-  const canSubmit = answeredRequired >= requiredCount;
+  const questions: SectionQuizQuestion[] = takeData.questions ?? [];
+  const total = questions.length;
 
+  /* ── Already submitted (persisted) ──────────────────────────────────────── */
   if (takeData.already_submitted && takeData.result) {
-    const r = takeData.result;
+    const r   = takeData.result;
     const pct = Math.round((r.score / r.max_score) * 100);
     return (
       <div className="mt-2 rounded-[12px] bg-emerald-50 border border-emerald-200 p-4 text-sm">
         <p className="font-semibold text-emerald-800">Quiz déjà soumis ✓</p>
-        <p className="text-emerald-700 mt-1">
-          Score : {r.score}/{r.max_score} — {pct}%
-        </p>
+        <p className="text-emerald-700 mt-1">Score : {r.score}/{r.max_score} — {pct}%</p>
       </div>
     );
   }
 
+  /* ── Just submitted this session ─────────────────────────────────────────── */
   if (submitted && result) {
+    const pct = Math.round((result.score / result.max_score) * 100);
     return (
-      <div className="mt-2 rounded-[12px] bg-emerald-50 border border-emerald-200 p-4 text-sm">
-        <p className="font-semibold text-emerald-800">Quiz soumis ✓</p>
-        <p className="text-emerald-700 mt-1">
-          Score : {result.score}/{result.max_score} — {result.percent}%
+      <div className="mt-2 rounded-[12px] bg-emerald-50 border border-emerald-200 p-5 text-center">
+        <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-600" />
+        <p className="font-semibold text-emerald-800 text-base">Quiz soumis avec succès !</p>
+        <p className="text-emerald-700 mt-2 text-sm">
+          Score : <span className="font-bold">{result.score}/{result.max_score}</span> — {pct}%
         </p>
+        <div className="mt-3 h-2 w-full rounded-full bg-emerald-200">
+          <div
+            className="h-2 rounded-full bg-emerald-500 transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
     );
   }
 
-  // ── "Start quiz" screen — shown before revealing questions ──────────────────
-  if (!started) {
+  /* ── Start screen ────────────────────────────────────────────────────────── */
+  if (!started || total === 0) {
     return (
       <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-6 text-center">
         <BookOpen className="mx-auto mb-3 h-10 w-10 text-bolt-accent" />
         <p className="text-base font-semibold text-bolt-ink">{takeData.quiz.title}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {takeData.quiz.question_count} question(s) · {takeData.quiz.max_score} point(s)
+          {total} question{total > 1 ? 's' : ''} · {takeData.quiz.max_score} point{takeData.quiz.max_score > 1 ? 's' : ''}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Une fois commencé, vous devrez répondre à toutes les questions avant de soumettre.
-        </p>
-        <Button
-          className="mt-5 rounded-full px-8"
-          onClick={() => setStarted(true)}
-        >
-          Commencer le quiz
-        </Button>
+        {total === 0 ? (
+          <p className="mt-3 text-xs text-muted-foreground">Aucune question disponible pour l&apos;instant.</p>
+        ) : (
+          <>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Répondez à chaque question puis cliquez sur Suivant. La soumission est définitive.
+            </p>
+            <Button className="mt-5 rounded-full px-8" onClick={() => setStarted(true)}>
+              Commencer le quiz
+            </Button>
+          </>
+        )}
       </div>
     );
   }
+
+  /* ── Per-question view ───────────────────────────────────────────────────── */
+  const q       = questions[currentQ];
+  const qId     = String(q.id);
+  const isLast  = currentQ === total - 1;
+  const needsChoice = q.question_type !== 'open_ended' && q.question_type !== 'code' && q.question_type !== 'drag_drop';
+  const hasAnswer   = !!answers[qId];
+  const canNext     = !needsChoice || hasAnswer;   // open/code: optional
+
+  const handleSetAnswer = (val: string) =>
+    setAnswers((prev) => ({ ...prev, [qId]: val }));
+
+  const handleNext = () => setCurrentQ((i) => Math.min(i + 1, total - 1));
+  const handlePrev = () => setCurrentQ((i) => Math.max(i - 1, 0));
 
   const handleSubmit = () => {
     submitMutation.mutate(answers, {
@@ -759,89 +778,152 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
 
   return (
     <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <BookOpen className="h-4 w-4 text-bolt-accent" />
-        <span className="font-semibold text-sm">{takeData.quiz.title}</span>
-        <span className="text-xs text-muted-foreground">{takeData.quiz.question_count} question(s)</span>
+
+      {/* Header + progress */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-bolt-accent" />
+          <span className="text-sm font-semibold text-bolt-ink">{takeData.quiz.title}</span>
+        </div>
+        <span className="text-xs text-muted-foreground">{currentQ + 1} / {total}</span>
       </div>
 
-      <div className="space-y-4">
-        {takeData.questions.map((q: SectionQuizQuestion, idx: number) => (
-          <div key={q.id} className="rounded-[10px] border border-bolt-line p-3">
-            <p className="text-sm font-medium mb-2">{idx + 1}. {q.question_text}</p>
+      {/* Progress bar */}
+      <div className="mb-4 h-1.5 w-full rounded-full bg-gray-100">
+        <div
+          className="h-1.5 rounded-full bg-bolt-accent transition-all"
+          style={{ width: `${((currentQ + 1) / total) * 100}%` }}
+        />
+      </div>
 
-            {/* MCQ and True/False — render choice buttons */}
-            {(q.question_type === 'mcq' || q.question_type === 'true_false' || !q.question_type) && (
-              <div className="space-y-1">
-                {(['a', 'b', 'c', 'd'] as const).map((k) => {
-                  const text = q[`choice_${k}` as keyof SectionQuizQuestion] as string;
-                  if (!text) return null;
-                  const chosen = answers[String(q.id)] === k;
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setAnswers((prev) => ({ ...prev, [String(q.id)]: k }))}
-                      className={`flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-left text-sm transition-colors ${
-                        chosen ? 'bg-bolt-accent text-white' : 'bg-gray-50 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span className="w-5 font-bold">{k.toUpperCase()}.</span>
-                      <span>{text}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+      {/* Question card */}
+      <div className="rounded-[10px] border border-bolt-line p-4">
+        <p className="mb-3 text-sm font-medium leading-snug">
+          <span className="mr-1 text-bolt-accent font-bold">Q{currentQ + 1}.</span>
+          {q.question_text}
+        </p>
 
-            {/* Open-ended — text area */}
-            {q.question_type === 'open_ended' && (
-              <textarea
-                rows={3}
-                placeholder="Votre réponse…"
-                value={answers[String(q.id)] ?? ''}
-                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
-                className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-bolt-accent resize-none"
-              />
-            )}
-
-            {/* Code — monospace text area */}
-            {q.question_type === 'code' && (
-              <textarea
-                rows={5}
-                placeholder="// Votre code…"
-                value={answers[String(q.id)] ?? ''}
-                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
-                className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-bolt-accent resize-y"
-              />
-            )}
-
-            {/* Drag & drop — simple text for now */}
-            {q.question_type === 'drag_drop' && (
-              <textarea
-                rows={2}
-                placeholder="Décrivez l'ordre ou les correspondances…"
-                value={answers[String(q.id)] ?? ''}
-                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
-                className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-bolt-accent resize-none"
-              />
-            )}
+        {/* MCQ / True-False */}
+        {(q.question_type === 'mcq' || q.question_type === 'true_false' || !q.question_type) && (
+          <div className="space-y-2">
+            {(['a', 'b', 'c', 'd'] as const).map((k) => {
+              const text   = q[`choice_${k}` as keyof SectionQuizQuestion] as string;
+              if (!text) return null;
+              const chosen = answers[qId] === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => handleSetAnswer(k)}
+                  className={`flex w-full items-center gap-3 rounded-[10px] border-2 px-3 py-2.5 text-left text-sm transition-all ${
+                    chosen
+                      ? 'border-bolt-accent bg-bolt-accent/10 text-bolt-accent font-medium'
+                      : 'border-transparent bg-gray-50 hover:border-bolt-accent/30 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition-all ${
+                    chosen ? 'border-bolt-accent bg-bolt-accent text-white' : 'border-gray-300 text-gray-500'
+                  }`}>
+                    {k.toUpperCase()}
+                  </span>
+                  <span>{text}</span>
+                </button>
+              );
+            })}
           </div>
-        ))}
+        )}
+
+        {/* Open-ended */}
+        {q.question_type === 'open_ended' && (
+          <textarea
+            rows={4}
+            placeholder="Écrivez votre réponse ici…"
+            value={answers[qId] ?? ''}
+            onChange={(e) => handleSetAnswer(e.target.value)}
+            className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-bolt-accent/40 resize-none"
+          />
+        )}
+
+        {/* Code */}
+        {q.question_type === 'code' && (
+          <textarea
+            rows={6}
+            placeholder="// Écrivez votre code ici…"
+            value={answers[qId] ?? ''}
+            onChange={(e) => handleSetAnswer(e.target.value)}
+            className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-bolt-accent/40 resize-y"
+          />
+        )}
+
+        {/* Drag & drop */}
+        {q.question_type === 'drag_drop' && (
+          <textarea
+            rows={3}
+            placeholder="Décrivez l'ordre ou les correspondances…"
+            value={answers[qId] ?? ''}
+            onChange={(e) => handleSetAnswer(e.target.value)}
+            className="w-full rounded-[8px] border border-bolt-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-bolt-accent/40 resize-none"
+          />
+        )}
       </div>
 
-      <Button
-        className="mt-4 w-full rounded-full"
-        onClick={handleSubmit}
-        disabled={!canSubmit || submitMutation.isPending}
-      >
-        <Send className="mr-2 h-4 w-4" />
-        {submitMutation.isPending ? 'Envoi...' : 'Soumettre le quiz'}
-      </Button>
+      {/* Navigation */}
+      <div className="mt-4 flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          disabled={currentQ === 0}
+          onClick={handlePrev}
+        >
+          ← Précédent
+        </Button>
 
-      {!canSubmit && (
-        <p className="mt-1 text-center text-xs text-muted-foreground">
-          Répondez à toutes les questions à choix avant de soumettre.
+        <div className="flex flex-1 justify-center gap-1">
+          {questions.map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setCurrentQ(idx)}
+              className={`h-2 w-2 rounded-full transition-colors ${
+                idx === currentQ
+                  ? 'bg-bolt-accent'
+                  : answers[String(questions[idx].id)]
+                  ? 'bg-emerald-400'
+                  : 'bg-gray-200'
+              }`}
+            />
+          ))}
+        </div>
+
+        {isLast ? (
+          <Button
+            type="button"
+            size="sm"
+            className="rounded-full"
+            disabled={submitMutation.isPending}
+            onClick={handleSubmit}
+          >
+            <Send className="mr-1.5 h-3.5 w-3.5" />
+            {submitMutation.isPending ? 'Envoi…' : 'Soumettre'}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            className="rounded-full"
+            disabled={!canNext}
+            onClick={handleNext}
+          >
+            Suivant →
+          </Button>
+        )}
+      </div>
+
+      {needsChoice && !hasAnswer && !isLast && (
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          Sélectionnez une réponse pour continuer
         </p>
       )}
     </div>
