@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -223,12 +223,12 @@ export default function RevisionQuizSetupPage() {
 
               {/* AAA Codes */}
               <MultiSelect
-                label="AAA Codes"
+                label="AA Codes"
                 options={aaaOptions}
                 selected={selectedAAAs}
                 onChange={setSelectedAAAs}
-                placeholder="Select AAA codes"
-                defaultLabel="All AAA Codes"
+                placeholder="Sélectionner des AA"
+                defaultLabel="Tous les AA"
                 searchable
               />
 
@@ -271,7 +271,7 @@ export default function RevisionQuizSetupPage() {
                 )}
                 {selectedAAAs.length > 0 && (
                   <p>
-                    <span className="text-muted-foreground">AAA Codes:</span>{' '}
+                    <span className="text-muted-foreground">AA Codes:</span>{' '}
                     {selectedAAAs.length} selected
                   </p>
                 )}

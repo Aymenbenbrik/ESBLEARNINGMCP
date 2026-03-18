@@ -85,7 +85,7 @@ def index():
             (QuestionBankQuestion.query
                 .filter(QuestionBankQuestion.course_id == selected_course.id)
                 .filter(QuestionBankQuestion.clo.like('CLO%'))
-                .update({QuestionBankQuestion.clo: func.replace(QuestionBankQuestion.clo, 'CLO', 'AAA')}, synchronize_session=False)
+                .update({QuestionBankQuestion.clo: func.replace(QuestionBankQuestion.clo, 'CLO', 'AA')}, synchronize_session=False)
             )
             db.session.commit()
         except Exception:
@@ -422,7 +422,7 @@ def tn_generate(course_id: int):
 
     # IMPORTANT: Tunisian norm uses "AAA" (acquis). We store AAA codes in the existing `clo` field.
     # We still keep the keys expected by the generator (CLO# / CLO Description), but the value is AAA.
-    clos = [{'CLO#': f"AAA{n}", 'CLO Description': aa_by_num.get(n, '')} for n in selected_nums]
+    clos = [{'CLO#': f"AA {n}", 'CLO Description': aa_by_num.get(n, '')} for n in selected_nums]
 
     chapters_label = ", ".join([str(x) for x in sorted(selected_chapter_orders)]) if selected_chapter_orders else "(sections)"
     week_content = (
@@ -575,7 +575,7 @@ def tn_approve(course_id: int):
     import re
 
     def _normalize_aaa(raw: str | None) -> str | None:
-        """Normalize UI/model tag to a stable AAA code (TN mode)."""
+        """Normalize UI/model tag to a stable AA code (TN mode)."""
         if not raw:
             return None
         s = str(raw).strip()
@@ -584,12 +584,12 @@ def tn_approve(course_id: int):
         # Extract digits if present
         digits = ''.join(re.findall(r'\d+', s))
         upper = s.upper().replace(' ', '')
-        # Common noisy variants we observed: CLO, AA, C0A/COA
+        # Accept any variant: AAA, AA, CLO, COA, C0A → normalize to "AA N"
         if digits:
-            if 'AAA' in upper or upper.startswith('AA') or 'CLO' in upper or 'COA' in upper or 'C0A' in upper:
-                return f"AAA{digits}"
-        # If already looks like AAA without digits, keep as-is
-        if upper.startswith('AAA'):
+            if 'AA' in upper or 'CLO' in upper or 'COA' in upper or 'C0A' in upper:
+                return f"AA {digits}"
+        # If already looks like "AA …" without extra digits, keep as-is
+        if upper.startswith('AA'):
             return s
         return s
 
@@ -605,8 +605,8 @@ def tn_approve(course_id: int):
         if not question_text:
             continue
 
-        # TN mode: store AAA code in the `clo` column
-        clo = _normalize_aaa(request.form.get(f'clo_{i}')) or 'AAA1'
+        # TN mode: store AA code in the `clo` column
+        clo = _normalize_aaa(request.form.get(f'clo_{i}')) or 'AA 1'
         bloom_level = (request.form.get(f'bloom_level_{i}') or 'understand').strip().lower()
         difficulty_level = (request.form.get(f'difficulty_level_{i}') or 'medium').strip().lower()
 

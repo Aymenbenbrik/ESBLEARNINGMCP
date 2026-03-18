@@ -173,7 +173,7 @@ export function SyllabusUploadDialog({
               >
                 <div className="font-medium">TN Norm</div>
                 <div className="text-xs text-muted-foreground">
-                  AAA, AAP, Chapters
+                  AA, AAP, Chapters
                 </div>
                 {syllabusType === 'tn' && (
                   <CheckCircle className="absolute top-2 right-2 h-4 w-4 text-primary" />
@@ -321,7 +321,7 @@ function getStageDescription(stage: Stage): string {
     case 'extracting':
       return 'Parsing CLO, PLO, weekly plan, and creating chapters';
     case 'classifying':
-      return 'Mapping TN chapters to learning outcomes (AAA)';
+      return 'Mapping TN chapters to learning outcomes (AA)';
     case 'complete':
       return 'Your syllabus has been processed successfully';
     default:

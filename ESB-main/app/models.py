@@ -1023,7 +1023,7 @@ class QuestionBankQuestion(db.Model):
     bloom_level = db.Column(db.String(50), nullable=True)
     # IMPORTANT:
     # - For BGA syllabi, this field stores a CLO tag (e.g. "CLO 1").
-    # - For Tunisian norms (TN), we store the AAA code here (e.g. "AAA 1").
+    # - For Tunisian norms (TN), we store the AA code here (e.g. "AA 1").
     # We keep the DB column name `clo` for backward-compatibility.
     clo = db.Column(db.String(255), nullable=True)
     difficulty = db.Column(db.String(20), nullable=True)

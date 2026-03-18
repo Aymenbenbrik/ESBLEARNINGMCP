@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -178,12 +178,12 @@ export default function ChapterDetailPage() {
                           <p className="mt-1 text-xs text-muted-foreground">
                             {section.aaa && section.aaa.length > 0
                               ? `${section.aaa.slice(0, 8).map((x) => x.label).join(' • ')}${section.aaa.length > 8 ? ' …' : ''}`
-                              : 'No AAA mapping found for this section.'}
+                              : 'No AA mapping found for this section.'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="rounded-full bg-bolt-ink/5 px-2 py-1 text-xs font-semibold text-bolt-muted">
-                            {(section.aaa || []).length} AAA
+                            {(section.aaa || []).length} AA
                           </span>
                           <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-90" />
                         </div>

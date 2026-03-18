@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useParams, useRouter } from 'next/navigation';
 import { usePracticeQuizResults } from '@/lib/hooks/usePracticeQuiz';
@@ -167,7 +167,7 @@ export default function PracticeQuizResultsPage() {
                 )}
                 {question.clo && (
                   <Badge variant="outline">
-                    AAA: {question.clo.replace(/^CLO/i, 'AAA')}
+                    AA: {question.clo.replace(/^CLO/i, 'AA')}
                   </Badge>
                 )}
                 {question.difficulty && (

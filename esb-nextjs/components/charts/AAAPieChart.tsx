@@ -14,7 +14,7 @@ interface AAAPieChartProps {
   data: AADistributionItem[];
 }
 
-// Auto-generated color palette for AAA codes
+// Auto-generated color palette for AA codes
 const COLORS = [
   '#3b82f6', // blue-500
   '#22c55e', // green-500
@@ -36,7 +36,7 @@ export function AAAPieChart({ data }: AAAPieChartProps) {
   if (!data || data.length === 0) {
     return (
       <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-        No AAA distribution data available
+        No AA distribution data available
       </div>
     );
   }
@@ -50,7 +50,7 @@ export function AAAPieChart({ data }: AAAPieChartProps) {
       const percentage = ((data.count / total) * 100).toFixed(1);
       return (
         <div className="bg-background border rounded-lg p-3 shadow-lg">
-          <p className="font-medium mb-1">AAA: {data.aaa_code}</p>
+          <p className="font-medium mb-1">AA: {data.aaa_code}</p>
           <p className="text-sm text-muted-foreground">
             Questions: <span className="font-medium text-foreground">{data.count}</span>
           </p>

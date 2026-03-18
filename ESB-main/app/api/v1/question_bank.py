@@ -614,17 +614,14 @@ def approve_tn_questions(course_id):
             if str(qid) in chapter_mapping:
                 question.chapter_id = chapter_mapping[str(qid)]
 
-            # Normalize AAA code in clo field
+            # Normalize AA code in clo field
             if question.clo:
-                # Ensure format is "AAAn"
-                normalized = question.clo.upper().strip()
-                if not normalized.startswith('AAA'):
-                    if normalized.startswith('AA'):
-                        normalized = 'A' + normalized
-                    elif normalized.startswith('A'):
-                        normalized = 'AA' + normalized
-                    else:
-                        normalized = 'AAA' + normalized
+                # Ensure format is "AA N"
+                normalized = question.clo.strip()
+                upper = normalized.upper().replace(' ', '')
+                digits = ''.join(__import__('re').findall(r'\d+', normalized))
+                if digits:
+                    normalized = f"AA {digits}"
                 question.clo = normalized
 
             # Approve
@@ -887,7 +884,7 @@ def get_aaa_codes():
                 'aaas': [
                     {
                         'number': aa.number,
-                        'code': f"AAA{aa.number}",
+                        'code': f"AA {aa.number}",
                         'description': aa.description,
                         'section_links': len(aa.section_links) if aa.section_links else 0,
                         'chapter_links': len(aa.chapter_links) if aa.chapter_links else 0

@@ -77,9 +77,9 @@ export function DashboardCharts({
       {aaa_distribution && aaa_distribution.length > 0 && (
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>AAA Code Distribution</CardTitle>
+            <CardTitle>AA Code Distribution</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Question distribution by AAA classification
+              Question distribution by AA classification
             </p>
           </CardHeader>
           <CardContent>

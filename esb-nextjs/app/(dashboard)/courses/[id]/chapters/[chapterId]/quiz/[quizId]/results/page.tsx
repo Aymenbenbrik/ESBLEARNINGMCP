@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useParams, useRouter } from 'next/navigation';
 import { useQuizResults, useQuizViolations, useReinstateQuiz } from '@/lib/hooks/useQuiz';
@@ -190,7 +190,7 @@ export default function QuizResultsPage() {
             <CardHeader>
               <CardTitle>
                 {Object.keys(clo_stats).some((k) => k.toUpperCase().includes('AAA'))
-                  ? 'AAA Performance'
+                  ? 'AA Performance'
                   : 'CLO Performance'}
               </CardTitle>
             </CardHeader>
@@ -244,7 +244,7 @@ export default function QuizResultsPage() {
                   {question.clo && (
                     <Badge variant="secondary">
                       {question.clo.toUpperCase().startsWith('CLO') && Object.keys(clo_stats).some((k) => k.toUpperCase().includes('AAA'))
-                        ? question.clo.replace(/^CLO/i, 'AAA')
+                        ? question.clo.replace(/^CLO/i, 'AA')
                         : question.clo}
                     </Badge>
                   )}

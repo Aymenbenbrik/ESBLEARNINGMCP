@@ -16,13 +16,13 @@ export function TNNormsDistributionCard({ aa }: Props) {
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle>AAA mapping</CardTitle>
+            <CardTitle>AA mapping</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Vue compacte des AAA les plus présents dans le syllabus TN.
+              Vue compacte des AA les plus présents dans le syllabus TN.
             </p>
           </div>
           <Badge variant="secondary" className="w-fit rounded-full px-3 py-1">
-            {aa.length} AAA
+            {aa.length} AA
           </Badge>
         </div>
       </CardHeader>

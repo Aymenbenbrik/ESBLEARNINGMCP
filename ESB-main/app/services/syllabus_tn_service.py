@@ -664,7 +664,7 @@ TEXT:
 Tu es un assistant intelligent qui fait une classification sémantique (pas juste mots-clés).
 Objectif: associer des sections et chapitres à des AAA (Acquis d’apprentissage) pertinents.
 
-Voici la liste des AAA disponibles:
+Voici la liste des AA disponibles:
 {aaa_text}
 
 Voici le plan du cours (chapitres + sections) à classer:
@@ -674,7 +674,7 @@ Tâche:
 1) Pour chaque CHAPTER#, donne la liste des AA# correspondants (au moins 1).
 2) Pour chaque SECTION# (i.j), donne aussi la liste des AA# correspondants (au moins 1).
 3) Utilise le sens global (concepts implicites) pas seulement les mots.
-4) Si un item correspond à plusieurs AAA, retourne-les tous.
+4) Si un item correspond à plusieurs AA, retourne-les tous.
 
 Règles de sortie:
 - Retourne uniquement un JSON valide dans <json></json>
