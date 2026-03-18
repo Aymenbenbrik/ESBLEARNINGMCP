@@ -1183,7 +1183,7 @@ def tn_generate_quiz(course_id):
     selected_chapter_orders = set()
     selected_sections = []
     try:
-        from app.models import TNSection, TNSectionAAA, TNAA
+        from app.models import TNSection, TNSectionAA, TNAA
         if mode == 'aaa':
             if not selected_aa_numbers:
                 flash("Please select at least one AA.", "warning")
@@ -1192,8 +1192,8 @@ def tn_generate_quiz(course_id):
             # Sections containing the selected AA
             selected_sections = (
                 TNSection.query
-                .join(TNSectionAAA, TNSectionAAA.section_id == TNSection.id)
-                .join(TNAA, TNAA.id == TNSectionAAA.aa_id)
+                .join(TNSectionAA, TNSectionAA.section_id == TNSection.id)
+                .join(TNAA, TNAA.id == TNSectionAA.aa_id)
                 .filter(TNAA.syllabus_id == syllabus.id)
                 .filter(TNAA.number.in_(selected_aa_numbers))
                 .all()

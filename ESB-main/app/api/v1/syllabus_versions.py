@@ -22,7 +22,7 @@ from app import db
 from app.models import (
     Course, Syllabus, SyllabusVersion, User,
     TNSyllabusAdministrative, TNAA, TNAAP,
-    TNChapter, TNSection, TNChapterAAA, TNSectionAAA,
+    TNChapter, TNSection, TNChapterAA, TNSectionAA,
     TNEvaluation, TNBibliography,
 )
 from app.api.v1 import api_v1_bp
@@ -223,7 +223,7 @@ def _apply_snapshot(syllabus: Syllabus, snap: dict):
     - TNAAP: replace entirely
     - TNChapter: match by index → update title; add new; remove missing
     - TNSection: match by (chapter_index, section_index) → update; add; remove
-      NOTE: removing a section also removes its TNSectionAAA links + SectionContent
+      NOTE: removing a section also removes its TNSectionAA links + SectionContent
     - TNBibliography: replace entirely (simple ordered list)
     """
     # --- Admin ---

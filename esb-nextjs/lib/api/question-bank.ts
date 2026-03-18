@@ -13,7 +13,7 @@ import {
   RevisionFilterOptions,
   RevisionQuizFilters,
   CreateRevisionQuizResponse,
-  AAACodesResponse,
+  aaCodesResponse,
 } from '../types/question-bank';
 
 const BASE_URL = '/api/v1/question-bank';
@@ -123,9 +123,9 @@ export const questionBankApi = {
   /**
    * Get list of AAA codes for a course (teacher only)
    */
-  getAAAs: async (courseId?: number): Promise<AAACodesResponse> => {
+  getAAAs: async (courseId?: number): Promise<aaCodesResponse> => {
     const params = courseId ? `?course_id=${courseId}` : '';
-    const response = await apiClient.get<AAACodesResponse>(`${BASE_URL}/aaas${params}`);
+    const response = await apiClient.get<aaCodesResponse>(`${BASE_URL}/aaas${params}`);
     return response.data;
   },
 

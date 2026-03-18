@@ -195,6 +195,46 @@ def add_youtube_activity(section_id):
     return jsonify(activity.to_dict()), 201
 
 
+@api_v1_bp.route('/sections/<int:section_id>/activities/<int:activity_id>/rag-status', methods=['GET'])
+@jwt_required()
+def get_activity_rag_status(section_id, activity_id):
+    """Return detailed RAG indexing status for a YouTube activity."""
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, is_enrolled = _section_access(section, user)
+    if not is_teacher and not is_enrolled:
+        return jsonify({'error': 'Access denied'}), 403
+
+    activity = SectionActivity.query.filter_by(id=activity_id, section_id=section_id).first_or_404()
+    if activity.activity_type != 'youtube':
+        return jsonify({'error': 'Not a YouTube activity'}), 400
+
+    result = activity.to_dict()
+
+    # Attach Document metadata if indexed
+    if activity.document_id and activity.document_rel:
+        doc = activity.document_rel
+        result['rag_document'] = {
+            'id': doc.id,
+            'title': doc.title,
+            'summary': doc.summary,
+            'metadata': doc.content_metadata,
+        }
+
+    # Check ChromaDB collection existence + size
+    if activity.document_id:
+        try:
+            from app.services.vector_store import VectorStore
+            vs = VectorStore(document_id=str(activity.document_id))
+            if vs.collection_exists():
+                count = vs.collection.count()
+                result['rag_chunks'] = count
+        except Exception:
+            pass
+
+    return jsonify(result), 200
+
+
 @api_v1_bp.route('/sections/<int:section_id>/activities/<int:activity_id>', methods=['DELETE'])
 @jwt_required()
 def delete_section_activity(section_id, activity_id):
@@ -279,6 +319,24 @@ def generate_section_quiz(section_id):
     if not context:
         return jsonify({'error': 'No content available to generate questions. Generate section content first.'}), 400
 
+    # Collect AA (Acquis d'Apprentissage) linked to this section or its chapter
+    from app.models import TNSectionAA, TNChapterAA
+    aa_list = []
+    for link in section.aa_links:
+        aa = link.aa
+        aa_list.append({'code': f'AA {aa.number}', 'description': aa.description})
+    if not aa_list:
+        for link in section.chapter.aa_links:
+            aa = link.aa
+            aa_list.append({'code': f'AA {aa.number}', 'description': aa.description})
+
+    aa_context = ''
+    if aa_list:
+        aa_context = '\n\nAcquis d\'Apprentissage (AA) ciblés par cette section:\n'
+        for aa in aa_list:
+            aa_context += f'  - {aa["code"]}: {aa["description"]}\n'
+        aa_context += '\nChaque question DOIT être associée à l\'un de ces AA.'
+
     # Get or create quiz
     quiz = SectionQuiz.query.filter_by(section_id=section_id).first()
     if not quiz:
@@ -290,18 +348,30 @@ def generate_section_quiz(section_id):
         db.session.add(quiz)
         db.session.flush()
 
+    aa_codes_str = ', '.join(aa['code'] for aa in aa_list) if aa_list else 'AA 1'
+
     prompt = f"""Tu es un expert pédagogique. Génère {num_questions} questions QCM pour évaluer la compréhension de cette section de cours.
 
 Section: {section.index} — {section.title}
 Contenu:
-{context}
+{context}{aa_context}
 
 RÈGLES:
 1. Retourne UNIQUEMENT un tableau JSON valide, rien d'autre.
-2. Chaque question a: question_text, choice_a, choice_b, choice_c, choice_d, correct_choice (a/b/c/d), explanation, bloom_level (remember/understand/apply/analyze), points (1.0).
-3. Les questions doivent couvrir les concepts clés de la section.
-4. Les distracteurs doivent être plausibles.
-5. Langue: français (ou langue du contenu).
+2. Chaque question a les champs suivants OBLIGATOIRES:
+   - question_text: texte de la question
+   - choice_a, choice_b, choice_c, choice_d: 4 propositions de réponse
+   - correct_choice: "a", "b", "c" ou "d"
+   - explanation: explication de la bonne réponse
+   - bloom_level: niveau Taxonomie de Bloom parmi: "remember", "understand", "apply", "analyze", "evaluate", "create"
+   - difficulty: niveau de difficulté parmi: "easy", "medium", "hard"
+   - aa_code: l'AA associé parmi: {aa_codes_str} (ou le premier si un seul AA)
+   - points: 1.0
+3. Répartition des difficultés: 30% easy, 50% medium, 20% hard.
+4. Répartition des niveaux Bloom: mix remember/understand/apply/analyze.
+5. Si plusieurs AA sont disponibles, répartir les questions entre eux.
+6. Les distracteurs doivent être plausibles et cohérents.
+7. Langue: français (ou langue du contenu).
 
 EXEMPLE:
 [
@@ -314,6 +384,8 @@ EXEMPLE:
     "correct_choice": "b",
     "explanation": "Une matrice est un tableau rectangulaire de nombres organisé en lignes et colonnes.",
     "bloom_level": "remember",
+    "difficulty": "easy",
+    "aa_code": "{aa_codes_str.split(',')[0].strip() if aa_list else 'AA 1'}",
     "points": 1.0
   }}
 ]
@@ -355,6 +427,8 @@ RÉPONSE (JSON pur uniquement):"""
             correct_choice=str(qd.get('correct_choice', 'a')).lower()[:1],
             explanation=str(qd.get('explanation', '')),
             bloom_level=str(qd.get('bloom_level', 'remember')),
+            difficulty=str(qd.get('difficulty', 'medium')),
+            aa_code=str(qd.get('aa_code', aa_list[0]['code'] if aa_list else '')),
             points=float(qd.get('points', 1.0)),
             status='pending',
             position=max_pos + i + 1,
@@ -385,7 +459,8 @@ def update_quiz_question(section_id, question_id):
 
     body = request.get_json(silent=True) or {}
     for field in ('question_text', 'choice_a', 'choice_b', 'choice_c', 'choice_d',
-                  'correct_choice', 'explanation', 'bloom_level', 'points', 'status'):
+                  'correct_choice', 'explanation', 'bloom_level', 'difficulty', 'aa_code',
+                  'points', 'status'):
         if field in body:
             setattr(question, field, body[field])
 

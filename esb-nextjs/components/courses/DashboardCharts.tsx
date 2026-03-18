@@ -5,13 +5,13 @@ import { AAAPieChart } from '@/components/charts/AAAPieChart';
 import {
   BloomDistributionItem,
   DifficultyDistributionItem,
-  AAADistributionItem,
+  AADistributionItem,
 } from '@/lib/types/course';
 
 interface DashboardChartsProps {
   bloom_distribution: BloomDistributionItem[];
   difficulty_distribution: DifficultyDistributionItem[];
-  aaa_distribution?: AAADistributionItem[];
+  aaa_distribution?: AADistributionItem[];
 }
 
 export function DashboardCharts({

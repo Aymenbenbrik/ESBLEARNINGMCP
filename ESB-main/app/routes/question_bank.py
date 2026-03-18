@@ -181,13 +181,13 @@ def index():
         # AAA list: prefer TN syllabus mapping when available so the UI can show
         # "AAA in selected chapters" even before lots of questions exist.
         try:
-            from app.models import TNChapter, TNChapterAAA, TNAA
+            from app.models import TNChapter, TNChapterAA, TNAA
 
             chapter_orders = []
             if chapter_ids:
                 chapter_orders = [c.order for c in Chapter.query.filter(Chapter.id.in_(chapter_ids)).all()]
 
-            tnq = TNAA.query.join(TNChapterAAA).join(TNChapter).filter(
+            tnq = TNAA.query.join(TNChapterAA).join(TNChapter).filter(
                 TNChapter.syllabus_id == syllabus.id
             )
             if chapter_orders:
@@ -354,7 +354,7 @@ def tn_generate(course_id: int):
     selected_sections = []
 
     try:
-        from app.models import TNSection, TNSectionAAA, TNAA
+        from app.models import TNSection, TNSectionAA, TNAA
 
         if mode == 'aaa':
             if not selected_aa_numbers:
@@ -363,8 +363,8 @@ def tn_generate(course_id: int):
 
             selected_sections = (
                 TNSection.query
-                .join(TNSectionAAA, TNSectionAAA.section_id == TNSection.id)
-                .join(TNAA, TNAA.id == TNSectionAAA.aa_id)
+                .join(TNSectionAA, TNSectionAA.section_id == TNSection.id)
+                .join(TNAA, TNAA.id == TNSectionAA.aa_id)
                 .filter(TNAA.syllabus_id == syllabus.id)
                 .filter(TNAA.number.in_(selected_aa_numbers))
                 .all()

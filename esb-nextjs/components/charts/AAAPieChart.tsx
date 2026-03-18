@@ -8,10 +8,10 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { AAADistributionItem } from '@/lib/types/course';
+import { AADistributionItem } from '@/lib/types/course';
 
 interface AAAPieChartProps {
-  data: AAADistributionItem[];
+  data: AADistributionItem[];
 }
 
 // Auto-generated color palette for AAA codes

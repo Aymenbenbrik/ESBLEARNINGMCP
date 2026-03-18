@@ -5,7 +5,7 @@ import os
 from flask_login import login_required, current_user
 
 from app import db
-from app.models import Course, Syllabus, TNAA, TNAAP, TNChapter, TNSection, TNChapterAAA, TNSectionAAA, TNEvaluation, TNBibliography, TNSyllabusAdministrative
+from app.models import Course, Syllabus, TNAA, TNAAP, TNChapter, TNSection, TNChapterAA, TNSectionAA, TNEvaluation, TNBibliography, TNSyllabusAdministrative
 from app.services.syllabus_tn_service import SyllabusTNService
 from app.services.aap_definitions import DEFAULT_AAP_DEFINITIONS, get_aap_label
 
@@ -66,7 +66,7 @@ def _build_view_model(course: Course, syllabus: Syllabus):
     for ch in ch_rows:
         ch_title = (ch.title or "").strip() or f"Chapitre {ch.index}"
         # Chapter AA links
-        ch_links = TNChapterAAA.query.filter_by(chapter_id=ch.id).all()
+        ch_links = TNChapterAA.query.filter_by(chapter_id=ch.id).all()
         ch_aa = []
         for link in ch_links:
             num = link.aa.number if link.aa else None
@@ -80,7 +80,7 @@ def _build_view_model(course: Course, syllabus: Syllabus):
         sections_out = []
         for sec in sec_rows:
             sec_title = (sec.title or "").strip() or f"Section {sec.index}"
-            sec_links = TNSectionAAA.query.filter_by(section_id=sec.id).all()
+            sec_links = TNSectionAA.query.filter_by(section_id=sec.id).all()
             sec_aa = []
             for link in sec_links:
                 num = link.aa.number if link.aa else None
@@ -160,11 +160,11 @@ def _clear_tn_normalized(syllabus: Syllabus):
     # easiest: delete by query
     chap_ids = [c.id for c in syllabus.tn_chapters]
     if chap_ids:
-        db.session.query(TNChapterAAA).filter(TNChapterAAA.chapter_id.in_(chap_ids)).delete(synchronize_session=False)
+        db.session.query(TNChapterAA).filter(TNChapterAA.chapter_id.in_(chap_ids)).delete(synchronize_session=False)
         sec_ids = db.session.query(TNSection.id).filter(TNSection.chapter_id.in_(chap_ids)).all()
         sec_ids = [x[0] for x in sec_ids]
         if sec_ids:
-            db.session.query(TNSectionAAA).filter(TNSectionAAA.section_id.in_(sec_ids)).delete(synchronize_session=False)
+            db.session.query(TNSectionAA).filter(TNSectionAA.section_id.in_(sec_ids)).delete(synchronize_session=False)
 
     # 2) delete sections, chapters, AA, AAP, eval, biblio, admin
     db.session.query(TNSection).filter(TNSection.chapter_id.in_(chap_ids)).delete(synchronize_session=False)
@@ -299,7 +299,7 @@ def _persist_tn_extraction(syllabus: Syllabus, extracted: dict):
     # Your extractor sometimes outputs:
     # - chapter has "AA#" list and "AADescription"
     # - section has "AA#" list and "AADescription"
-    # We'll store those in TNChapterAAA / TNSectionAAA
+    # We'll store those in TNChapterAA / TNSectionAA
     for ch in chapters:
         ch_index = int(ch.get("chapter_index") or ch.get("index") or 0)
         chap_id = chapter_id_by_index.get(ch_index)
@@ -324,7 +324,7 @@ def _persist_tn_extraction(syllabus: Syllabus, extracted: dict):
             desc_override = None
             if i < len(ch_aa_desc):
                 desc_override = ch_aa_desc[i]
-            db.session.add(TNChapterAAA(chapter_id=chap_id, aa_id=aa_row.id, description_override=desc_override))
+            db.session.add(TNChapterAA(chapter_id=chap_id, aa_id=aa_row.id, description_override=desc_override))
 
         # sections mapping
         for s_i, sec in enumerate((ch.get("sections") or []), start=1):
@@ -354,7 +354,7 @@ def _persist_tn_extraction(syllabus: Syllabus, extracted: dict):
                 desc_override = None
                 if i < len(s_aa_desc):
                     desc_override = s_aa_desc[i]
-                db.session.add(TNSectionAAA(section_id=sec_id, aa_id=aa_row.id, description_override=desc_override))
+                db.session.add(TNSectionAA(section_id=sec_id, aa_id=aa_row.id, description_override=desc_override))
 
     # ---------------- evaluation ----------------
     evaluation = extracted.get("evaluation") or {}

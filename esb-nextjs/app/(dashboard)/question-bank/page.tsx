@@ -32,7 +32,7 @@ function QuestionBankContent() {
   // Parse filters from URL
   const courseId = searchParams.get('course_id');
   const chapterIds = searchParams.get('chapter_id');
-  const aaaCodes = searchParams.get('aaa');
+  const aaCodes = searchParams.get('AA');
   const bloomLevel = searchParams.get('bloom_level');
   const difficulty = searchParams.get('difficulty');
   const approved = searchParams.get('approved');
@@ -46,7 +46,7 @@ function QuestionBankContent() {
   const filters: QuestionBankFilters = {
     course_id: courseId ? parseInt(courseId, 10) : 0,
     chapter_id: chapterIds || undefined,
-    aaa: aaaCodes || undefined,
+    aaa: aaCodes || undefined,
     bloom_level: bloomLevel || undefined,
     difficulty: difficulty || undefined,
     approved: (approved as 'true' | 'false' | 'all') || undefined,

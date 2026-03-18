@@ -612,8 +612,8 @@ class TNAA(db.Model):
     description = db.Column(db.Text, nullable=False)
 
     syllabus = db.relationship('Syllabus', back_populates='tn_aa')
-    chapter_links = db.relationship('TNChapterAAA', back_populates='aa', cascade='all, delete-orphan')
-    section_links = db.relationship('TNSectionAAA', back_populates='aa', cascade='all, delete-orphan')
+    chapter_links = db.relationship('TNChapterAA', back_populates='aa', cascade='all, delete-orphan')
+    section_links = db.relationship('TNSectionAA', back_populates='aa', cascade='all, delete-orphan')
 
     __table_args__ = (
         db.UniqueConstraint('syllabus_id', 'number', name='uq_tn_aa_num'),
@@ -629,7 +629,7 @@ class TNChapter(db.Model):
 
     syllabus = db.relationship('Syllabus', back_populates='tn_chapters')
     sections = db.relationship('TNSection', back_populates='chapter', cascade='all, delete-orphan')
-    aa_links = db.relationship('TNChapterAAA', back_populates='chapter', cascade='all, delete-orphan')
+    aa_links = db.relationship('TNChapterAA', back_populates='chapter', cascade='all, delete-orphan')
 
     __table_args__ = (
         db.UniqueConstraint('syllabus_id', 'index', name='uq_tn_chapter_idx'),
@@ -644,14 +644,14 @@ class TNSection(db.Model):
     title = db.Column(db.Text, nullable=False)
 
     chapter = db.relationship('TNChapter', back_populates='sections')
-    aa_links = db.relationship('TNSectionAAA', back_populates='section', cascade='all, delete-orphan')
+    aa_links = db.relationship('TNSectionAA', back_populates='section', cascade='all, delete-orphan')
 
     __table_args__ = (
         db.UniqueConstraint('chapter_id', 'index', name='uq_tn_section_idx'),
     )
 
 
-class TNChapterAAA(db.Model):
+class TNChapterAA(db.Model):
     __tablename__ = 'tn_chapter_aa'
     chapter_id = db.Column(db.Integer, db.ForeignKey('tn_chapter.id'), primary_key=True)
     aa_id = db.Column(db.Integer, db.ForeignKey('tn_aa.id'), primary_key=True)
@@ -661,7 +661,7 @@ class TNChapterAAA(db.Model):
     aa = db.relationship('TNAA', back_populates='chapter_links')
 
 
-class TNSectionAAA(db.Model):
+class TNSectionAA(db.Model):
     __tablename__ = 'tn_section_aa'
     section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), primary_key=True)
     aa_id = db.Column(db.Integer, db.ForeignKey('tn_aa.id'), primary_key=True)
@@ -1169,6 +1169,8 @@ class SectionQuizQuestion(db.Model):
     points = db.Column(db.Float, default=1.0)
     status = db.Column(db.String(20), default='pending')   # pending | approved | rejected
     bloom_level = db.Column(db.String(50))
+    difficulty = db.Column(db.String(20), default='medium')   # easy | medium | hard
+    aa_code = db.Column(db.String(20))                         # e.g. "AA 1"
     position = db.Column(db.Integer, default=0)
 
     def to_dict(self, hide_answer=False):
@@ -1185,6 +1187,8 @@ class SectionQuizQuestion(db.Model):
             'points': self.points,
             'status': self.status,
             'bloom_level': self.bloom_level,
+            'difficulty': self.difficulty,
+            'aa_code': self.aa_code,
             'position': self.position,
         }
         if not hide_answer:

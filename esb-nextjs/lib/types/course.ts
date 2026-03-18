@@ -251,7 +251,7 @@ export interface DifficultyDistributionItem {
   avg_score: number;
 }
 
-export interface AAADistributionItem {
+export interface AADistributionItem {
   aaa_code: string;
   count: number;
   avg_score: number;
@@ -261,7 +261,7 @@ export interface CourseDashboardResponse {
   stats: CourseDashboardStats;
   bloom_distribution: BloomDistributionItem[];
   difficulty_distribution: DifficultyDistributionItem[];
-  aaa_distribution?: AAADistributionItem[];
+  aaa_distribution?: AADistributionItem[];
   recent_quizzes?: {
     id: number;
     student_name: string;
@@ -295,7 +295,7 @@ export interface StudentDashboardResponse {
   course_progress: CourseProgressItem[];
   bloom_stats: BloomDistributionItem[];
   difficulty_stats: DifficultyDistributionItem[];
-  aaa_stats?: AAADistributionItem[];
+  aaa_stats?: AADistributionItem[];
   recent_quizzes: {
     id: number;
     course_title: string;

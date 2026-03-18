@@ -37,7 +37,7 @@ export interface ChapterOption {
   order: number;
 }
 
-export interface AAAACode {
+export interface AACode {
   number: number;
   code: string;
   description: string;
@@ -63,7 +63,7 @@ export interface RevisionFilterOptions {
   };
   filter_options: {
     chapters: ChapterOption[];
-    aaa_codes: string[];
+    aa_codes: string[];
     bloom_levels: string[];
     difficulty_levels: string[];
   };
@@ -181,7 +181,7 @@ export interface ApproveTNQuestionsResponse {
 export interface RevisionQuizFilters {
   num_questions: number;
   chapter_ids?: number[];
-  aaa_codes?: string[];
+  aa_codes?: string[];
   bloom_levels?: string[];
   difficulty_levels?: string[];
 }
@@ -216,8 +216,8 @@ export interface CreateRevisionQuizResponse {
 // AAA CODES TYPES
 // ============================================================================
 
-export interface AAACodesResponse {
-  aaas: (AAAACode | { code: string })[];
+export interface aaCodesResponse {
+  aaas: (AACode | { code: string })[];
 }
 
 export interface AAAOption {

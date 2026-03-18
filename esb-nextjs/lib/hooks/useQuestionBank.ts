@@ -14,7 +14,7 @@ import {
   RevisionFilterOptions,
   RevisionQuizFilters,
   CreateRevisionQuizResponse,
-  AAACodesResponse,
+  aaCodesResponse,
 } from '../types/question-bank';
 import { toast } from 'sonner';
 
@@ -57,7 +57,7 @@ export function useRevisionOptions(courseId: number) {
  * Get AAA codes for a course (teacher only)
  */
 export function useAAAs(courseId?: number) {
-  return useQuery<AAACodesResponse>({
+  return useQuery<aaCodesResponse>({
     queryKey: questionBankKeys.aaas(courseId),
     queryFn: () => questionBankApi.getAAAs(courseId),
   });

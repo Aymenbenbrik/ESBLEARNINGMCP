@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 import os
 from app import db
-from app.models import Course, Chapter, Document, Enrollment, User, TNAA, TNChapter, TNChapterAAA
+from app.models import Course, Chapter, Document, Enrollment, User, TNAA, TNChapter, TNChapterAA
 from app.services.file_service import save_file, allowed_file
 from app.services.ai_service import generate_summary
 from app.services.syllabus_service import SyllabusService
@@ -649,9 +649,9 @@ def save_aa_matching(chapter_id):
             return jsonify({'error': f'Unknown AA ids: {invalid}'}), 400
 
         # Delete old links then create new ones
-        TNChapterAAA.query.filter_by(chapter_id=tn_chapter.id).delete()
+        TNChapterAA.query.filter_by(chapter_id=tn_chapter.id).delete()
         for aa_id in new_aa_ids:
-            db.session.add(TNChapterAAA(chapter_id=tn_chapter.id, aa_id=aa_id))
+            db.session.add(TNChapterAA(chapter_id=tn_chapter.id, aa_id=aa_id))
         db.session.commit()
 
         return jsonify({
@@ -878,7 +878,7 @@ def apply_section_structure(chapter_id):
 
         from app.models import TNSection, SectionContent
 
-        # Delete existing sections (cascades to TNSectionAAA and SectionContent)
+        # Delete existing sections (cascades to TNSectionAA and SectionContent)
         TNSection.query.filter_by(chapter_id=tn_chapter.id).delete()
         db.session.flush()
 

@@ -121,6 +121,8 @@ export interface SectionQuizQuestion {
   points: number;
   status: QuestionStatus;
   bloom_level: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  aa_code: string;           // e.g. "AA 1"
   position: number;
 }
 

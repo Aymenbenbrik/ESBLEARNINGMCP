@@ -58,8 +58,8 @@ export default function RevisionQuizSetupPage() {
   }, [data]);
 
   const aaaOptions: MultiSelectOption[] = useMemo(() => {
-    if (!data?.filter_options.aaa_codes) return [];
-    return data.filter_options.aaa_codes.map((code) => ({
+    if (!data?.filter_options.aa_codes) return [];
+    return data.filter_options.aa_codes.map((code) => ({
       value: code,
       label: code,
     }));
@@ -89,7 +89,7 @@ export default function RevisionQuizSetupPage() {
         selectedChapters.length > 0
           ? selectedChapters.map((id) => Number(id))
           : undefined,
-      aaa_codes:
+      aa_codes:
         selectedAAAs.length > 0 ? selectedAAAs.map((code) => String(code)) : undefined,
       bloom_levels:
         selectedBlooms.length > 0 ? selectedBlooms.map((level) => String(level)) : undefined,

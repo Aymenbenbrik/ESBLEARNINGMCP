@@ -77,12 +77,12 @@ export function QuestionFilters({
     }));
   }, [courseData]);
 
-  // Convert AAA codes to MultiSelect options
+  // Convert AA codes to MultiSelect options
   const aaaOptions: MultiSelectOption[] = useMemo(() => {
     if (!aaaData?.aaas) return [];
-    return aaaData.aaas.map((aaa) => ({
-      value: aaa.code,
-      label: aaa.code,
+    return aaaData.aaas.map((aa: { code: string }) => ({
+      value: aa.code,
+      label: aa.code,
     }));
   }, [aaaData]);
 

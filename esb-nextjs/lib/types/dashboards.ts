@@ -1,5 +1,5 @@
 import {
-  AAADistributionItem,
+  AADistributionItem,
   BloomDistributionItem,
   CourseDashboardStats,
   DifficultyDistributionItem,
@@ -20,7 +20,7 @@ export interface ProgramDashboardResponse {
   stats: CourseDashboardStats;
   bloom_distribution: BloomDistributionItem[];
   difficulty_distribution: DifficultyDistributionItem[];
-  aaa_distribution: AAADistributionItem[];
+  aaa_distribution: AADistributionItem[];
   recent_quizzes: {
     id: number;
     student_name: string;
@@ -53,7 +53,7 @@ export interface ClassDashboardResponse {
   stats: CourseDashboardStats;
   bloom_distribution: BloomDistributionItem[];
   difficulty_distribution: DifficultyDistributionItem[];
-  aaa_distribution: AAADistributionItem[];
+  aaa_distribution: AADistributionItem[];
   recent_quizzes: {
     id: number;
     student_name: string;
@@ -95,7 +95,7 @@ export interface StudentDashboardResponseV2 {
   stats: StudentDashboardStatsV2;
   bloom_distribution: BloomDistributionItem[];
   difficulty_distribution: DifficultyDistributionItem[];
-  aaa_distribution: AAADistributionItem[];
+  aaa_distribution: AADistributionItem[];
   recent_quizzes: {
     id: number;
     student_name: string;
@@ -121,7 +121,7 @@ export interface MyDashboardResponse {
   stats: CourseDashboardStats;
   bloom_distribution: BloomDistributionItem[];
   difficulty_distribution: DifficultyDistributionItem[];
-  aaa_distribution: AAADistributionItem[];
+  aaa_distribution: AADistributionItem[];
   recent_quizzes: {
     id: number;
     student_name: string;

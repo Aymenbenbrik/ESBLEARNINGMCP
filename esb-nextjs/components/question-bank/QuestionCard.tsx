@@ -74,7 +74,7 @@ export function QuestionCard({
 
             {/* TN Norms: display AAA codes (never show CLO for TN usage) */}
             <Badge variant="secondary">
-              {(question.clo || '').replace(/^CLO/i, 'AAA')}
+              {(question.clo || '').replace(/^CLO/i, 'AA')}
             </Badge>
 
             {/* Chapter */}
