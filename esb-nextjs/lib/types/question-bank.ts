@@ -51,8 +51,17 @@ export interface CourseQBankResponse {
   aa_codes: string[];
 }
 
+export interface AAListItem {
+  code: string;
+  description: string;
+}
+
+export interface CourseAAListResponse {
+  aa_list: AAListItem[];
+}
+
 export interface GenerateCourseQBankData {
-  aa_code: string;
+  aa_codes: string[];   // multi-select (replaces old aa_code)
   bloom_level: string;
   difficulty: string;
   question_type: QuestionType;

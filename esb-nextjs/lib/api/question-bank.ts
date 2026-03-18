@@ -19,6 +19,7 @@ import {
   GenerateCourseQBankResponse,
   CourseQBankQuestion,
   UpdateCourseQBankData,
+  CourseAAListResponse,
 } from '../types/question-bank';
 
 const BASE_URL = '/api/v1/question-bank';
@@ -178,6 +179,11 @@ export const questionBankApi = {
 export const courseQBankApi = {
   list: async (courseId: number): Promise<CourseQBankResponse> => {
     const res = await apiClient.get<CourseQBankResponse>(`/api/v1/courses/${courseId}/question-bank`);
+    return res.data;
+  },
+
+  aaList: async (courseId: number): Promise<CourseAAListResponse> => {
+    const res = await apiClient.get<CourseAAListResponse>(`/api/v1/courses/${courseId}/question-bank/aa-list`);
     return res.data;
   },
 

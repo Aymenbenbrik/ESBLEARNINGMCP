@@ -23,7 +23,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.api.v1 import api_v1_bp
 from app import db
-from app.models import User, Course, QuestionBankQuestion, Enrollment
+from app.models import User, Course, QuestionBankQuestion, Enrollment, Syllabus, TNAA
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +226,39 @@ def _parse_llm_response(raw: str) -> list[dict]:
 # Routes
 # ---------------------------------------------------------------------------
 
+@api_v1_bp.route('/courses/<int:course_id>/question-bank/aa-list', methods=['GET'])
+@jwt_required()
+def list_course_aa(course_id):
+    """Return AAs from the course's syllabus for use in the generation form."""
+    user = _get_user()
+    is_teacher, is_enrolled, course = _course_access(course_id, user)
+    if not course:
+        return jsonify({'error': 'Cours introuvable'}), 404
+    if not is_teacher and not is_enrolled:
+        return jsonify({'error': 'Accès refusé'}), 403
+
+    syllabus = Syllabus.query.filter_by(course_id=course_id).first()
+    aa_list = []
+
+    if syllabus:
+        stype = (syllabus.syllabus_type or '').upper()
+        if stype == 'TN':
+            for aa in sorted(syllabus.tn_aa, key=lambda a: a.number):
+                aa_list.append({'code': f'AA {aa.number}', 'description': aa.description})
+        else:
+            # BGA: clo_data is a list of {code, description, ...}
+            for clo in (syllabus.clo_data or []):
+                if isinstance(clo, dict):
+                    raw_code = clo.get('code', '') or clo.get('clo_code', '')
+                    if raw_code:
+                        aa_list.append({
+                            'code': _normalize_aa(str(raw_code)),
+                            'description': clo.get('description', clo.get('clo_description', '')),
+                        })
+
+    return jsonify({'aa_list': aa_list}), 200
+
+
 @api_v1_bp.route('/courses/<int:course_id>/question-bank', methods=['GET'])
 @jwt_required()
 def list_course_qbank(course_id):
@@ -268,62 +301,67 @@ def generate_course_qbank(course_id):
         return jsonify({'error': 'Réservé aux enseignants'}), 403
 
     body          = request.get_json(silent=True) or {}
-    aa_code       = (body.get('aa_code') or '').strip()
+    # Support both aa_codes (list) and aa_code (legacy single)
+    aa_codes_raw  = body.get('aa_codes') or []
+    if not aa_codes_raw and body.get('aa_code'):
+        aa_codes_raw = [body['aa_code']]
+    aa_codes_raw  = [c.strip() for c in aa_codes_raw if str(c).strip()]
+
     bloom_level   = (body.get('bloom_level') or 'remember').strip()
     difficulty    = (body.get('difficulty') or 'medium').strip()
     question_type = (body.get('question_type') or 'mcq').strip()
     num_q         = max(1, min(10, int(body.get('num_questions', 3))))
 
-    if not aa_code:
-        return jsonify({'error': 'Le code AA est requis'}), 400
+    if not aa_codes_raw:
+        return jsonify({'error': 'Au moins un code AA est requis'}), 400
     if question_type not in VALID_QUESTION_TYPES:
         return jsonify({'error': f'Type invalide. Valeurs acceptées : {", ".join(VALID_QUESTION_TYPES)}'}), 400
 
-    prompt = _build_prompt(course.title, aa_code, bloom_level, difficulty, question_type, num_q)
-    try:
-        llm      = _llm()
-        response = llm.invoke([
-            SystemMessage(content='Tu es un expert en conception pédagogique. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après.'),
-            HumanMessage(content=prompt),
-        ])
-        raw = response.content if hasattr(response, 'content') else str(response)
-    except Exception as exc:
-        logger.exception('LLM generation error')
-        return jsonify({'error': f'Erreur de génération IA : {exc}'}), 500
+    all_saved = []
+    for aa_code in aa_codes_raw:
+        clo_val = aa_code if aa_code.upper().startswith('AA') else f'AA {aa_code}'
+        prompt = _build_prompt(course.title, clo_val, bloom_level, difficulty, question_type, num_q)
+        try:
+            llm      = _llm()
+            response = llm.invoke([
+                SystemMessage(content='Tu es un expert en conception pédagogique. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après.'),
+                HumanMessage(content=prompt),
+            ])
+            raw = response.content if hasattr(response, 'content') else str(response)
+        except Exception as exc:
+            logger.exception('LLM generation error for AA %s', aa_code)
+            return jsonify({'error': f'Erreur de génération IA ({aa_code}) : {exc}'}), 500
 
-    items = _parse_llm_response(raw)
-    if not items:
-        return jsonify({'error': 'Réponse IA invalide (JSON non parseable). Réessayez.', 'raw': raw[:500]}), 500
-
-    # Normalise AA code for storage
-    clo_val = aa_code if aa_code.upper().startswith('AA') else f'AA {aa_code}'
-
-    saved = []
-    for item in items:
-        q_text = (item.get('question_text') or '').strip()
-        if not q_text:
+        items = _parse_llm_response(raw)
+        if not items:
+            logger.warning('Empty LLM response for AA %s: %s', aa_code, raw[:200])
             continue
-        q = QuestionBankQuestion(
-            course_id      = course_id,
-            question_text  = q_text,
-            question_type  = question_type,
-            bloom_level    = bloom_level,
-            difficulty     = difficulty,
-            clo            = clo_val,
-            choice_a       = item.get('choice_a') or None,
-            choice_b       = item.get('choice_b') or None,
-            choice_c       = item.get('choice_c') or None,
-            correct_choice = (item.get('correct_choice') or '')[:5].lower() or None,
-            explanation    = item.get('explanation') or None,
-            answer         = item.get('answer') or item.get('explanation') or None,
-        )
-        db.session.add(q)
-        saved.append(q)
+
+        for item in items:
+            q_text = (item.get('question_text') or '').strip()
+            if not q_text:
+                continue
+            q = QuestionBankQuestion(
+                course_id      = course_id,
+                question_text  = q_text,
+                question_type  = question_type,
+                bloom_level    = bloom_level,
+                difficulty     = difficulty,
+                clo            = clo_val,
+                choice_a       = item.get('choice_a') or None,
+                choice_b       = item.get('choice_b') or None,
+                choice_c       = item.get('choice_c') or None,
+                correct_choice = (item.get('correct_choice') or '')[:5].lower() or None,
+                explanation    = item.get('explanation') or None,
+                answer         = item.get('answer') or item.get('explanation') or None,
+            )
+            db.session.add(q)
+            all_saved.append(q)
 
     db.session.commit()
     return jsonify({
-        'message':   f'{len(saved)} question(s) générée(s) — validez-les avant de les utiliser dans un quiz.',
-        'questions': [_serialize(q, is_teacher=True) for q in saved],
+        'message':   f'{len(all_saved)} question(s) générée(s) — validez-les avant de les utiliser dans un quiz.',
+        'questions': [_serialize(q, is_teacher=True) for q in all_saved],
     }), 200
 
 

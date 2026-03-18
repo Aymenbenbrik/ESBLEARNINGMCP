@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import {
   useCourseQBank,
+  useCourseAAList,
   useGenerateCourseQBank,
   useUpdateCourseQBankQuestion,
   useDeleteCourseQBankQuestion,
@@ -72,19 +73,28 @@ const TYPE_LABELS: Record<QuestionType, string> = {
 // ─── Generation Form ──────────────────────────────────────────────────────────
 
 function GenerateForm({ courseId, onClose }: { courseId: number; onClose: () => void }) {
-  const mutation = useGenerateCourseQBank(courseId);
+  const mutation   = useGenerateCourseQBank(courseId);
+  const { data: aaData, isLoading: aaLoading } = useCourseAAList(courseId);
 
-  const [aaCode,       setAaCode]       = useState('');
+  const [selectedAAs,  setSelectedAAs]  = useState<string[]>([]);
   const [bloomLevel,   setBloomLevel]   = useState('remember');
   const [difficulty,   setDifficulty]   = useState('medium');
   const [questionType, setQuestionType] = useState<QuestionType>('mcq');
   const [numQ,         setNumQ]         = useState(3);
 
+  const aaList = aaData?.aa_list ?? [];
+
+  const toggleAA = (code: string) => {
+    setSelectedAAs((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aaCode.trim()) return;
+    if (selectedAAs.length === 0) return;
     mutation.mutate(
-      { aa_code: aaCode.trim(), bloom_level: bloomLevel, difficulty, question_type: questionType, num_questions: numQ },
+      { aa_codes: selectedAAs, bloom_level: bloomLevel, difficulty, question_type: questionType, num_questions: numQ },
       { onSuccess: onClose }
     );
   };
@@ -96,16 +106,45 @@ function GenerateForm({ courseId, onClose }: { courseId: number; onClose: () => 
         <span className="font-semibold text-sm">Générer des questions</span>
       </div>
 
-      {/* AA Code */}
+      {/* AA multi-select pills */}
       <div>
-        <label className="text-[11px] text-muted-foreground mb-1 block">Acquis d'Apprentissage (AA) *</label>
-        <Input
-          placeholder="Ex: AA 1"
-          value={aaCode}
-          onChange={(e) => setAaCode(e.target.value)}
-          className="h-8 rounded-[8px] text-sm"
-          required
-        />
+        <label className="text-[11px] text-muted-foreground mb-1.5 block">
+          Acquis d'Apprentissage (AA) *{' '}
+          <span className="text-muted-foreground/60">— sélectionnez un ou plusieurs AA</span>
+        </label>
+        {aaLoading ? (
+          <div className="h-8 animate-pulse rounded-[8px] bg-gray-100" />
+        ) : aaList.length === 0 ? (
+          <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+            Aucun AA trouvé dans le syllabus. Vérifiez que le syllabus est bien importé.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {aaList.map((aa) => {
+              const isSelected = selectedAAs.includes(aa.code);
+              return (
+                <button
+                  key={aa.code}
+                  type="button"
+                  title={aa.description}
+                  onClick={() => toggleAA(aa.code)}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all border ${
+                    isSelected
+                      ? 'bg-bolt-accent text-white border-bolt-accent shadow-sm'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-bolt-accent hover:text-bolt-accent'
+                  }`}
+                >
+                  {aa.code}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {selectedAAs.length > 0 && (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {selectedAAs.join(', ')} sélectionné{selectedAAs.length > 1 ? 's' : ''} — {numQ} questions par AA ({numQ * selectedAAs.length} au total)
+          </p>
+        )}
       </div>
 
       {/* Question Type */}
@@ -171,9 +210,9 @@ function GenerateForm({ courseId, onClose }: { courseId: number; onClose: () => 
         </div>
       </div>
 
-      {/* Nb questions */}
+      {/* Nb questions per AA */}
       <div className="flex items-center gap-3">
-        <label className="text-[11px] text-muted-foreground whitespace-nowrap">Nombre de questions :</label>
+        <label className="text-[11px] text-muted-foreground whitespace-nowrap">Questions par AA :</label>
         <Input
           type="number"
           min={1}
@@ -186,8 +225,13 @@ function GenerateForm({ courseId, onClose }: { courseId: number; onClose: () => 
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">
-        <Button type="submit" size="sm" className="h-7 rounded-full px-4 text-xs" disabled={mutation.isPending}>
-          {mutation.isPending ? '⏳ Génération...' : '✨ Générer'}
+        <Button
+          type="submit"
+          size="sm"
+          className="h-7 rounded-full px-4 text-xs"
+          disabled={mutation.isPending || selectedAAs.length === 0}
+        >
+          {mutation.isPending ? '⏳ Génération...' : `✨ Générer${selectedAAs.length > 1 ? ` (${selectedAAs.length} AA)` : ''}`}
         </Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 rounded-full px-3 text-xs" onClick={onClose}>
           Annuler

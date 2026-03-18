@@ -181,6 +181,7 @@ export function useCreateRevisionQuiz() {
 
 export const courseQBankKeys = {
   all: (courseId: number) => ['course-qbank', courseId] as const,
+  aaList: (courseId: number) => ['course-qbank-aa-list', courseId] as const,
 };
 
 export function useCourseQBank(courseId: number) {
@@ -188,6 +189,15 @@ export function useCourseQBank(courseId: number) {
     queryKey: courseQBankKeys.all(courseId),
     queryFn: () => courseQBankApi.list(courseId),
     enabled: !!courseId,
+  });
+}
+
+export function useCourseAAList(courseId: number) {
+  return useQuery({
+    queryKey: courseQBankKeys.aaList(courseId),
+    queryFn: () => courseQBankApi.aaList(courseId),
+    enabled: !!courseId,
+    staleTime: 5 * 60 * 1000, // AAs rarely change
   });
 }
 
