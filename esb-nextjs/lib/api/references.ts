@@ -12,6 +12,8 @@ import {
   SectionQuiz,
   SectionQuizQuestion,
   SectionQuizSubmission,
+  SectionQuizSubmissionDetailed,
+  GradedAnswer,
   TakeQuizResponse,
   QuizBankStats,
   CreateQuizFromBankData,
@@ -214,19 +216,29 @@ export const sectionQuizApi = {
   submit: async (
     sectionId: number,
     answers: Record<string, string>
-  ): Promise<{ score: number; max_score: number; percent: number; result: SectionQuizSubmission }> => {
-    const res = await apiClient.post<{ score: number; max_score: number; percent: number; result: SectionQuizSubmission }>(
+  ): Promise<{ score: number; max_score: number; percent: number; graded_answers?: Record<string, any>; grading_status?: string; result: SectionQuizSubmission }> => {
+    const res = await apiClient.post<{ score: number; max_score: number; percent: number; graded_answers?: Record<string, any>; grading_status?: string; result: SectionQuizSubmission }>(
       `/api/v1/sections/${sectionId}/quiz/submit`,
       { answers }
     );
     return res.data;
   },
 
-  getResult: async (sectionId: number): Promise<{ submitted: boolean; result?: SectionQuizSubmission }> => {
-    const res = await apiClient.get<{ submitted: boolean; result?: SectionQuizSubmission }>(
-      `/api/v1/sections/${sectionId}/quiz/result`
-    );
+  result: async (sectionId: number): Promise<{ submissions?: SectionQuizSubmissionDetailed[]; questions?: Record<string, SectionQuizQuestion>; submitted?: boolean; result?: SectionQuizSubmissionDetailed }> => {
+    const res = await apiClient.get(`/api/v1/sections/${sectionId}/quiz/result`);
     return res.data;
+  },
+
+  gradeSubmission: async (
+    sectionId: number,
+    submissionId: number,
+    grades: Array<{ question_id: string; final_score: number; comment: string }>
+  ): Promise<SectionQuizSubmissionDetailed> => {
+    const res = await apiClient.put<{ submission: SectionQuizSubmissionDetailed }>(
+      `/api/v1/sections/${sectionId}/quiz/submissions/${submissionId}/grade`,
+      { grades }
+    );
+    return res.data.submission;
   },
 
   bankStats: async (sectionId: number): Promise<QuizBankStats> => {

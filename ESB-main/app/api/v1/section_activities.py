@@ -741,7 +741,7 @@ def take_section_quiz(section_id):
 @api_v1_bp.route('/sections/<int:section_id>/quiz/submit', methods=['POST'])
 @jwt_required()
 def submit_section_quiz(section_id):
-    """Student submits answers; auto-graded for MCQ."""
+    """Student submits answers; auto-graded for MCQ, AI-proposed for open_ended."""
     user = _get_user()
     if user.is_teacher:
         return jsonify({'error': 'Students only'}), 403
@@ -760,22 +760,58 @@ def submit_section_quiz(section_id):
         return jsonify({'error': 'Already submitted', 'result': existing.to_dict()}), 409
 
     body = request.get_json(silent=True) or {}
-    answers = body.get('answers', {})   # {str(question_id): "a"/"b"/"c"/"d"}
+    answers = body.get('answers', {})   # {str(question_id): answer_string}
 
     approved_questions = [q for q in quiz.questions if q.status == 'approved']
-    score = 0.0
     max_score = sum(q.points for q in approved_questions)
+
+    # Build graded_answers dict
+    graded_answers = {}
+    score = 0.0
+    has_pending = False
+
     for q in approved_questions:
-        student_ans = str(answers.get(str(q.id), '')).lower().strip()
-        if q.question_type in ('mcq', 'true_false') and student_ans == q.correct_choice:
-            score += q.points
+        qid = str(q.id)
+        student_ans = str(answers.get(qid, '')).strip()
+
+        if q.question_type in ('mcq', 'true_false'):
+            correct = (student_ans.lower() == (q.correct_choice or '').lower())
+            pts = q.points if correct else 0.0
+            score += pts
+            graded_answers[qid] = {
+                'answer': student_ans,
+                'proposed': pts,
+                'final': pts,
+                'comment': ('Correct ✓' if correct else f'Incorrect — Bonne réponse : {q.correct_choice}'),
+                'validated': True,
+            }
+        else:
+            # AI grading for open_ended / code / drag_drop
+            proposed, comment = _ai_grade_open(
+                question_text=q.question_text,
+                model_answer=q.explanation or '',
+                student_answer=student_ans,
+                max_points=q.points,
+            )
+            has_pending = True
+            graded_answers[qid] = {
+                'answer': student_ans,
+                'proposed': proposed,
+                'final': None,          # Teacher must validate
+                'comment': comment,
+                'validated': False,
+            }
+
+    grading_status = 'pending' if has_pending else 'auto'
 
     submission = SectionQuizSubmission(
         quiz_id=quiz.id,
         student_id=user.id,
         answers=answers,
+        graded_answers=graded_answers,
         score=score,
         max_score=max_score,
+        grading_status=grading_status,
         submitted_at=datetime.utcnow(),
     )
     db.session.add(submission)
@@ -786,8 +822,44 @@ def submit_section_quiz(section_id):
         'score': score,
         'max_score': max_score,
         'percent': round(score / max_score * 100, 1) if max_score else 0,
+        'grading_status': grading_status,
+        'graded_answers': graded_answers,
         'result': submission.to_dict(),
     }), 201
+
+
+def _ai_grade_open(question_text: str, model_answer: str, student_answer: str, max_points: float) -> tuple:
+    """Use Gemini to propose a score for an open-ended answer. Returns (score, comment)."""
+    if not student_answer.strip():
+        return 0.0, "Pas de réponse fournie."
+    try:
+        api_key = current_app.config.get('GOOGLE_API_KEY', '')
+        model_name = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
+        llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key,
+                                     temperature=0.2, max_tokens=400)
+        prompt = f"""Tu es un correcteur pédagogique. Note la réponse d'un étudiant sur {max_points} point(s).
+
+Question : {question_text}
+
+Réponse modèle : {model_answer or '(non fournie)'}
+
+Réponse de l'étudiant : {student_answer}
+
+Réponds UNIQUEMENT avec un JSON valide :
+{{"score": <nombre entre 0 et {max_points}>, "comment": "<justification courte en français, max 100 mots>"}}"""
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip()
+        # Extract JSON
+        import re as _re
+        m = _re.search(r'\{.*?\}', raw, _re.DOTALL)
+        if m:
+            data = json.loads(m.group())
+            proposed = float(max(0.0, min(max_points, data.get('score', 0.0))))
+            comment = str(data.get('comment', ''))[:300]
+            return proposed, comment
+    except Exception as e:
+        logger.warning(f'AI grading failed: {e}')
+    return 0.0, "Correction automatique indisponible — en attente de l'enseignant."
 
 
 @api_v1_bp.route('/sections/<int:section_id>/quiz/result', methods=['GET'])
@@ -803,15 +875,69 @@ def get_quiz_result(section_id):
     if not quiz:
         return jsonify({'error': 'No quiz'}), 404
 
+    # Build question map for context
+    q_map = {str(q.id): q.to_dict() for q in quiz.questions}
+
     if is_teacher:
-        # Return all submissions
         subs = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id).all()
-        return jsonify({'submissions': [s.to_dict() for s in subs]}), 200
+        return jsonify({
+            'submissions': [s.to_dict() for s in subs],
+            'questions': q_map,
+        }), 200
     else:
         sub = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).first()
         if not sub:
             return jsonify({'submitted': False}), 200
-        return jsonify({'submitted': True, 'result': sub.to_dict()}), 200
+        return jsonify({'submitted': True, 'result': sub.to_dict(), 'questions': q_map}), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>/quiz/submissions/<int:submission_id>/grade', methods=['PUT'])
+@jwt_required()
+def grade_quiz_submission(section_id, submission_id):
+    """Teacher validates/overrides AI-proposed scores for open_ended answers."""
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    sub = SectionQuizSubmission.query.get_or_404(submission_id)
+    quiz = SectionQuiz.query.filter_by(section_id=section_id).first_or_404()
+    if sub.quiz_id != quiz.id:
+        return jsonify({'error': 'Submission not in this section quiz'}), 400
+
+    body = request.get_json(silent=True) or {}
+    # grades: [{question_id: str, final_score: float, comment: str}]
+    grades = body.get('grades', [])
+
+    graded = dict(sub.graded_answers or {})
+    for g in grades:
+        qid = str(g.get('question_id', ''))
+        if qid not in graded:
+            continue
+        final = float(max(0.0, g.get('final_score', graded[qid].get('proposed', 0.0))))
+        # Clamp to question max_score
+        q = SectionQuizQuestion.query.get(int(qid))
+        if q:
+            final = min(final, q.points)
+        graded[qid]['final'] = final
+        graded[qid]['comment'] = str(g.get('comment', graded[qid].get('comment', '')))
+        graded[qid]['validated'] = True
+
+    # Recalculate total score (sum of all final scores)
+    new_score = sum(
+        v.get('final') or 0.0
+        for v in graded.values()
+        if v.get('validated')
+    )
+    all_validated = all(v.get('validated') for v in graded.values())
+
+    sub.graded_answers = graded
+    sub.score = new_score
+    sub.grading_status = 'graded' if all_validated else 'pending'
+    db.session.commit()
+
+    return jsonify({'submission': sub.to_dict()}), 200
 
 
 # ---------------------------------------------------------------------------

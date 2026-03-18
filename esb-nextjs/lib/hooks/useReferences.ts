@@ -10,6 +10,7 @@ import {
   UpdateSectionContentData,
   SectionQuizQuestion,
   CreateQuizFromBankData,
+  SectionQuizSubmissionDetailed,
 } from '../types/references';
 import { toast } from 'sonner';
 
@@ -343,5 +344,26 @@ export function useCreateQuizFromBank(sectionId: number) {
       const msg = err?.response?.data?.error || 'Erreur lors de la création du quiz';
       toast.error(msg);
     },
+  });
+}
+
+export function useQuizResult(sectionId: number) {
+  return useQuery({
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'result'],
+    queryFn: () => sectionQuizApi.result(sectionId),
+    enabled: !!sectionId,
+  });
+}
+
+export function useGradeSubmission(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ submissionId, grades }: { submissionId: number; grades: Array<{ question_id: string; final_score: number; comment: string }> }) =>
+      sectionQuizApi.gradeSubmission(sectionId, submissionId, grades),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...sectionQuizKeys.forSection(sectionId), 'result'] });
+      toast.success('Notes validées avec succès');
+    },
+    onError: () => toast.error('Erreur lors de la validation des notes'),
   });
 }

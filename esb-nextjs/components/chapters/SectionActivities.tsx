@@ -13,8 +13,10 @@ import {
   useSubmitSectionQuiz,
   useQuizBankStats,
   useCreateQuizFromBank,
+  useQuizResult,
+  useGradeSubmission,
 } from '@/lib/hooks/useReferences';
-import { SectionActivity, SectionQuiz, SectionQuizQuestion } from '@/lib/types/references';
+import { SectionActivity, SectionQuiz, SectionQuizQuestion, SectionQuizSubmissionDetailed, GradedAnswer } from '@/lib/types/references';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +38,7 @@ import {
   BarChart3,
   Layers,
   Database,
+  Star,
 } from 'lucide-react';
 
 interface SectionActivitiesProps {
@@ -170,6 +173,8 @@ function QuestionTags({ question }: { question: SectionQuizQuestion }) {
 function QuizQuestionCard({ question, sectionId }: { question: SectionQuizQuestion; sectionId: number }) {
   const updateMutation = useUpdateQuizQuestion(sectionId);
   const [expanded, setExpanded] = useState(false);
+  const [editingPoints, setEditingPoints] = useState(false);
+  const [localPoints, setLocalPoints] = useState(question.points ?? 1);
   const isPending = question.status === 'pending';
   const isApproved = question.status === 'approved';
   const isRejected = question.status === 'rejected';
@@ -188,8 +193,34 @@ function QuizQuestionCard({ question, sectionId }: { question: SectionQuizQuesti
             <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${isApproved ? 'bg-emerald-400' : isRejected ? 'bg-red-400' : 'bg-yellow-400'}`} />
             <p className="text-sm font-medium leading-snug">{question.question_text}</p>
           </div>
-          <div className="mt-1.5 pl-4">
+          <div className="mt-1.5 pl-4 flex items-center gap-3 flex-wrap">
             <QuestionTags question={question} />
+            <div className="flex items-center gap-1">
+              <Star className="h-3 w-3 text-amber-500" />
+              {editingPoints ? (
+                <input
+                  type="number" min={0.25} max={20} step={0.25}
+                  value={localPoints}
+                  onChange={(e) => setLocalPoints(Number(e.target.value))}
+                  onBlur={() => {
+                    setEditingPoints(false);
+                    if (localPoints !== question.points) {
+                      updateMutation.mutate({ questionId: question.id, data: { points: localPoints } });
+                    }
+                  }}
+                  className="w-14 h-5 rounded border border-bolt-line px-1 text-xs text-center"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingPoints(true)}
+                  className="text-[11px] font-semibold text-amber-600 hover:underline"
+                >
+                  {(question.points ?? 1).toFixed(1)} pt{(question.points ?? 1) > 1 ? 's' : ''}
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <Button
@@ -499,20 +530,93 @@ function QuizBankConfigurator({ sectionId, onClose }: { sectionId: number; onClo
   );
 }
 
-
-
 function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId: number }) {
   const publishMutation = usePublishSectionQuiz(sectionId);
   const deleteMutation = useDeleteSectionQuiz(sectionId);
+  const [activeTab, setActiveTab] = useState<'questions' | 'results' | 'config'>('questions');
   const [showBankForm, setShowBankForm] = useState(false);
-  const [filterAA, setFilterAA] = useState<string>('all');
-  const [filterDiff, setFilterDiff] = useState<string>('all');
+
+  const questions = quiz.questions ?? [];
+  const approvedCount = questions.filter((q) => q.status === 'approved').length;
+  const isPublished = quiz.status === 'published';
+  const totalPoints = questions.filter(q => q.status === 'approved').reduce((s, q) => s + (q.points ?? 1), 0);
+
+  return (
+    <div className="mt-2 rounded-[14px] border border-bolt-line bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 pb-3 border-b border-bolt-line">
+        <div className="flex items-center gap-2 min-w-0">
+          <ClipboardList className="h-4 w-4 shrink-0 text-bolt-accent" />
+          <span className="font-semibold text-sm truncate">{quiz.title}</span>
+          <Badge variant={isPublished ? 'default' : 'secondary'} className="text-[10px] shrink-0">
+            {isPublished ? '✓ Publié' : 'Brouillon'}
+          </Badge>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {!isPublished && approvedCount > 0 && (
+            <Button size="sm" className="h-7 rounded-full px-3 text-xs"
+              onClick={() => publishMutation.mutate()} disabled={publishMutation.isPending}>
+              <Send className="mr-1 h-3 w-3" />
+              {publishMutation.isPending ? 'Publication...' : 'Publier'}
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-7 rounded-full px-2 text-xs text-red-500 hover:bg-red-50"
+            onClick={() => { if (confirm('Supprimer le quiz ?')) deleteMutation.mutate(); }}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-bolt-line px-4">
+        {([
+          { id: 'questions', label: `Questions (${approvedCount}/${questions.length})` },
+          { id: 'results',   label: 'Résultats & Notation' },
+          { id: 'config',    label: 'Configuration' },
+        ] as const).map((tab) => (
+          <button key={tab.id} type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? 'border-bolt-accent text-bolt-accent'
+                : 'border-transparent text-muted-foreground hover:text-bolt-ink'
+            }`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-4">
+        {activeTab === 'questions' && (
+          <QuestionsTab
+            quiz={quiz}
+            sectionId={sectionId}
+            showBankForm={showBankForm}
+            setShowBankForm={setShowBankForm}
+          />
+        )}
+        {activeTab === 'results' && (
+          <ResultsTab sectionId={sectionId} quiz={quiz} />
+        )}
+        {activeTab === 'config' && (
+          <ConfigTab quiz={quiz} sectionId={sectionId} totalPoints={totalPoints} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuestionsTab({ quiz, sectionId, showBankForm, setShowBankForm }: {
+  quiz: SectionQuiz; sectionId: number;
+  showBankForm: boolean; setShowBankForm: (v: boolean) => void;
+}) {
+  const [filterAA, setFilterAA]       = useState<string>('all');
+  const [filterDiff, setFilterDiff]   = useState<string>('all');
   const [filterBloom, setFilterBloom] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const questions = quiz.questions ?? [];
   const approvedCount = questions.filter((q) => q.status === 'approved').length;
-  const isPublished = quiz.status === 'published';
 
   const aaCodes = useMemo(() => {
     const codes = new Set<string>();
@@ -543,137 +647,250 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
   const hasFilters = filterAA !== 'all' || filterDiff !== 'all' || filterBloom !== 'all' || filterStatus !== 'all';
 
   return (
-    <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <ClipboardList className="h-4 w-4 shrink-0 text-bolt-accent" />
-          <span className="font-semibold text-sm truncate">{quiz.title}</span>
-          <Badge variant={isPublished ? 'default' : 'secondary'} className="text-[10px] shrink-0">
-            {isPublished ? '✓ Publié' : 'Brouillon'}
-          </Badge>
+    <div>
+      {questions.length > 0 && <QuizStatsBar questions={questions} />}
+      <div className="mt-3 flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">
+          {approvedCount} question{approvedCount > 1 ? 's' : ''} approuvée{approvedCount > 1 ? 's' : ''} {' '}
+          {questions.filter(q => q.status === 'approved').reduce((s, q) => s + (q.points ?? 1), 0).toFixed(1)} pts total
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {!isPublished && approvedCount > 0 && (
-            <Button
-              size="sm"
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => publishMutation.mutate()}
-              disabled={publishMutation.isPending}
-            >
-              <Send className="mr-1 h-3 w-3" />
-              {publishMutation.isPending ? 'Publication...' : 'Publier'}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 rounded-full px-3 text-xs"
-            onClick={() => setShowBankForm((v) => !v)}
-          >
-            <RefreshCw className="mr-1 h-3 w-3" />
-            {showBankForm ? 'Annuler' : 'Reconfigurer depuis la banque'}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 rounded-full px-2 text-xs text-red-500 hover:bg-red-50"
-            onClick={() => { if (confirm('Supprimer le quiz ?')) deleteMutation.mutate(); }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <Button size="sm" variant="outline" className="h-7 rounded-full px-3 text-xs"
+          onClick={() => setShowBankForm(!showBankForm)}>
+          <RefreshCw className="mr-1 h-3 w-3" />
+          {showBankForm ? 'Annuler' : 'Reconfigurer depuis la banque'}
+        </Button>
       </div>
-
-      {/* Bank configurator */}
       {showBankForm && (
         <QuizBankConfigurator sectionId={sectionId} onClose={() => setShowBankForm(false)} />
       )}
-
-      {/* Stats bar */}
-      {questions.length > 0 && <QuizStatsBar questions={questions} />}
-
-      {/* Filters */}
       {questions.length > 1 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Filter className="h-3 w-3 text-muted-foreground shrink-0" />
           {aaCodes.length > 1 && (
-            <select
-              value={filterAA}
-              onChange={(e) => setFilterAA(e.target.value)}
-              className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink"
-            >
+            <select value={filterAA} onChange={(e) => setFilterAA(e.target.value)}
+              className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink">
               <option value="all">Tous les AA</option>
               {aaCodes.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
-          <select
-            value={filterDiff}
-            onChange={(e) => setFilterDiff(e.target.value)}
-            className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink"
-          >
+          <select value={filterDiff} onChange={(e) => setFilterDiff(e.target.value)}
+            className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink">
             <option value="all">Toutes difficultés</option>
             <option value="easy">Facile</option>
             <option value="medium">Moyen</option>
             <option value="hard">Difficile</option>
           </select>
-          <select
-            value={filterBloom}
-            onChange={(e) => setFilterBloom(e.target.value)}
-            className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink"
-          >
+          <select value={filterBloom} onChange={(e) => setFilterBloom(e.target.value)}
+            className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink">
             <option value="all">Tous niveaux Bloom</option>
             {Object.entries(BLOOM_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink"
-          >
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+            className="h-6 rounded-full border border-bolt-line bg-white px-2 text-[11px] text-bolt-ink">
             <option value="all">Tous statuts</option>
             <option value="pending">En attente</option>
             <option value="approved">Approuvées</option>
             <option value="rejected">Rejetées</option>
           </select>
           {hasFilters && (
-            <button
-              onClick={() => { setFilterAA('all'); setFilterDiff('all'); setFilterBloom('all'); setFilterStatus('all'); }}
-              className="text-[11px] text-muted-foreground underline"
-            >
+            <button onClick={() => { setFilterAA('all'); setFilterDiff('all'); setFilterBloom('all'); setFilterStatus('all'); }}
+              className="text-[11px] text-muted-foreground underline">
               Réinitialiser
             </button>
           )}
         </div>
       )}
-
-      {/* Questions grouped by AA */}
-      {questions.length > 0 && (
+      {questions.length > 0 ? (
         <div className="mt-3 space-y-4">
           {filteredQuestions.length === 0 ? (
-            <p className="text-center text-xs text-muted-foreground py-3">
-              Aucune question ne correspond aux filtres sélectionnés.
-            </p>
+            <p className="text-center text-xs text-muted-foreground py-3">Aucune question ne correspond aux filtres.</p>
           ) : (
             Object.entries(groupedByAA).sort(([a], [b]) => a.localeCompare(b)).map(([aaCode, qs]) => (
               <div key={aaCode}>
                 <div className="mb-2 flex items-center gap-2">
                   <div className="flex items-center gap-1.5 rounded-full bg-bolt-accent/10 px-2.5 py-1 text-xs font-semibold text-bolt-accent">
-                    <GraduationCap className="h-3 w-3" />
-                    {aaCode}
+                    <GraduationCap className="h-3 w-3" />{aaCode}
                   </div>
                   <span className="text-[11px] text-muted-foreground">{qs.length} question{qs.length > 1 ? 's' : ''}</span>
                   <div className="h-px flex-1 bg-bolt-line/60" />
                 </div>
                 <div className="space-y-2 pl-1">
-                  {qs.map((q) => (
-                    <QuizQuestionCard key={q.id} question={q} sectionId={sectionId} />
-                  ))}
+                  {qs.map((q) => <QuizQuestionCard key={q.id} question={q} sectionId={sectionId} />)}
                 </div>
               </div>
             ))
           )}
         </div>
+      ) : (
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          Aucune question — reconfigurer depuis la banque.
+        </p>
       )}
+    </div>
+  );
+}
+
+function ResultsTab({ sectionId, quiz }: { sectionId: number; quiz: SectionQuiz }) {
+  const { data, isLoading } = useQuizResult(sectionId);
+  const gradeMutation = useGradeSubmission(sectionId);
+  const [selectedSub, setSelectedSub] = useState<SectionQuizSubmissionDetailed | null>(null);
+  const [localGrades, setLocalGrades] = useState<Record<string, { score: number; comment: string }>>({});
+
+  if (isLoading) return <div className="py-8 text-center text-sm text-muted-foreground">Chargement…</div>;
+
+  const submissions: SectionQuizSubmissionDetailed[] = (data as any)?.submissions ?? [];
+  const questions: Record<string, SectionQuizQuestion> = (data as any)?.questions ?? {};
+
+  if (submissions.length === 0) {
+    return (
+      <div className="py-8 text-center">
+        <GraduationCap className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">Aucune soumission pour le moment.</p>
+      </div>
+    );
+  }
+
+  const openDetailPanel = (sub: SectionQuizSubmissionDetailed) => {
+    setSelectedSub(sub);
+    const init: Record<string, { score: number; comment: string }> = {};
+    Object.entries(sub.graded_answers ?? {}).forEach(([qid, ga]) => {
+      init[qid] = { score: ga.final ?? ga.proposed, comment: ga.comment };
+    });
+    setLocalGrades(init);
+  };
+
+  const handleValidateGrades = () => {
+    if (!selectedSub) return;
+    const grades = Object.entries(localGrades)
+      .filter(([qid]) => {
+        const ga = selectedSub.graded_answers?.[qid];
+        return ga && !ga.validated;
+      })
+      .map(([question_id, { score, comment }]) => ({ question_id, final_score: score, comment }));
+    if (grades.length === 0) return;
+    gradeMutation.mutate({ submissionId: selectedSub.id, grades }, { onSuccess: () => setSelectedSub(null) });
+  };
+
+  const avg = submissions.reduce((s, sub) => s + (sub.score ?? 0), 0) / submissions.length;
+  const pendingCount = submissions.filter(s => s.grading_status === 'pending').length;
+
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="rounded-[10px] bg-bolt-accent/5 p-3 text-center">
+          <p className="text-lg font-bold text-bolt-accent">{submissions.length}</p>
+          <p className="text-[11px] text-muted-foreground">Soumissions</p>
+        </div>
+        <div className="rounded-[10px] bg-emerald-50 p-3 text-center">
+          <p className="text-lg font-bold text-emerald-600">{avg.toFixed(1)}</p>
+          <p className="text-[11px] text-muted-foreground">Moyenne / {quiz.max_score}</p>
+        </div>
+        <div className={`rounded-[10px] p-3 text-center ${pendingCount > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
+          <p className={`text-lg font-bold ${pendingCount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{pendingCount}</p>
+          <p className="text-[11px] text-muted-foreground">À corriger</p>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {submissions.map((sub) => {
+          const pct = sub.max_score ? Math.round((sub.score / sub.max_score) * 100) : 0;
+          return (
+            <div key={sub.id}
+              className="flex items-center gap-3 rounded-[10px] border border-bolt-line p-3 hover:border-bolt-accent/30 transition-colors cursor-pointer"
+              onClick={() => openDetailPanel(sub)}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bolt-accent/10 text-xs font-bold text-bolt-accent">
+                {(sub.student_name ?? 'E').charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{sub.student_name ?? `Étudiant #${sub.student_id}`}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{sub.student_email}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-bold">{sub.score?.toFixed(1)}/{sub.max_score}</p>
+                <p className="text-[11px] text-muted-foreground">{pct}%</p>
+              </div>
+              {sub.grading_status === 'pending' && (
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">À corriger</span>
+              )}
+              {sub.grading_status === 'graded' && (
+                <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Corrigé</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {selectedSub && (
+        <div className="mt-4 rounded-[12px] border-2 border-bolt-accent/20 bg-bolt-accent/5 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold">Détails — {selectedSub.student_name}</p>
+            <button onClick={() => setSelectedSub(null)} className="text-xs text-muted-foreground hover:text-bolt-ink">✕ Fermer</button>
+          </div>
+          <div className="space-y-3">
+            {Object.entries(selectedSub.graded_answers ?? {}).map(([qid, ga]) => {
+              const q = questions[qid];
+              const localG = localGrades[qid] ?? { score: ga.final ?? ga.proposed, comment: ga.comment };
+              const isOpenType = q && (q.question_type === 'open_ended' || q.question_type === 'code' || q.question_type === 'drag_drop');
+              return (
+                <div key={qid} className={`rounded-[8px] border p-3 ${ga.validated ? 'border-emerald-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
+                  <p className="text-xs font-medium mb-1 text-bolt-ink line-clamp-2">{q?.question_text ?? `Question ${qid}`}</p>
+                  <p className="text-xs text-muted-foreground mb-2 italic">Réponse : {ga.answer || '(vide)'}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {isOpenType && !ga.validated ? (
+                      <>
+                        <span className="text-[11px] text-muted-foreground">Score proposé par AI :</span>
+                        <span className="text-[11px] font-semibold text-bolt-accent">{ga.proposed?.toFixed(1)}/{q?.points}</span>
+                        <input
+                          type="number" min={0} max={q?.points ?? 1} step={0.25}
+                          value={localG.score}
+                          onChange={(e) => setLocalGrades(prev => ({ ...prev, [qid]: { ...prev[qid], score: Number(e.target.value) } }))}
+                          className="w-16 h-6 rounded border border-bolt-line px-1 text-xs text-center"
+                        />
+                        <input
+                          type="text" placeholder="Commentaire…" value={localG.comment}
+                          onChange={(e) => setLocalGrades(prev => ({ ...prev, [qid]: { ...prev[qid], comment: e.target.value } }))}
+                          className="flex-1 min-w-24 h-6 rounded border border-bolt-line px-2 text-xs"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <span className={`text-[11px] font-semibold ${ga.final === (q?.points ?? 1) ? 'text-emerald-600' : ga.final === 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                          {ga.final?.toFixed(1)}/{q?.points ?? 1} pts
+                        </span>
+                        {ga.comment && <span className="text-[11px] text-muted-foreground">— {ga.comment}</span>}
+                        {ga.validated && <span className="text-[10px] text-emerald-600">✓ Validé</span>}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {selectedSub.grading_status === 'pending' && (
+            <Button size="sm" className="mt-3 rounded-full" onClick={handleValidateGrades} disabled={gradeMutation.isPending}>
+              {gradeMutation.isPending ? 'Validation…' : '✓ Valider les notes'}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfigTab({ quiz, sectionId, totalPoints }: { quiz: SectionQuiz; sectionId: number; totalPoints: number }) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-[10px] border border-bolt-line p-3">
+        <p className="text-xs font-semibold text-bolt-ink mb-2">Informations du quiz</p>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <div className="flex justify-between"><span>Statut</span><span className="font-medium text-bolt-ink">{quiz.status === 'published' ? 'Publié' : 'Brouillon'}</span></div>
+          <div className="flex justify-between"><span>Questions approuvées</span><span className="font-medium text-bolt-ink">{quiz.approved_count ?? 0} / {quiz.question_count ?? 0}</span></div>
+          <div className="flex justify-between"><span>Score max calculé</span><span className="font-medium text-bolt-ink">{totalPoints.toFixed(1)} pts</span></div>
+          <div className="flex justify-between"><span>Pondération cours</span><span className="font-medium text-bolt-ink">{quiz.weight_percent ?? 10}%</span></div>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Le score maximum est automatiquement recalculé lors de la publication en additionnant les points de chaque question approuvée.
+        Pour modifier les points par question, rendez-vous dans l&apos;onglet Questions.
+      </p>
     </div>
   );
 }
@@ -688,7 +905,7 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
   const [currentQ,  setCurrentQ]  = useState(0);
   const [answers,   setAnswers]   = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [result,    setResult]    = useState<{ score: number; max_score: number; percent: number } | null>(null);
+  const [result,    setResult]    = useState<{ score: number; max_score: number; percent: number; graded_answers?: Record<string, GradedAnswer>; grading_status?: string } | null>(null);
 
   if (isLoading) return <Skeleton className="h-24 rounded-[12px]" />;
   if (!takeData)  return null;
@@ -711,18 +928,64 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
   /* ── Just submitted this session ─────────────────────────────────────────── */
   if (submitted && result) {
     const pct = Math.round((result.score / result.max_score) * 100);
+    const color = pct >= 80 ? 'emerald' : pct >= 50 ? 'amber' : 'red';
+    const gradedAnswers: Record<string, GradedAnswer> = result.graded_answers ?? {};
+    const hasPending = result.grading_status === 'pending';
     return (
-      <div className="mt-2 rounded-[12px] bg-emerald-50 border border-emerald-200 p-5 text-center">
-        <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-600" />
-        <p className="font-semibold text-emerald-800 text-base">Quiz soumis avec succès !</p>
-        <p className="text-emerald-700 mt-2 text-sm">
-          Score : <span className="font-bold">{result.score}/{result.max_score}</span> — {pct}%
-        </p>
-        <div className="mt-3 h-2 w-full rounded-full bg-emerald-200">
-          <div
-            className="h-2 rounded-full bg-emerald-500 transition-all"
-            style={{ width: `${pct}%` }}
-          />
+      <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-5">
+        <div className="text-center mb-5">
+          <div className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full ${
+            color === 'emerald' ? 'bg-emerald-100' : color === 'amber' ? 'bg-amber-100' : 'bg-red-100'
+          }`}>
+            {color === 'emerald' ? (
+              <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+            ) : (
+              <BookOpen className="h-7 w-7 text-amber-600" />
+            )}
+          </div>
+          <p className="font-bold text-lg text-bolt-ink">Quiz soumis !</p>
+          <p className={`text-2xl font-bold mt-1 ${color === 'emerald' ? 'text-emerald-600' : color === 'amber' ? 'text-amber-500' : 'text-red-500'}`}>
+            {result.score.toFixed(1)} / {result.max_score}
+          </p>
+          <div className="mt-2 mx-auto max-w-[200px] h-2 w-full rounded-full bg-gray-100">
+            <div className={`h-2 rounded-full transition-all ${color === 'emerald' ? 'bg-emerald-500' : color === 'amber' ? 'bg-amber-400' : 'bg-red-400'}`}
+              style={{ width: `${pct}%` }} />
+          </div>
+          {hasPending && (
+            <p className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-full px-3 py-1 inline-block">
+              ⏳ Questions ouvertes en attente de correction par l&apos;enseignant
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Détail par question</p>
+          {questions.map((q) => {
+            const qid = String(q.id);
+            const ga = gradedAnswers[qid];
+            if (!ga) return null;
+            const isCorrect = ga.validated && ga.final === q.points;
+            const isPending = !ga.validated;
+            return (
+              <div key={q.id} className={`rounded-[8px] border p-3 text-xs ${
+                isPending ? 'border-amber-200 bg-amber-50/50' :
+                isCorrect ? 'border-emerald-200 bg-emerald-50/50' :
+                'border-red-200 bg-red-50/50'
+              }`}>
+                <div className="flex items-start gap-2">
+                  <span className={`shrink-0 font-bold ${isPending ? 'text-amber-500' : isCorrect ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {isPending ? '⏳' : isCorrect ? '✓' : '✗'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium line-clamp-2">{q.question_text}</p>
+                    {ga.comment && <p className="mt-1 text-muted-foreground italic">{ga.comment}</p>}
+                  </div>
+                  <span className={`shrink-0 font-bold ${isPending ? 'text-amber-600' : isCorrect ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {isPending ? `?/${q.points}` : `${ga.final?.toFixed(1)}/${q.points}`}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -771,7 +1034,13 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
     submitMutation.mutate(answers, {
       onSuccess: (data) => {
         setSubmitted(true);
-        setResult({ score: data.score, max_score: data.max_score, percent: data.percent });
+        setResult({
+          score: data.score,
+          max_score: data.max_score,
+          percent: data.percent,
+          graded_answers: data.graded_answers as Record<string, GradedAnswer> | undefined,
+          grading_status: data.grading_status,
+        });
       },
     });
   };

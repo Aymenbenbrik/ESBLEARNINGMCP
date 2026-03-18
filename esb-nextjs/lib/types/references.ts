@@ -147,11 +147,25 @@ export interface SectionQuizSubmission {
   id: number;
   quiz_id: number;
   student_id: number;
+  student_name: string | null;
+  student_email: string | null;
   answers: Record<string, string>;
+  graded_answers: Record<string, GradedAnswer>;
   score: number;
   max_score: number;
+  grading_status: 'auto' | 'pending' | 'graded';
   submitted_at: string;
 }
+
+export interface GradedAnswer {
+  answer: string;
+  proposed: number;
+  final: number | null;
+  comment: string;
+  validated: boolean;
+}
+
+export type SectionQuizSubmissionDetailed = SectionQuizSubmission;
 
 export interface TakeQuizResponse {
   quiz: { id: number; title: string; max_score: number; question_count: number };

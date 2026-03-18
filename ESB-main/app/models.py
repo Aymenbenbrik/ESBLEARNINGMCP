@@ -1209,8 +1209,11 @@ class SectionQuizSubmission(db.Model):
     quiz_id = db.Column(db.Integer, db.ForeignKey('section_quiz.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     answers = db.Column(db.JSON)
+    # graded_answers: {str(question_id): {proposed, final, comment, validated}}
+    graded_answers = db.Column(db.JSON)
     score = db.Column(db.Float)
     max_score = db.Column(db.Float)
+    grading_status = db.Column(db.String(20), default='auto')  # auto | pending | graded
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     student = db.relationship('User', backref=db.backref('section_quiz_submissions', lazy='dynamic'))
@@ -1224,9 +1227,13 @@ class SectionQuizSubmission(db.Model):
             'id': self.id,
             'quiz_id': self.quiz_id,
             'student_id': self.student_id,
+            'student_name': self.student.username if self.student else None,
+            'student_email': self.student.email if self.student else None,
             'answers': self.answers,
+            'graded_answers': self.graded_answers or {},
             'score': self.score,
             'max_score': self.max_score,
+            'grading_status': self.grading_status or 'auto',
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
         }
 
