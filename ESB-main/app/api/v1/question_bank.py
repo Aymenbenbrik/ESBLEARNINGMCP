@@ -480,7 +480,7 @@ def generate_questions_tn(course_id):
             if not aa_num:
                 continue
 
-            aa_code = f"AAA{aa_num}"
+            aa_code = f"AA {aa_num}"
             aa_counts[aa_code] = aa_counts.get(aa_code, 0) + 1
 
             # Track chapters and sections for RAG context

@@ -13,6 +13,8 @@ import {
   SectionQuizQuestion,
   SectionQuizSubmission,
   TakeQuizResponse,
+  QuizBankStats,
+  CreateQuizFromBankData,
 } from '../types/references';
 
 // ─── Course References ────────────────────────────────────────────────────────
@@ -223,6 +225,21 @@ export const sectionQuizApi = {
   getResult: async (sectionId: number): Promise<{ submitted: boolean; result?: SectionQuizSubmission }> => {
     const res = await apiClient.get<{ submitted: boolean; result?: SectionQuizSubmission }>(
       `/api/v1/sections/${sectionId}/quiz/result`
+    );
+    return res.data;
+  },
+
+  bankStats: async (sectionId: number): Promise<QuizBankStats> => {
+    const res = await apiClient.get<QuizBankStats>(
+      `/api/v1/sections/${sectionId}/quiz/bank-stats`
+    );
+    return res.data;
+  },
+
+  createFromBank: async (sectionId: number, data: CreateQuizFromBankData): Promise<{ message: string; quiz: SectionQuiz }> => {
+    const res = await apiClient.post<{ message: string; quiz: SectionQuiz }>(
+      `/api/v1/sections/${sectionId}/quiz/from-bank`,
+      data
     );
     return res.data;
   },

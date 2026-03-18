@@ -126,6 +126,23 @@ export interface SectionQuizQuestion {
   position: number;
 }
 
+// ─── Quiz Bank Types ──────────────────────────────────────────────────────────
+
+export interface QuizBankStats {
+  total: number;
+  aa_codes: string[];
+  bloom_levels: string[];
+  difficulties: string[];
+}
+
+export interface CreateQuizFromBankData {
+  num_questions: number;
+  aa_codes?: string[];
+  bloom_levels?: string[];
+  difficulties?: string[];
+  title?: string;
+}
+
 export interface SectionQuizSubmission {
   id: number;
   quiz_id: number;

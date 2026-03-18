@@ -6,12 +6,13 @@ import {
   useAddYoutubeActivity,
   useDeleteActivity,
   useSectionQuiz,
-  useGenerateSectionQuiz,
   useUpdateQuizQuestion,
   usePublishSectionQuiz,
   useDeleteSectionQuiz,
   useTakeQuiz,
   useSubmitSectionQuiz,
+  useQuizBankStats,
+  useCreateQuizFromBank,
 } from '@/lib/hooks/useReferences';
 import { SectionActivity, SectionQuiz, SectionQuizQuestion } from '@/lib/types/references';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,7 @@ import {
   GraduationCap,
   BarChart3,
   Layers,
+  Database,
 } from 'lucide-react';
 
 interface SectionActivitiesProps {
@@ -321,14 +323,188 @@ function QuizStatsBar({ questions }: { questions: SectionQuizQuestion[] }) {
   );
 }
 
-// ─── Section Quiz Manager (Teacher) ──────────────────────────────────────────
+// ─── Quiz Bank Configurator ───────────────────────────────────────────────────
+
+function QuizBankConfigurator({ sectionId, onClose }: { sectionId: number; onClose: () => void }) {
+  const { data: stats, isLoading } = useQuizBankStats(sectionId);
+  const createMutation = useCreateQuizFromBank(sectionId);
+
+  const [numQ, setNumQ] = useState(5);
+  const [selAA, setSelAA] = useState<string[]>([]);
+  const [selBloom, setSelBloom] = useState<string[]>([]);
+  const [selDiff, setSelDiff] = useState<string[]>([]);
+  const [title, setTitle] = useState('');
+
+  const toggle = (list: string[], setList: (v: string[]) => void, val: string) => {
+    setList(list.includes(val) ? list.filter((x) => x !== val) : [...list, val]);
+  };
+
+  const handleCreate = () => {
+    createMutation.mutate(
+      {
+        num_questions: numQ,
+        aa_codes: selAA.length ? selAA : undefined,
+        bloom_levels: selBloom.length ? selBloom : undefined,
+        difficulties: selDiff.length ? selDiff : undefined,
+        title: title.trim() || undefined,
+      },
+      { onSuccess: onClose }
+    );
+  };
+
+  if (isLoading) return <Skeleton className="h-32 rounded-[12px]" />;
+
+  const available = stats?.total ?? 0;
+
+  return (
+    <div className="mt-3 rounded-[12px] border border-bolt-line bg-gray-50 p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Database className="h-4 w-4 text-bolt-accent" />
+        <span className="text-sm font-semibold">Configurer le quiz depuis la banque</span>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${available > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+          {available} question{available !== 1 ? 's' : ''} disponible{available !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {available === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          La banque de questions de ce cours ne contient pas encore de questions approuvées.
+          Rendez-vous dans <strong>Banque de questions</strong> pour en générer.
+        </p>
+      ) : (
+        <>
+          {/* Title */}
+          <div>
+            <label className="text-[11px] text-muted-foreground mb-1 block">Titre du quiz (optionnel)</label>
+            <Input
+              placeholder="Ex: Quiz — Chapitre 1"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-7 rounded-[8px] text-xs"
+            />
+          </div>
+
+          {/* Nb questions */}
+          <div className="flex items-center gap-3">
+            <label className="text-[11px] text-muted-foreground whitespace-nowrap">Nombre de questions :</label>
+            <Input
+              type="number"
+              min={2}
+              max={Math.min(30, available)}
+              value={numQ}
+              onChange={(e) => setNumQ(Number(e.target.value))}
+              className="h-7 w-20 rounded-full text-center text-xs"
+            />
+          </div>
+
+          {/* AA filter */}
+          {(stats?.aa_codes?.length ?? 0) > 0 && (
+            <div>
+              <label className="text-[11px] text-muted-foreground mb-1 block">
+                Filtrer par AA <span className="text-bolt-accent">(tous si aucun sélectionné)</span>
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {stats!.aa_codes.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => toggle(selAA, setSelAA, code)}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      selAA.includes(code)
+                        ? 'bg-bolt-accent text-white'
+                        : 'bg-bolt-accent/10 text-bolt-accent hover:bg-bolt-accent/20'
+                    }`}
+                  >
+                    {code}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Bloom filter */}
+          {(stats?.bloom_levels?.length ?? 0) > 0 && (
+            <div>
+              <label className="text-[11px] text-muted-foreground mb-1 block">
+                Filtrer par Taxonomie de Bloom
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {stats!.bloom_levels.map((bl) => {
+                  const cfg = BLOOM_CONFIG[bl];
+                  return (
+                    <button
+                      key={bl}
+                      type="button"
+                      onClick={() => toggle(selBloom, setSelBloom, bl)}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        selBloom.includes(bl)
+                          ? (cfg?.className ?? 'bg-gray-200 text-gray-700') + ' ring-2 ring-offset-1 ring-current'
+                          : (cfg?.className ?? 'bg-gray-100 text-gray-600') + ' opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {cfg?.label ?? bl}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Difficulty filter */}
+          {(stats?.difficulties?.length ?? 0) > 0 && (
+            <div>
+              <label className="text-[11px] text-muted-foreground mb-1 block">
+                Filtrer par Difficulté
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {stats!.difficulties.map((d) => {
+                  const cfg = DIFFICULTY_CONFIG[d];
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => toggle(selDiff, setSelDiff, d)}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        selDiff.includes(d)
+                          ? (cfg?.className ?? 'bg-gray-200 text-gray-700') + ' ring-2 ring-offset-1 ring-current'
+                          : (cfg?.className ?? 'bg-gray-100 text-gray-600') + ' opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {cfg?.label ?? d}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <Button
+              size="sm"
+              className="h-7 rounded-full px-4 text-xs"
+              onClick={handleCreate}
+              disabled={createMutation.isPending}
+            >
+              {createMutation.isPending ? '⏳ Sélection en cours...' : '✨ Créer le quiz'}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 rounded-full px-3 text-xs" onClick={onClose}>
+              Annuler
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
 
 function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId: number }) {
-  const [numQ, setNumQ] = useState(5);
-  const generateMutation = useGenerateSectionQuiz(sectionId);
   const publishMutation = usePublishSectionQuiz(sectionId);
   const deleteMutation = useDeleteSectionQuiz(sectionId);
-  const [showGenForm, setShowGenForm] = useState(false);
+  const [showBankForm, setShowBankForm] = useState(false);
   const [filterAA, setFilterAA] = useState<string>('all');
   const [filterDiff, setFilterDiff] = useState<string>('all');
   const [filterBloom, setFilterBloom] = useState<string>('all');
@@ -338,14 +514,12 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
   const approvedCount = questions.filter((q) => q.status === 'approved').length;
   const isPublished = quiz.status === 'published';
 
-  // Derive unique AA codes
   const aaCodes = useMemo(() => {
     const codes = new Set<string>();
     questions.forEach((q) => { if (q.aa_code) codes.add(q.aa_code); });
     return Array.from(codes).sort();
   }, [questions]);
 
-  // Filter questions
   const filteredQuestions = useMemo(() => {
     return questions.filter((q) => {
       if (filterAA !== 'all' && q.aa_code !== filterAA) return false;
@@ -356,7 +530,6 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
     });
   }, [questions, filterAA, filterDiff, filterBloom, filterStatus]);
 
-  // Group filtered questions by AA
   const groupedByAA = useMemo(() => {
     const groups: Record<string, SectionQuizQuestion[]> = {};
     filteredQuestions.forEach((q) => {
@@ -396,10 +569,10 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
             size="sm"
             variant="outline"
             className="h-7 rounded-full px-3 text-xs"
-            onClick={() => setShowGenForm((v) => !v)}
+            onClick={() => setShowBankForm((v) => !v)}
           >
             <RefreshCw className="mr-1 h-3 w-3" />
-            {showGenForm ? 'Annuler' : 'Générer plus'}
+            {showBankForm ? 'Annuler' : 'Reconfigurer depuis la banque'}
           </Button>
           <Button
             size="sm"
@@ -412,27 +585,9 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
         </div>
       </div>
 
-      {/* Generate form */}
-      {showGenForm && (
-        <div className="mt-3 flex items-center gap-2 rounded-[10px] bg-gray-50 border border-bolt-line/60 p-2.5">
-          <label className="text-xs text-muted-foreground whitespace-nowrap">Nb questions :</label>
-          <Input
-            type="number"
-            min={2}
-            max={15}
-            value={numQ}
-            onChange={(e) => setNumQ(Number(e.target.value))}
-            className="h-7 w-20 rounded-full text-center text-xs"
-          />
-          <Button
-            size="sm"
-            className="h-7 rounded-full px-3 text-xs"
-            onClick={() => { generateMutation.mutate(numQ); setShowGenForm(false); }}
-            disabled={generateMutation.isPending}
-          >
-            {generateMutation.isPending ? '⏳ Génération...' : 'Générer'}
-          </Button>
-        </div>
+      {/* Bank configurator */}
+      {showBankForm && (
+        <QuizBankConfigurator sectionId={sectionId} onClose={() => setShowBankForm(false)} />
       )}
 
       {/* Stats bar */}
@@ -442,7 +597,6 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
       {questions.length > 1 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Filter className="h-3 w-3 text-muted-foreground shrink-0" />
-          {/* AA filter */}
           {aaCodes.length > 1 && (
             <select
               value={filterAA}
@@ -453,7 +607,6 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
               {aaCodes.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
-          {/* Difficulty filter */}
           <select
             value={filterDiff}
             onChange={(e) => setFilterDiff(e.target.value)}
@@ -464,7 +617,6 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
             <option value="medium">Moyen</option>
             <option value="hard">Difficile</option>
           </select>
-          {/* Bloom filter */}
           <select
             value={filterBloom}
             onChange={(e) => setFilterBloom(e.target.value)}
@@ -473,7 +625,6 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
             <option value="all">Tous niveaux Bloom</option>
             {Object.entries(BLOOM_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-          {/* Status filter */}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -632,11 +783,9 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
   const { data: activities = [], isLoading } = useSectionActivities(sectionId);
   const { data: quiz } = useSectionQuiz(sectionId);
   const deleteMutation = useDeleteActivity(sectionId);
-  const generateMutation = useGenerateSectionQuiz(sectionId);
 
   const [showYoutubeForm, setShowYoutubeForm] = useState(false);
   const [showQuizSection, setShowQuizSection] = useState(false);
-  const [numQInit, setNumQInit] = useState(5);
 
   const youtubeActivities = activities.filter((a) => a.activity_type === 'youtube');
 
@@ -705,32 +854,11 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
             quiz ? (
               <SectionQuizManager quiz={quiz} sectionId={sectionId} />
             ) : (
-              <div className="rounded-[12px] border border-dashed border-bolt-line bg-white p-5 text-center">
-                <ClipboardList className="mx-auto mb-2 h-8 w-8 text-bolt-accent/50" />
-                <p className="text-sm font-medium text-bolt-ink mb-0.5">Banque de questions IA</p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Générez des questions QCM classées par AA, niveau Bloom et difficulté.
-                </p>
-                <div className="flex items-center justify-center gap-2">
-                  <label className="text-xs text-muted-foreground">Nb questions :</label>
-                  <Input
-                    type="number"
-                    min={2}
-                    max={15}
-                    value={numQInit}
-                    onChange={(e) => setNumQInit(Number(e.target.value))}
-                    className="h-7 w-20 rounded-full text-center text-xs"
-                  />
-                  <Button
-                    size="sm"
-                    className="h-7 rounded-full px-3 text-xs"
-                    onClick={() => generateMutation.mutate(numQInit)}
-                    disabled={generateMutation.isPending}
-                  >
-                    {generateMutation.isPending ? '⏳ Génération...' : '✨ Générer le quiz'}
-                  </Button>
-                </div>
-              </div>
+              /* No quiz yet — show bank configurator directly */
+              <QuizBankConfigurator
+                sectionId={sectionId}
+                onClose={() => setShowQuizSection(false)}
+              />
             )
           ) : (
             quiz?.status === 'published' ? (
@@ -744,7 +872,7 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       {youtubeActivities.length === 0 && !quiz && !showYoutubeForm && !showQuizSection && (
         <p className="mt-3 text-center text-xs text-muted-foreground">
           {canEdit
-            ? 'Ajoutez une vidéo YouTube ou créez un quiz pour enrichir cette section.'
+            ? 'Ajoutez une vidéo YouTube ou créez un quiz depuis la banque de questions.'
             : 'Aucune activité pour cette section.'}
         </p>
       )}

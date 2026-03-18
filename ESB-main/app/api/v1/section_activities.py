@@ -65,6 +65,14 @@ def _section_access(section: TNSection, user: User):
     return is_teacher, is_enrolled
 
 
+def _resolve_course_id(section: TNSection):
+    """Return the Course.id reachable from a TNSection, or None."""
+    try:
+        return section.chapter.syllabus.course.id
+    except AttributeError:
+        return None
+
+
 def _extract_youtube_id(url: str) -> str | None:
     patterns = [
         r'(?:v=|youtu\.be/|embed/)([A-Za-z0-9_-]{11})',
@@ -281,6 +289,162 @@ def get_section_quiz(section_id):
     if not quiz:
         return jsonify({'quiz': None}), 200
     return jsonify({'quiz': quiz.to_dict(include_questions=True)}), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>/quiz/bank-stats', methods=['GET'])
+@jwt_required()
+def get_quiz_bank_stats(section_id):
+    """
+    Return stats about available approved questions in the question bank for this
+    section's course: total count + distinct AA codes / bloom levels / difficulties.
+    Used by the quiz configurator form.
+    """
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    # Resolve course
+    course_id = _resolve_course_id(section)
+    if not course_id:
+        return jsonify({'total': 0, 'aa_codes': [], 'bloom_levels': [], 'difficulties': []}), 200
+
+    from app.models import QuestionBankQuestion
+    from sqlalchemy import distinct
+
+    base = QuestionBankQuestion.query.filter(
+        QuestionBankQuestion.course_id == course_id,
+        QuestionBankQuestion.approved_at.isnot(None),
+    )
+
+    total = base.count()
+    aa_codes = sorted({
+        q.clo for q in base.all()
+        if q.clo and not q.clo.upper().startswith('CLO')
+    })
+    bloom_levels = sorted({q.bloom_level for q in base.all() if q.bloom_level})
+    difficulties = sorted({q.difficulty for q in base.all() if q.difficulty})
+
+    return jsonify({
+        'total': total,
+        'aa_codes': aa_codes,
+        'bloom_levels': bloom_levels,
+        'difficulties': difficulties,
+    }), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>/quiz/from-bank', methods=['POST'])
+@jwt_required()
+def create_quiz_from_bank(section_id):
+    """
+    Create (or augment) a section quiz by picking questions from the approved
+    question bank.
+
+    Body:
+        num_questions  int   (2–30)
+        aa_codes       list  optional — filter by AA code (clo field)
+        bloom_levels   list  optional — filter by bloom_level
+        difficulties   list  optional — filter by difficulty
+        title          str   optional — quiz title override
+    """
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    body = request.get_json(silent=True) or {}
+    num_q = max(2, min(30, int(body.get('num_questions', 5))))
+    aa_codes = body.get('aa_codes') or []
+    bloom_levels = body.get('bloom_levels') or []
+    difficulties = body.get('difficulties') or []
+    title = body.get('title', '').strip() or f'Quiz — {section.title}'
+
+    course_id = _resolve_course_id(section)
+    if not course_id:
+        return jsonify({'error': 'Cannot resolve course from this section'}), 400
+
+    from app.models import QuestionBankQuestion
+    from sqlalchemy import or_
+
+    query = QuestionBankQuestion.query.filter(
+        QuestionBankQuestion.course_id == course_id,
+        QuestionBankQuestion.approved_at.isnot(None),
+    )
+
+    if aa_codes:
+        filters = [QuestionBankQuestion.clo.ilike(f'%{c}%') for c in aa_codes]
+        query = query.filter(or_(*filters))
+
+    if bloom_levels:
+        query = query.filter(QuestionBankQuestion.bloom_level.in_(bloom_levels))
+
+    if difficulties:
+        query = query.filter(QuestionBankQuestion.difficulty.in_(difficulties))
+
+    candidates = query.all()
+    if not candidates:
+        return jsonify({
+            'error': (
+                'Aucune question approuvée ne correspond aux filtres sélectionnés. '
+                'Vérifiez la banque de questions du cours.'
+            )
+        }), 400
+
+    import random
+    selected = random.sample(candidates, min(num_q, len(candidates)))
+
+    # Get or create quiz
+    quiz = SectionQuiz.query.filter_by(section_id=section_id).first()
+    if not quiz:
+        quiz = SectionQuiz(
+            section_id=section_id,
+            title=title,
+            status='draft',
+        )
+        db.session.add(quiz)
+        db.session.flush()
+    else:
+        # Clear existing pending questions so teacher starts fresh
+        SectionQuizQuestion.query.filter_by(quiz_id=quiz.id, status='pending').delete()
+
+    # Normalize AA code: strip "AAA" prefix → "AA"
+    def _normalize_aa(clo_val):
+        if not clo_val:
+            return ''
+        return clo_val.replace('AAA', 'AA').replace('CLO', 'AA').strip()
+
+    new_questions = []
+    for i, bq in enumerate(selected):
+        q = SectionQuizQuestion(
+            quiz_id=quiz.id,
+            question_text=bq.question_text,
+            question_type='mcq',
+            choice_a=bq.choice_a or '',
+            choice_b=bq.choice_b or '',
+            choice_c=bq.choice_c or '',
+            choice_d='',           # QuestionBankQuestion has only 3 choices
+            correct_choice=(bq.correct_choice or 'a').lower()[:1],
+            explanation=bq.explanation or '',
+            bloom_level=bq.bloom_level or '',
+            difficulty=bq.difficulty or 'medium',
+            aa_code=_normalize_aa(bq.clo),
+            points=1.0,
+            status='pending',
+            position=i + 1,
+        )
+        db.session.add(q)
+        new_questions.append(q)
+
+    db.session.commit()
+    return jsonify({
+        'message': (
+            f'{len(new_questions)} question(s) sélectionnée(s) depuis la banque — '
+            'validez-les avant de publier.'
+        ),
+        'quiz': quiz.to_dict(include_questions=True),
+    }), 200
 
 
 @api_v1_bp.route('/sections/<int:section_id>/quiz/generate', methods=['POST'])

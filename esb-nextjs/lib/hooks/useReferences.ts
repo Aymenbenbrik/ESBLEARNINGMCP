@@ -9,6 +9,7 @@ import {
   SectionContent,
   UpdateSectionContentData,
   SectionQuizQuestion,
+  CreateQuizFromBankData,
 } from '../types/references';
 import { toast } from 'sonner';
 
@@ -318,5 +319,29 @@ export function useSubmitSectionQuiz(sectionId: number) {
       toast.success(`Résultat : ${data.score}/${data.max_score} (${data.percent}%)`);
     },
     onError: () => toast.error('Erreur lors de la soumission'),
+  });
+}
+
+export function useQuizBankStats(sectionId: number) {
+  return useQuery({
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'bank-stats'],
+    queryFn: () => sectionQuizApi.bankStats(sectionId),
+    enabled: !!sectionId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateQuizFromBank(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateQuizFromBankData) => sectionQuizApi.createFromBank(sectionId, data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      toast.success(data.message || 'Quiz créé depuis la banque — validez les questions');
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || 'Erreur lors de la création du quiz';
+      toast.error(msg);
+    },
   });
 }
