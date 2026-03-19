@@ -23,6 +23,8 @@ import {
   SurveyJsonResponse,
   SectionAssignment,
   AssignmentSubmission,
+  ChapterDeadline,
+  CompletedActivity,
 } from '../types/references';
 
 // ─── Course References ────────────────────────────────────────────────────────
@@ -162,6 +164,36 @@ export const sectionActivitiesApi = {
     const res = await apiClient.post<SectionActivity>(
       `/api/v1/sections/${sectionId}/activities/youtube`,
       { url, title }
+    );
+    return res.data;
+  },
+
+  addImage: async (sectionId: number, file: File, title: string): Promise<SectionActivity> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const res = await fetch(`${apiUrl}/api/v1/sections/${sectionId}/activities/image`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Failed to upload image');
+    return res.json();
+  },
+
+  addTextDoc: async (sectionId: number, title: string, content: string): Promise<SectionActivity> => {
+    const res = await apiClient.post<SectionActivity>(
+      `/api/v1/sections/${sectionId}/activities/text-doc`,
+      { title, content }
+    );
+    return res.data;
+  },
+
+  addPdfExtract: async (sectionId: number, title: string, documentId: number, pageStart?: number, pageEnd?: number): Promise<SectionActivity> => {
+    const res = await apiClient.post<SectionActivity>(
+      `/api/v1/sections/${sectionId}/activities/pdf-extract`,
+      { title, document_id: documentId, page_start: pageStart, page_end: pageEnd }
     );
     return res.data;
   },
@@ -321,4 +353,32 @@ export const sectionAssignmentApi = {
       `/api/v1/sections/${sectionId}/assignment/submissions/${subId}/grade`,
       { grade, feedback }
     ),
+};
+
+// ─── Sections CRUD ────────────────────────────────────────────────────────────
+
+export const sectionsApi = {
+  create: async (chapterId: number, title: string): Promise<{ section: { id: number; index: number; title: string } }> => {
+    const res = await apiClient.post(`/api/v1/chapters/${chapterId}/sections`, { title });
+    return res.data;
+  },
+  update: async (sectionId: number, data: { title?: string; index?: string }): Promise<void> => {
+    await apiClient.put(`/api/v1/sections/${sectionId}`, data);
+  },
+  delete: async (sectionId: number): Promise<void> => {
+    await apiClient.delete(`/api/v1/sections/${sectionId}`);
+  },
+};
+
+// ─── Chapter Sidebar Data ─────────────────────────────────────────────────────
+
+export const chapterSidebarApi = {
+  getDeadlines: async (chapterId: number): Promise<{ deadlines: ChapterDeadline[] }> => {
+    const res = await apiClient.get(`/api/v1/chapters/${chapterId}/deadlines`);
+    return res.data;
+  },
+  getActivityProgress: async (chapterId: number): Promise<{ completed: CompletedActivity[] }> => {
+    const res = await apiClient.get(`/api/v1/chapters/${chapterId}/activity-progress`);
+    return res.data;
+  },
 };

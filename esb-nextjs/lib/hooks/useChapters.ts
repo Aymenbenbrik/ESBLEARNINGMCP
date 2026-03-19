@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { chaptersApi, AAMatchingData } from '../api/chapters';
+import { sectionsApi, chapterSidebarApi } from '../api/references';
 import {
   Chapter,
   ChapterDetails,
@@ -147,6 +148,69 @@ export function useSaveAAMatching() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Échec de la sauvegarde du matching');
+    },
+  });
+}
+
+// ── Chapter Deadlines & Activity Progress ────────────────────────────────────
+
+export function useChapterDeadlines(chapterId: number) {
+  return useQuery({
+    queryKey: ['chapter-deadlines', chapterId],
+    queryFn: () => chapterSidebarApi.getDeadlines(chapterId),
+    enabled: !!chapterId,
+  });
+}
+
+export function useActivityProgress(chapterId: number) {
+  return useQuery({
+    queryKey: ['activity-progress', chapterId],
+    queryFn: () => chapterSidebarApi.getActivityProgress(chapterId),
+    enabled: !!chapterId,
+  });
+}
+
+// ── Section CRUD ─────────────────────────────────────────────────────────────
+
+export function useCreateSection(chapterId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (title: string) => sectionsApi.create(chapterId, title),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chapterKeys.detail(chapterId) });
+      toast.success('Section ajoutée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la création de la section');
+    },
+  });
+}
+
+export function useDeleteSection(chapterId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sectionId: number) => sectionsApi.delete(sectionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chapterKeys.detail(chapterId) });
+      toast.success('Section supprimée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la suppression de la section');
+    },
+  });
+}
+
+export function useUpdateSection(chapterId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sectionId, data }: { sectionId: number; data: { title?: string } }) =>
+      sectionsApi.update(sectionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chapterKeys.detail(chapterId) });
+      toast.success('Section mise à jour');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la mise à jour de la section');
     },
   });
 }

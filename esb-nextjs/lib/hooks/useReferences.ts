@@ -233,6 +233,32 @@ export function useAddYoutubeActivity(sectionId: number) {
   });
 }
 
+export function useAddImageActivity(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, title }: { file: File; title: string }) =>
+      sectionActivitiesApi.addImage(sectionId, file, title),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionActivityKeys.forSection(sectionId) });
+      toast.success('Image ajoutée');
+    },
+    onError: () => toast.error('Erreur lors de l\'ajout de l\'image'),
+  });
+}
+
+export function useAddTextDocActivity(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ title, content }: { title: string; content: string }) =>
+      sectionActivitiesApi.addTextDoc(sectionId, title, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionActivityKeys.forSection(sectionId) });
+      toast.success('Document texte ajouté');
+    },
+    onError: () => toast.error('Erreur lors de l\'ajout du document texte'),
+  });
+}
+
 export function useDeleteActivity(sectionId: number) {
   const qc = useQueryClient();
   return useMutation({

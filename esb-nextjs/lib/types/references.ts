@@ -74,7 +74,7 @@ export interface UpdateSectionContentData {
 
 // ─── Section Activities Types ─────────────────────────────────────────────────
 
-export type ActivityType = 'youtube' | 'quiz' | 'assignment';
+export type ActivityType = 'youtube' | 'quiz' | 'assignment' | 'image' | 'text_doc' | 'pdf_extract';
 
 export interface SectionActivity {
   id: number;
@@ -89,6 +89,13 @@ export interface SectionActivity {
   quiz?: SectionQuiz;
   document_id?: number | null;
   transcript_status?: 'indexing' | 'indexed' | 'failed' | null;
+  // image activity
+  image_url?: string | null;
+  // text_doc activity
+  content?: string | null;
+  // pdf_extract activity
+  pdf_page_start?: number | null;
+  pdf_page_end?: number | null;
 }
 
 export type QuizStatus = 'draft' | 'published';
@@ -267,6 +274,30 @@ export interface BankQuestion {
   difficulty: string | null;
   aa_code: string | null;
   points: number;
+}
+
+// ─── Chapter Deadline & Progress Types ───────────────────────────────────────
+
+export interface ChapterDeadline {
+  type: 'quiz' | 'assignment';
+  id: number;
+  title: string;
+  section_title: string;
+  deadline: string; // ISO
+  seconds_remaining: number;
+  completed: boolean;
+  allow_late?: boolean;
+}
+
+export interface CompletedActivity {
+  type: 'quiz' | 'assignment';
+  title: string;
+  section_title: string;
+  score?: number;
+  max_score?: number;
+  attempt?: number;
+  grade?: number;
+  submitted_at: string | null;
 }
 
 export interface BankQuestionsResponse {

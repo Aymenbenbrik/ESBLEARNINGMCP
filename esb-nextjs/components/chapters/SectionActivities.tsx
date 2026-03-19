@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import {
   useSectionActivities,
   useAddYoutubeActivity,
+  useAddImageActivity,
+  useAddTextDocActivity,
   useDeleteActivity,
   useSectionQuiz,
   useUpdateQuizQuestion,
@@ -52,6 +54,8 @@ import {
   AlertTriangle,
   Clock,
   Settings,
+  Image,
+  FileCode2,
 } from 'lucide-react';
 import { SectionAssignmentManager } from './SectionAssignmentManager';
 import { SectionAssignmentTaker } from './SectionAssignmentTaker';
@@ -1622,6 +1626,88 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
   );
 }
 
+// ─── Add Image Form ────────────────────────────────────────────────────────────
+
+function AddImageForm({ sectionId, onClose }: { sectionId: number; onClose: () => void }) {
+  const [title, setTitle] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const mutation = useAddImageActivity(sectionId);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file || !title.trim()) return;
+    mutation.mutate({ file, title: title.trim() }, { onSuccess: onClose });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-2">
+      <Input
+        placeholder="Titre de l'image"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        className="rounded-[10px] text-sm"
+        required
+      />
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        className="text-xs"
+        required
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" className="rounded-full text-xs" disabled={mutation.isPending || !file}>
+          {mutation.isPending ? 'Ajout...' : 'Ajouter'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" className="rounded-full text-xs" onClick={onClose}>
+          Annuler
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ─── Add Text Doc Form ─────────────────────────────────────────────────────────
+
+function AddTextDocForm({ sectionId, onClose }: { sectionId: number; onClose: () => void }) {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const mutation = useAddTextDocActivity(sectionId);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !content.trim()) return;
+    mutation.mutate({ title: title.trim(), content: content.trim() }, { onSuccess: onClose });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-2">
+      <Input
+        placeholder="Titre du document"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        className="rounded-[10px] text-sm"
+        required
+      />
+      <textarea
+        placeholder="Contenu (Markdown supporté)"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        className="rounded-[10px] border border-input bg-background px-3 py-2 text-sm min-h-[120px] resize-y"
+        required
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" className="rounded-full text-xs" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Ajout...' : 'Ajouter'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" className="rounded-full text-xs" onClick={onClose}>
+          Annuler
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps) {
@@ -1633,8 +1719,23 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
   const [showYoutubeForm, setShowYoutubeForm] = useState(false);
   const [showQuizSection, setShowQuizSection] = useState(false);
   const [showAssignmentSection, setShowAssignmentSection] = useState(false);
+  const [showImageForm, setShowImageForm] = useState(false);
+  const [showTextDocForm, setShowTextDocForm] = useState(false);
+
+  const closeAll = () => {
+    setShowYoutubeForm(false);
+    setShowQuizSection(false);
+    setShowAssignmentSection(false);
+    setShowImageForm(false);
+    setShowTextDocForm(false);
+  };
 
   const youtubeActivities = activities.filter((a) => a.activity_type === 'youtube');
+  const imageActivities = activities.filter((a) => a.activity_type === 'image');
+  const textDocActivities = activities.filter((a) => a.activity_type === 'text_doc');
+  const pdfExtractActivities = activities.filter((a) => a.activity_type === 'pdf_extract');
+
+  const hasAnyActivity = youtubeActivities.length > 0 || imageActivities.length > 0 || textDocActivities.length > 0 || pdfExtractActivities.length > 0 || !!quiz || !!assignment;
 
   if (isLoading) return <Skeleton className="mt-3 h-12 rounded-[12px]" />;
 
@@ -1643,12 +1744,12 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold text-bolt-ink">Activités</span>
         {canEdit && (
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <Button
               size="sm"
               variant="outline"
               className="h-7 rounded-full px-3 text-xs"
-              onClick={() => { setShowYoutubeForm((v) => !v); setShowQuizSection(false); setShowAssignmentSection(false); }}
+              onClick={() => { closeAll(); setShowYoutubeForm((v) => !v); }}
             >
               <Youtube className="mr-1 h-3.5 w-3.5 text-red-500" />
               Vidéo YouTube
@@ -1657,7 +1758,25 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
               size="sm"
               variant="outline"
               className="h-7 rounded-full px-3 text-xs"
-              onClick={() => { setShowQuizSection((v) => !v); setShowYoutubeForm(false); setShowAssignmentSection(false); }}
+              onClick={() => { closeAll(); setShowImageForm((v) => !v); }}
+            >
+              <Image className="mr-1 h-3.5 w-3.5 text-blue-500" />
+              Image
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => { closeAll(); setShowTextDocForm((v) => !v); }}
+            >
+              <FileCode2 className="mr-1 h-3.5 w-3.5 text-teal-500" />
+              Texte
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => { closeAll(); setShowQuizSection((v) => !v); }}
             >
               <ClipboardList className="mr-1 h-3.5 w-3.5 text-bolt-accent" />
               {quiz ? 'Quiz' : 'Créer un Quiz'}
@@ -1666,7 +1785,7 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
               size="sm"
               variant="outline"
               className="h-7 rounded-full px-3 text-xs"
-              onClick={() => { setShowAssignmentSection((v) => !v); setShowYoutubeForm(false); setShowQuizSection(false); }}
+              onClick={() => { closeAll(); setShowAssignmentSection((v) => !v); }}
             >
               <FileText className="mr-1 h-3.5 w-3.5 text-violet-500" />
               {assignment ? 'Devoir' : 'Créer un devoir'}
@@ -1678,6 +1797,16 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       {/* Add YouTube form */}
       {canEdit && showYoutubeForm && (
         <AddYoutubeForm sectionId={sectionId} onClose={() => setShowYoutubeForm(false)} />
+      )}
+
+      {/* Add Image form */}
+      {canEdit && showImageForm && (
+        <AddImageForm sectionId={sectionId} onClose={() => setShowImageForm(false)} />
+      )}
+
+      {/* Add Text Doc form */}
+      {canEdit && showTextDocForm && (
+        <AddTextDocForm sectionId={sectionId} onClose={() => setShowTextDocForm(false)} />
       )}
 
       {/* YouTube embeds */}
@@ -1697,6 +1826,89 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Image activities */}
+      {imageActivities.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {imageActivities.map((activity) => (
+            <div key={activity.id} className="group relative rounded-[12px] border border-bolt-line overflow-hidden bg-white">
+              {activity.image_url && (
+                <img
+                  src={activity.image_url}
+                  alt={activity.title}
+                  className="w-full object-contain max-h-80"
+                />
+              )}
+              <p className="px-3 py-2 text-xs text-muted-foreground">{activity.title}</p>
+              {canEdit && (
+                <button
+                  onClick={() => deleteMutation.mutate(activity.id)}
+                  className="absolute right-2 top-2 hidden rounded-full bg-red-500/80 p-1 text-white backdrop-blur-sm group-hover:flex"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Text doc activities */}
+      {textDocActivities.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {textDocActivities.map((activity) => (
+            <div key={activity.id} className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
+                {canEdit && (
+                  <button
+                    onClick={() => deleteMutation.mutate(activity.id)}
+                    className="rounded-full p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <pre className="whitespace-pre-wrap text-xs text-muted-foreground font-sans leading-relaxed">
+                {activity.content}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* PDF extract activities */}
+      {pdfExtractActivities.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {pdfExtractActivities.map((activity) => (
+            <div key={activity.id} className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
+                {canEdit && (
+                  <button
+                    onClick={() => deleteMutation.mutate(activity.id)}
+                    className="rounded-full p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {activity.pdf_page_start != null && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  Pages {activity.pdf_page_start}–{activity.pdf_page_end ?? activity.pdf_page_start}
+                </p>
+              )}
+              {activity.image_url && (
+                <embed
+                  src={activity.image_url}
+                  type="application/pdf"
+                  className="w-full h-80 rounded-[8px]"
+                />
               )}
             </div>
           ))}
@@ -1736,10 +1948,10 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       )}
 
       {/* Empty state */}
-      {youtubeActivities.length === 0 && !quiz && !assignment && !showYoutubeForm && !showQuizSection && !showAssignmentSection && (
+      {!hasAnyActivity && !showYoutubeForm && !showImageForm && !showTextDocForm && !showQuizSection && !showAssignmentSection && (
         <p className="mt-3 text-center text-xs text-muted-foreground">
           {canEdit
-            ? 'Ajoutez une vidéo YouTube, créez un quiz ou un devoir depuis la banque de questions.'
+            ? 'Ajoutez une vidéo YouTube, une image, un texte, créez un quiz ou un devoir.'
             : 'Aucune activité pour cette section.'}
         </p>
       )}

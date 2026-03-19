@@ -1257,12 +1257,12 @@ class SectionQuizSubmission(db.Model):
 
 
 class SectionActivity(db.Model):
-    """An activity attached to a TNSection: YouTube video or a graded SectionQuiz."""
+    """An activity attached to a TNSection: YouTube video, quiz, image, text doc, assignment, or pdf extract."""
     __tablename__ = 'section_activity'
 
     id = db.Column(db.Integer, primary_key=True)
     section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=False)
-    activity_type = db.Column(db.String(20), nullable=False)   # 'youtube' | 'quiz'
+    activity_type = db.Column(db.String(20), nullable=False)   # 'youtube'|'quiz'|'image'|'text_doc'|'assignment'|'pdf_extract'
     title = db.Column(db.String(200), nullable=False)
     position = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1272,11 +1272,19 @@ class SectionActivity(db.Model):
     # RAG: document created from YouTube transcript (indexed in ChromaDB)
     document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=True)
     transcript_status = db.Column(db.String(30), default=None)  # None | 'indexing' | 'indexed' | 'failed'
+    # Image activity
+    image_url = db.Column(db.String(1000), nullable=True)
+    image_filename = db.Column(db.String(300), nullable=True)
+    # Text document activity
+    text_content = db.Column(db.Text, nullable=True)
+    # Assignment reference
+    assignment_id = db.Column(db.Integer, db.ForeignKey('section_assignment.id'), nullable=True)
 
     section = db.relationship('TNSection', backref=db.backref('activities', cascade='all, delete-orphan',
                                                               order_by='SectionActivity.position'))
     section_quiz_rel = db.relationship('SectionQuiz', foreign_keys=[section_quiz_id])
     document_rel = db.relationship('Document', foreign_keys=[document_id])
+    assignment_rel = db.relationship('SectionAssignment', foreign_keys=[assignment_id])
 
     def to_dict(self):
         return {
@@ -1291,6 +1299,10 @@ class SectionActivity(db.Model):
             'section_quiz_id': self.section_quiz_id,
             'document_id': self.document_id,
             'transcript_status': self.transcript_status,
+            'image_url': self.image_url,
+            'image_filename': self.image_filename,
+            'text_content': self.text_content,
+            'assignment_id': self.assignment_id,
         }
 
 
