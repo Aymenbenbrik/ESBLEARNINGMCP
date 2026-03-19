@@ -20,6 +20,8 @@ import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { safeNumber, safePercent } from '@/lib/format';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
+type TabId = 'description' | 'contenu' | 'dashboard';
+
 export default function CourseDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function CourseDetailPage() {
   const { data: dashboardData } = useCourseDashboard(courseId);
   const uploadModuleMutation = useUploadModule();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>('description');
   const { user } = useAuth();
   const isTeacher = !!(user?.is_teacher || user?.is_superuser);
 
@@ -74,6 +77,12 @@ export default function CourseDetailPage() {
   const isStudent = !course.can_edit;
   const isTN = (syllabus?.syllabus_type || '').toLowerCase() === 'tn';
 
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'description', label: 'Description du cours' },
+    { id: 'contenu',     label: 'Contenu du module' },
+    { id: 'dashboard',   label: isStudent ? 'Mon tableau de bord' : 'Dashboard classe' },
+  ];
+
   return (
     <>
       <div className="container mx-auto px-4 py-8">
@@ -90,49 +99,33 @@ export default function CourseDetailPage() {
           syllabusType={syllabus?.syllabus_type}
         />
 
-        {course.can_edit && dashboardData?.stats ? (
-          <div className="mb-6 rounded-[24px] border border-bolt-line bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold">Home KPI</h2>
-                <p className="text-sm text-muted-foreground">Résumé rapide du dashboard directement dans la home du module.</p>
-              </div>
-              <div className="flex gap-2">
-                {isTeacher && (
-                <Button asChild variant="outline" size="sm" className="rounded-full">
-                  <Link href={`/courses/${courseId}/question-bank`}>
-                    <Database className="mr-2 h-4 w-4" />
-                    Banque de questions
-                  </Link>
-                </Button>
-                )}
-                <Button asChild variant="outline" size="sm" className="rounded-full">
-                  <Link href={`/courses/${courseId}/dashboard`}>
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Ouvrir dashboard
-                  </Link>
-                </Button>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-4">
-              {[
-                ['Students', safeNumber(dashboardData?.stats?.total_students)],
-                ['Quizzes', safeNumber(dashboardData?.stats?.total_quizzes)],
-                ['Questions', safeNumber(dashboardData?.stats?.total_questions)],
-                ['Avg score', safePercent(dashboardData?.stats?.avg_score)],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded-2xl border border-bolt-line bg-muted/20 p-4">
-                  <p className="text-sm text-muted-foreground">{label}</p>
-                  <p className="mt-2 text-2xl font-bold">{value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        {/* Tab navigation */}
+        <div className="flex gap-2 mb-6 border-b border-bolt-line pb-0">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors
+                ${activeTab === tab.id
+                  ? 'bg-white border border-b-white border-bolt-line text-bolt-accent -mb-px'
+                  : 'text-muted-foreground hover:text-bolt-ink'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Syllabus */}
+        {/* Tab 1: Description du cours */}
+        {activeTab === 'description' && (
+          <div className="space-y-6">
+            {/* Course description/objectives if available */}
+            {(course as any).description && (
+              <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-5">
+                <h2 className="text-lg font-semibold mb-2">Description</h2>
+                <p className="text-sm text-muted-foreground whitespace-pre-line">{(course as any).description}</p>
+              </div>
+            )}
+
             <SyllabusViewer
               syllabus={syllabus}
               syllabusType={syllabus?.syllabus_type as 'BGA' | 'TN' | null}
@@ -140,12 +133,10 @@ export default function CourseDetailPage() {
               canEdit={course.can_edit}
             />
 
-            {/* TN Norms Distribution (AAA) */}
             {isTN && (data as any).tn_aa_distribution ? (
               <TNNormsDistributionCard aa={(data as any).tn_aa_distribution} />
             ) : null}
 
-            {/* Course Quizzes */}
             {course_quizzes && course_quizzes.length > 0 && (
               <CourseQuizzesList
                 quizzes={course_quizzes}
@@ -154,15 +145,18 @@ export default function CourseDetailPage() {
                 chapters={chapters}
               />
             )}
+          </div>
+        )}
 
-            {/* Chapters */}
+        {/* Tab 2: Contenu du module */}
+        {activeTab === 'contenu' && (
+          <div className="space-y-6">
             <ChaptersList
               chapters={chapters}
               courseId={courseId}
               canEdit={course.can_edit}
             />
 
-            {/* Module Attachments */}
             {(module_attachments.length > 0 || course.can_edit) && (
               <ModuleAttachments
                 modules={module_attachments}
@@ -173,14 +167,78 @@ export default function CourseDetailPage() {
               />
             )}
           </div>
+        )}
 
+        {/* Tab 3: Dashboard */}
+        {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Student Progress */}
-            {isStudent && student_progress && (
-              <StudentProgressCard progress={student_progress} />
+            {/* Teacher view */}
+            {course.can_edit && (
+              <>
+                {dashboardData?.stats && (
+                  <div className="rounded-[12px] border border-bolt-line bg-white p-5 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-semibold">Home KPI</h2>
+                        <p className="text-sm text-muted-foreground">Résumé rapide du dashboard de la classe.</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-4">
+                      {[
+                        ['Students', safeNumber(dashboardData.stats.total_students)],
+                        ['Quizzes', safeNumber(dashboardData.stats.total_quizzes)],
+                        ['Questions', safeNumber(dashboardData.stats.total_questions)],
+                        ['Avg score', safePercent(dashboardData.stats.avg_score)],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="rounded-2xl border border-bolt-line bg-muted/20 p-4">
+                          <p className="text-sm text-muted-foreground">{label}</p>
+                          <p className="mt-2 text-2xl font-bold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-3">
+                  <Button asChild variant="outline" size="sm" className="rounded-full">
+                    <Link href={`/courses/${courseId}/dashboard`}>
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Ouvrir dashboard complet
+                    </Link>
+                  </Button>
+                  {isTeacher && (
+                    <Button asChild variant="outline" size="sm" className="rounded-full">
+                      <Link href={`/courses/${courseId}/question-bank`}>
+                        <Database className="mr-2 h-4 w-4" />
+                        Banque de questions
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Student view */}
+            {isStudent && (
+              <>
+                {student_progress ? (
+                  <StudentProgressCard progress={student_progress} />
+                ) : (
+                  <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-8 text-center">
+                    <p className="text-sm text-muted-foreground">Aucune donnée de progression pour le moment.</p>
+                  </div>
+                )}
+
+                <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-5">
+                  <h3 className="text-base font-semibold mb-2">Mes quizz</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Consultez vos résultats dans chaque section du cours.
+                  </p>
+                </div>
+              </>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       <DeleteCourseDialog

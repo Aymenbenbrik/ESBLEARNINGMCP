@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { UserDropdown } from './UserDropdown';
 import { useState } from 'react';
 import { MobileNav } from './MobileNav';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 export function Navbar() {
   const { user, isAuthenticated } = useAuth();
@@ -90,6 +91,9 @@ export function Navbar() {
                 </Link>
               </Button>
             )}
+
+            {/* Notification Bell */}
+            <NotificationBell />
 
             {/* User Dropdown */}
             <UserDropdown />
