@@ -19,6 +19,8 @@ import {
   QuizConfig,
   QuizBankStats,
   CreateQuizFromBankData,
+  BankQuestionsResponse,
+  SurveyJsonResponse,
   SectionAssignment,
   AssignmentSubmission,
 } from '../types/references';
@@ -265,6 +267,28 @@ export const sectionQuizApi = {
     const res = await apiClient.post<{ message: string; quiz: SectionQuiz }>(
       `/api/v1/sections/${sectionId}/quiz/from-bank`,
       data
+    );
+    return res.data;
+  },
+
+  getBankQuestions: async (sectionId: number): Promise<BankQuestionsResponse> => {
+    const res = await apiClient.get<BankQuestionsResponse>(
+      `/api/v1/sections/${sectionId}/quiz/bank-questions`
+    );
+    return res.data;
+  },
+
+  getSurveyJson: async (sectionId: number): Promise<SurveyJsonResponse> => {
+    const res = await apiClient.get<SurveyJsonResponse>(
+      `/api/v1/sections/${sectionId}/quiz/survey-json`
+    );
+    return res.data;
+  },
+
+  saveSurveyJson: async (sectionId: number, surveyJson: Record<string, unknown>): Promise<{ quiz: SectionQuiz }> => {
+    const res = await apiClient.put<{ quiz: SectionQuiz }>(
+      `/api/v1/sections/${sectionId}/quiz/survey-json`,
+      { survey_json: surveyJson }
     );
     return res.data;
   },

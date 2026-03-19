@@ -1146,6 +1146,7 @@ class SectionQuiz(db.Model):
     max_attempts = db.Column(db.Integer, default=1)
     show_feedback = db.Column(db.Boolean, default=True)       # show result after each attempt
     password = db.Column(db.String(100), nullable=True)       # None = no password
+    survey_json = db.Column(db.Text, nullable=True)           # SurveyJS JSON definition
 
     section = db.relationship('TNSection', backref=db.backref('section_quizzes', cascade='all, delete-orphan'))
     questions = db.relationship('SectionQuizQuestion', backref='quiz',
@@ -1171,6 +1172,7 @@ class SectionQuiz(db.Model):
             'max_attempts': self.max_attempts or 1,
             'show_feedback': self.show_feedback if self.show_feedback is not None else True,
             'password_protected': bool(self.password),
+            'has_survey_json': bool(self.survey_json),
         }
         if include_questions:
             d['questions'] = [q.to_dict() for q in self.questions]

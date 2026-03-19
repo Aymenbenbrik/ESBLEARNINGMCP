@@ -702,6 +702,172 @@ def delete_section_quiz(section_id):
     return jsonify({'message': 'Quiz deleted'}), 200
 
 
+@api_v1_bp.route('/sections/<int:section_id>/quiz/survey-json', methods=['GET'])
+@jwt_required()
+def get_quiz_survey_json(section_id):
+    """Get the SurveyJS JSON definition of the quiz (teacher only)."""
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    quiz = SectionQuiz.query.filter_by(section_id=section_id).first_or_404()
+    survey_data = json.loads(quiz.survey_json) if quiz.survey_json else None
+    return jsonify({'survey_json': survey_data, 'quiz': quiz.to_dict()}), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>/quiz/survey-json', methods=['PUT'])
+@jwt_required()
+def save_quiz_survey_json(section_id):
+    """
+    Save or replace the SurveyJS JSON for a quiz.
+    Also syncs SectionQuizQuestion rows from the survey elements so the
+    existing grading/results system still works.
+    """
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    quiz = SectionQuiz.query.filter_by(section_id=section_id).first()
+    if not quiz:
+        return jsonify({'error': 'No quiz for this section — create one first'}), 404
+
+    data = request.get_json(silent=True) or {}
+    survey_data = data.get('survey_json')
+    if not survey_data:
+        return jsonify({'error': 'survey_json is required'}), 400
+
+    quiz.survey_json = json.dumps(survey_data, ensure_ascii=False)
+
+    # Sync questions from survey elements → SectionQuizQuestion rows
+    # Each element must have _bankQuestionId to be synced
+    from app.models import QuestionBankQuestion
+    elements = []
+    for page in survey_data.get('pages', []):
+        elements.extend(page.get('elements', []))
+    # Also handle flat elements list
+    elements.extend(survey_data.get('elements', []))
+
+    bank_q_ids = [int(el['_bankQuestionId']) for el in elements if el.get('_bankQuestionId')]
+
+    # Remove existing quiz questions not in the new set
+    existing_map = {str(q.id): q for q in quiz.questions}
+    # We'll rebuild completely based on survey elements
+    for q in list(quiz.questions):
+        db.session.delete(q)
+    db.session.flush()
+
+    type_map = {
+        'radiogroup': 'mcq',
+        'checkbox': 'mcq',
+        'comment': 'open_ended',
+        'text': 'open_ended',
+        'ranking': 'drag_drop',
+        'boolean': 'true_false',
+    }
+
+    for pos, el in enumerate(elements):
+        bq_id = el.get('_bankQuestionId')
+        if bq_id:
+            bq = QuestionBankQuestion.query.get(int(bq_id))
+            if not bq:
+                continue
+            sq = SectionQuizQuestion(
+                quiz_id=quiz.id,
+                question_text=bq.question_text,
+                question_type=bq.question_type or 'mcq',
+                choice_a=bq.choice_a,
+                choice_b=bq.choice_b,
+                choice_c=bq.choice_c,
+                choice_d=getattr(bq, 'choice_d', None),
+                correct_choice=bq.correct_choice,
+                explanation=bq.answer or bq.explanation,
+                points=float(el.get('points', 1.0)),
+                status='approved',
+                bloom_level=bq.bloom_level,
+                difficulty=bq.difficulty,
+                aa_code=bq.clo,
+                position=pos,
+            )
+            db.session.add(sq)
+        else:
+            # Custom question added directly in SurveyJS Creator
+            q_type = type_map.get(el.get('type', 'text'), 'open_ended')
+            choices = el.get('choices', [])
+            sq = SectionQuizQuestion(
+                quiz_id=quiz.id,
+                question_text=el.get('title') or el.get('name', 'Question'),
+                question_type=q_type,
+                choice_a=choices[0]['text'] if len(choices) > 0 else None,
+                choice_b=choices[1]['text'] if len(choices) > 1 else None,
+                choice_c=choices[2]['text'] if len(choices) > 2 else None,
+                choice_d=choices[3]['text'] if len(choices) > 3 else None,
+                correct_choice=el.get('correctAnswer'),
+                explanation=el.get('description'),
+                points=float(el.get('points', 1.0)),
+                status='approved',
+                position=pos,
+            )
+            db.session.add(sq)
+
+    quiz.max_score = sum(float(el.get('points', 1.0)) for el in elements)
+    db.session.commit()
+
+    return jsonify({'message': 'Survey JSON saved', 'quiz': quiz.to_dict()}), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>/quiz/bank-questions', methods=['GET'])
+@jwt_required()
+def get_section_bank_questions(section_id):
+    """Return all approved bank questions for the section's course (for SurveyJS builder)."""
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    from app.models import QuestionBankQuestion, TnChapter, TnSyllabus
+    course_id = _resolve_course_id(section)
+
+    questions = (QuestionBankQuestion.query
+                 .filter_by(course_id=course_id)
+                 .filter(QuestionBankQuestion.approved_at.isnot(None))
+                 .order_by(QuestionBankQuestion.clo, QuestionBankQuestion.id)
+                 .all())
+
+    def q_to_dict(q):
+        return {
+            'id': q.id,
+            'question_text': q.question_text,
+            'question_type': q.question_type or 'mcq',
+            'choice_a': q.choice_a,
+            'choice_b': q.choice_b,
+            'choice_c': q.choice_c,
+            'choice_d': getattr(q, 'choice_d', None),
+            'correct_choice': q.correct_choice,
+            'answer': q.answer or q.explanation,
+            'bloom_level': q.bloom_level,
+            'difficulty': q.difficulty,
+            'aa_code': q.clo,
+            'points': 1.0,
+        }
+
+    # Group by aa_code
+    groups: dict = {}
+    for q in questions:
+        key = q.clo or 'Sans AA'
+        groups.setdefault(key, []).append(q_to_dict(q))
+
+    return jsonify({
+        'questions': [q_to_dict(q) for q in questions],
+        'groups': groups,
+        'total': len(questions),
+    }), 200
+
+
 # ---------------------------------------------------------------------------
 # Section Quiz — Student
 # ---------------------------------------------------------------------------
@@ -784,9 +950,11 @@ def take_section_quiz(section_id):
             return jsonify({'error': 'Password required', 'password_protected': True}), 401
 
     approved_questions = [q for q in quiz.questions if q.status == 'approved']
+    survey_data = json.loads(quiz.survey_json) if quiz.survey_json else None
     return jsonify({
         'quiz': {**quiz.to_dict(), 'question_count': len(approved_questions)},
         'questions': [q.to_dict(hide_answer=True) for q in approved_questions],
+        'survey_json': survey_data,
         'already_submitted': False,
         'attempts_used': len(attempts),
         'max_attempts': max_attempts,

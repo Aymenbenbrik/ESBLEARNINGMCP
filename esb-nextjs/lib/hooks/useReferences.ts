@@ -387,6 +387,37 @@ export function useGradeSubmission(sectionId: number) {
   });
 }
 
+export function useBankQuestions(sectionId: number) {
+  return useQuery({
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'bank-questions'],
+    queryFn: () => sectionQuizApi.getBankQuestions(sectionId),
+    enabled: !!sectionId,
+    staleTime: 60_000,
+  });
+}
+
+export function useSurveyJson(sectionId: number) {
+  return useQuery({
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'survey-json'],
+    queryFn: () => sectionQuizApi.getSurveyJson(sectionId),
+    enabled: !!sectionId,
+  });
+}
+
+export function useSaveSurveyJson(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (surveyJson: Record<string, unknown>) =>
+      sectionQuizApi.saveSurveyJson(sectionId, surveyJson),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...sectionQuizKeys.forSection(sectionId), 'survey-json'] });
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      toast.success('Survey JSON sauvegardé ✓');
+    },
+    onError: () => toast.error('Erreur lors de la sauvegarde'),
+  });
+}
+
 // ─── Section Assignment ───────────────────────────────────────────────────────
 
 export function useAssignment(sectionId: number) {

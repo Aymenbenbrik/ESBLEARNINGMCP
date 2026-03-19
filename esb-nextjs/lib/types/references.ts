@@ -112,6 +112,7 @@ export interface SectionQuiz {
   max_attempts?: number;
   show_feedback?: boolean;
   password_protected?: boolean;
+  has_survey_json?: boolean;
 }
 
 export interface QuizConfig {
@@ -192,6 +193,7 @@ export interface TakeQuizResponse {
   result?: SectionQuizSubmission;
   attempts_used?: number;
   max_attempts?: number;
+  survey_json?: Record<string, unknown> | null;
 }
 
 export interface SubmitQuizResponse {
@@ -247,4 +249,33 @@ export interface AssignmentFile {
   original_name: string;
   file_type: string;
   size: number; // bytes
+}
+
+// ─── SurveyJS Types ───────────────────────────────────────────────────────────
+
+export interface BankQuestion {
+  id: number;
+  question_text: string;
+  question_type: 'mcq' | 'true_false' | 'open_ended' | 'code' | 'drag_drop';
+  choice_a: string | null;
+  choice_b: string | null;
+  choice_c: string | null;
+  choice_d: string | null;
+  correct_choice: string | null;
+  answer: string | null;
+  bloom_level: string | null;
+  difficulty: string | null;
+  aa_code: string | null;
+  points: number;
+}
+
+export interface BankQuestionsResponse {
+  questions: BankQuestion[];
+  groups: Record<string, BankQuestion[]>;
+  total: number;
+}
+
+export interface SurveyJsonResponse {
+  survey_json: Record<string, unknown> | null;
+  quiz: SectionQuiz;
 }

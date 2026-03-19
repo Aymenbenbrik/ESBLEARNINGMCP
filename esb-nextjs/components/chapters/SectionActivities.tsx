@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import {
   useSectionActivities,
   useAddYoutubeActivity,
@@ -17,7 +18,11 @@ import {
   useQuizResult,
   useGradeSubmission,
   useAssignment,
+  useSurveyJson,
 } from '@/lib/hooks/useReferences';
+
+const SurveyQuizBuilder = dynamic(() => import('./SurveyQuizBuilder'), { ssr: false });
+const SurveyQuizPlayer = dynamic(() => import('./SurveyQuizPlayer'), { ssr: false });
 import { SectionActivity, SectionQuiz, SectionQuizQuestion, SectionQuizSubmissionDetailed, GradedAnswer, SubmitQuizResponse } from '@/lib/types/references';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -543,7 +548,7 @@ function QuizBankConfigurator({ sectionId, onClose }: { sectionId: number; onClo
 function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId: number }) {
   const publishMutation = usePublishSectionQuiz(sectionId);
   const deleteMutation = useDeleteSectionQuiz(sectionId);
-  const [activeTab, setActiveTab] = useState<'questions' | 'results' | 'config'>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'results' | 'config' | 'builder'>('questions');
   const [showBankForm, setShowBankForm] = useState(false);
 
   const questions = quiz.questions ?? [];
@@ -583,6 +588,7 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
           { id: 'questions', label: `Questions (${approvedCount}/${questions.length})` },
           { id: 'results',   label: 'Résultats & Notation' },
           { id: 'config',    label: 'Configuration' },
+          { id: 'builder',   label: 'Constructeur' },
         ] as const).map((tab) => (
           <button key={tab.id} type="button"
             onClick={() => setActiveTab(tab.id)}
@@ -610,6 +616,9 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
         )}
         {activeTab === 'config' && (
           <ConfigTab quiz={quiz} sectionId={sectionId} totalPoints={totalPoints} />
+        )}
+        {activeTab === 'builder' && (
+          <SurveyQuizBuilder sectionId={sectionId} quizId={quiz.id} />
         )}
       </div>
     </div>
@@ -1154,6 +1163,9 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
     activePassword !== undefined
   );
 
+  // Fetch survey JSON for SurveyJS player path
+  const { data: surveyJsonData } = useSurveyJson(sectionId);
+
   // Handle wrong password (401)
   useEffect(() => {
     if (isError && quiz.password_protected && activePassword !== undefined) {
@@ -1349,7 +1361,25 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
   }
 
   /* ── Full-screen quiz ────────────────────────────────────────────────────── */
-  if (taking && total > 0) {
+  if (taking) {
+    // SurveyJS player path: if quiz has a survey JSON, use the SurveyQuizPlayer
+    const activeSurveyJson = takeData?.survey_json ?? surveyJsonData?.survey_json;
+    if (quiz.has_survey_json && activeSurveyJson) {
+      return (
+        <SurveyQuizPlayer
+          sectionId={sectionId}
+          quiz={quiz}
+          surveyJson={activeSurveyJson}
+          attemptsUsed={takeData?.attempts_used ?? 0}
+          onClose={() => setTaking(false)}
+        />
+      );
+    }
+
+    const questions: SectionQuizQuestion[] = takeData?.questions ?? [];
+    const total = questions.length;
+    if (total === 0) return null;
+
     const q       = questions[currentQ];
     const qId     = String(q.id);
     const isLast  = currentQ === total - 1;

@@ -33,6 +33,10 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "sonner": "^2.0.7",
+    "survey-core": "^2.5.16",
+    "survey-creator-core": "^2.5.16",
+    "survey-creator-react": "^2.5.16",
+    "survey-react-ui": "^2.5.16",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.3.6"
   },
