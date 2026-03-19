@@ -11,6 +11,7 @@ import {
   CourseDashboardResponse,
   GradeWeight,
   AttendanceRecord,
+  CourseActivity,
   CourseExam,
 } from '../types/course';
 import { toast } from 'sonner';
@@ -188,7 +189,7 @@ export function useSessionRecords(courseId: number, sessionId: number | null) {
 export function useCreateSession(courseId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { title: string; date: string }) =>
+    mutationFn: (data: { title: string; date: string; activities_covered?: CourseActivity[] }) =>
       attendanceApi.createSession(courseId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['attendance-sessions', courseId] });
@@ -243,6 +244,30 @@ export function useMyAttendance(courseId: number) {
       return r.data;
     },
     enabled: !!courseId,
+  });
+}
+
+export function useCourseActivities(courseId: number) {
+  return useQuery({
+    queryKey: ['course-activities', courseId],
+    queryFn: () => attendanceApi.listActivities(courseId),
+    staleTime: 60_000,
+    enabled: !!courseId,
+  });
+}
+
+export function useSaveSessionActivities(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, activities }: { sessionId: number; activities: CourseActivity[] }) =>
+      attendanceApi.saveSessionActivities(courseId, sessionId, activities),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance-sessions', courseId] });
+      toast.success('Activités mises à jour');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour des activités');
+    },
   });
 }
 

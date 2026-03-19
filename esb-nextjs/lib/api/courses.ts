@@ -10,6 +10,7 @@ import {
   CourseDashboardResponse,
   AttendanceSession,
   AttendanceRecord,
+  CourseActivity,
   GradeWeight,
   StudentGrade,
   CourseExam,
@@ -98,7 +99,7 @@ export const coursesApi = {
 export const attendanceApi = {
   getSessions: (courseId: number) =>
     apiClient.get<{ sessions: AttendanceSession[]; total_students: number }>(`/api/v1/courses/${courseId}/attendance/sessions`),
-  createSession: (courseId: number, data: { title: string; date: string }) =>
+  createSession: (courseId: number, data: { title: string; date: string; activities_covered?: CourseActivity[] }) =>
     apiClient.post<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions`, data),
   updateSession: (courseId: number, sessionId: number, data: { title?: string; date?: string }) =>
     apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}`, data),
@@ -109,7 +110,11 @@ export const attendanceApi = {
   saveRecords: (courseId: number, sessionId: number, records: { student_id: number; status: string }[]) =>
     apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}/records`, { records }),
   myAttendance: (courseId: number) =>
-    apiClient.get<{ attendance: any[]; summary: any }>(`/api/v1/courses/${courseId}/attendance/my`),
+    apiClient.get<{ attendance: { session_title?: string; status: 'present' | 'late' | 'absent'; activities_covered?: CourseActivity[] }[]; summary: { total: number; present: number; late: number; absent: number } }>(`/api/v1/courses/${courseId}/attendance/my`),
+  listActivities: (courseId: number) =>
+    apiClient.get<{ activities: CourseActivity[] }>(`/api/v1/courses/${courseId}/attendance/activities`).then(r => r.data),
+  saveSessionActivities: (courseId: number, sessionId: number, activities: CourseActivity[]) =>
+    apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}`, { activities_covered: activities }).then(r => r.data),
 };
 
 export const gradesApi = {

@@ -315,6 +315,14 @@ export interface AttendanceRecord {
   status: 'present' | 'late' | 'absent';
 }
 
+export interface CourseActivity {
+  type: 'quiz' | 'assignment';
+  id: number;
+  title: string;
+  section_title: string;
+  chapter_title: string;
+}
+
 export interface AttendanceSession {
   id: number;
   course_id: number;
@@ -327,6 +335,7 @@ export interface AttendanceSession {
   late_count?: number;
   absent_count?: number;
   records?: AttendanceRecord[];
+  activities_covered?: CourseActivity[];
 }
 
 // ─── Grades ──────────────────────────────────────────────────────────────────

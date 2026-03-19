@@ -10,6 +10,7 @@ PUT    /courses/<id>/attendance/sessions/<sid>/records  bulk-save records
 GET    /courses/<id>/attendance/my                     student: own attendance across sessions
 """
 import logging
+import json
 from datetime import datetime, date as date_type
 
 from flask import request, jsonify
@@ -81,6 +82,8 @@ def create_attendance_session(course_id):
         return jsonify({'error': 'Invalid date format (YYYY-MM-DD)'}), 400
 
     session = AttendanceSession(course_id=course_id, title=title, date=session_date)
+    activities = data.get('activities_covered', [])
+    session.activities_covered = json.dumps(activities) if activities else None
     db.session.add(session)
     db.session.flush()
 
@@ -112,6 +115,8 @@ def update_attendance_session(course_id, session_id):
             session.date = date_type.fromisoformat(data['date'])
         except ValueError:
             return jsonify({'error': 'Invalid date'}), 400
+    if 'activities_covered' in data:
+        session.activities_covered = json.dumps(data['activities_covered']) if data['activities_covered'] else None
     db.session.commit()
     return jsonify({'session': session.to_dict()}), 200
 
@@ -219,3 +224,50 @@ def my_attendance(course_id):
             'rate': round((present + late * 0.5) / total * 100, 1) if total else 0,
         }
     }), 200
+
+
+# ─── Course activities (for session planning) ─────────────────────────────────
+
+@api_v1_bp.route('/courses/<int:course_id>/attendance/activities', methods=['GET'])
+@jwt_required()
+def list_course_activities(course_id):
+    """Return all quizzes and assignments in the course, grouped by chapter/section."""
+    user, course, is_teacher, is_student = _course_access(course_id)
+    if not is_teacher and not is_student:
+        return jsonify({'error': 'Access denied'}), 403
+
+    from app.models import TnSyllabus, TnChapter, CourseSection, SectionQuiz, SectionAssignment
+
+    activities = []
+
+    try:
+        syllabus = TnSyllabus.query.filter_by(course_id=course_id).first()
+        if syllabus:
+            chapters = TnChapter.query.filter_by(syllabus_id=syllabus.id).order_by(TnChapter.chapter_index).all()
+            for ch in chapters:
+                sections = CourseSection.query.filter_by(chapter_id=ch.id).order_by(CourseSection.section_index).all()
+                for sec in sections:
+                    # Quizzes
+                    quizzes = SectionQuiz.query.filter_by(section_id=sec.id).all()
+                    for q in quizzes:
+                        activities.append({
+                            'type': 'quiz',
+                            'id': q.id,
+                            'title': q.title or f'Quiz – {sec.title}',
+                            'section_title': sec.title,
+                            'chapter_title': ch.title,
+                        })
+                    # Assignments
+                    assignments = SectionAssignment.query.filter_by(section_id=sec.id).all()
+                    for a in assignments:
+                        activities.append({
+                            'type': 'assignment',
+                            'id': a.id,
+                            'title': a.title,
+                            'section_title': sec.title,
+                            'chapter_title': ch.title,
+                        })
+    except Exception as exc:
+        logger.warning('list_course_activities error: %s', exc)
+
+    return jsonify({'activities': activities}), 200
