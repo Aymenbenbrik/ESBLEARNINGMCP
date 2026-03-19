@@ -163,6 +163,9 @@ def get_chapter(chapter_id):
                 'order': chapter.order,
                 'course_id': chapter.course_id,
                 'summary': chapter.summary,
+                'description': chapter.description,
+                'objectives': chapter.objectives,
+                'description_validated': bool(chapter.description_validated),
                 'created_at': chapter.created_at.isoformat() if chapter.created_at else None,
                 'updated_at': chapter.updated_at.isoformat() if chapter.updated_at else None,
                 'has_summary': chapter.has_summary(),
@@ -904,4 +907,106 @@ def apply_section_structure(chapter_id):
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error applying section structure: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# ─── Chapter Description & Objectives ────────────────────────────────────────
+
+@chapters_api_bp.route('/<int:chapter_id>/description', methods=['PUT'])
+@jwt_required()
+def save_chapter_description(chapter_id):
+    """Save teacher-validated description and objectives for a chapter."""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+
+        if not (user.is_teacher and course.teacher_id == user.id) and not user.is_superuser:
+            return jsonify({'error': 'Access denied'}), 403
+
+        data = request.get_json() or {}
+        if 'description' in data:
+            chapter.description = data['description']
+        if 'objectives' in data:
+            chapter.objectives = data['objectives']
+        chapter.description_validated = True
+        db.session.commit()
+
+        return jsonify({
+            'description': chapter.description,
+            'objectives': chapter.objectives,
+            'description_validated': True,
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error saving chapter description: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@chapters_api_bp.route('/<int:chapter_id>/description/generate', methods=['POST'])
+@jwt_required()
+def generate_chapter_description(chapter_id):
+    """AI-generate chapter description and objectives list via Gemini."""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        chapter = Chapter.query.get_or_404(chapter_id)
+        course = chapter.course
+
+        if not (user.is_teacher and course.teacher_id == user.id) and not user.is_superuser:
+            return jsonify({'error': 'Access denied'}), 403
+
+        # Gather context: chapter title, sections, AAs
+        context_parts = [f"Chapitre : {chapter.title}", f"Cours : {course.title}"]
+        syllabus = SyllabusService.get_syllabus_by_course(course.id)
+        if syllabus and (syllabus.syllabus_type or '').lower() == 'tn':
+            for tnc in getattr(syllabus, 'tn_chapters', []):
+                if tnc.index == chapter.order:
+                    if tnc.sections:
+                        context_parts.append("Sections :")
+                        for s in tnc.sections:
+                            context_parts.append(f"  - {s.index}. {s.title}")
+                    aa_labels = [f"AA {int(l.aa.number)}" for l in getattr(tnc, 'aa_links', [])]
+                    if aa_labels:
+                        context_parts.append(f"Acquis d'apprentissage (AA) couverts : {', '.join(aa_labels)}")
+                    break
+
+        prompt_context = "\n".join(context_parts)
+
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash",
+            temperature=0.4,
+            max_tokens=800,
+            google_api_key=current_app.config.get('GOOGLE_API_KEY'),
+        )
+        messages = [
+            SystemMessage(content=(
+                "Tu es un assistant pédagogique. Réponds toujours en JSON valide avec exactement deux clés : "
+                "\"description\" (string, 2-3 phrases de présentation du chapitre) et "
+                "\"objectives\" (tableau JSON de 3-6 string : activités/objectifs à faire dans ce chapitre, "
+                "formulés à l'infinitif, ex: 'Comprendre les concepts de base...'). "
+                "Réponds UNIQUEMENT avec le JSON, sans markdown."
+            )),
+            HumanMessage(content=f"Génère la présentation et les activités pour ce chapitre :\n{prompt_context}"),
+        ]
+
+        import re, json as _json
+        response = llm.invoke(messages)
+        raw = response.content.strip()
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON found in AI response")
+        parsed = _json.loads(match.group())
+        description = str(parsed.get('description', ''))
+        objectives_list = parsed.get('objectives', [])
+        objectives_json = _json.dumps(objectives_list, ensure_ascii=False)
+
+        return jsonify({
+            'description': description,
+            'objectives': objectives_json,
+            'description_validated': False,
+        })
+    except Exception as e:
+        logger.error(f"Error generating chapter description: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500

@@ -342,6 +342,9 @@ class Chapter(db.Model):
     order = db.Column(db.Integer, nullable=False)
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
     summary = db.Column(db.Text)
+    description = db.Column(db.Text)
+    objectives = db.Column(db.Text)
+    description_validated = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
