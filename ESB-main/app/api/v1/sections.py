@@ -357,3 +357,110 @@ def get_activity_progress(chapter_id):
     completed.sort(key=lambda x: x.get('submitted_at') or '', reverse=True)
     return jsonify({'completed': completed}), 200
 
+
+# ─── Drag-and-drop reordering ─────────────────────────────────────────────────
+
+@api_v1_bp.route('/chapters/<int:chapter_id>/sections/reorder', methods=['POST'])
+@jwt_required()
+def reorder_sections(chapter_id):
+    """
+    Reorder sections in a chapter.
+    Body: { section_ids: [id1, id2, id3, ...] }  — ordered list
+    """
+    user, tn_chapter, course, is_teacher = _chapter_access(chapter_id)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    data = request.get_json(silent=True) or {}
+    section_ids = data.get('section_ids', [])
+    if not section_ids:
+        return jsonify({'error': 'section_ids required'}), 400
+
+    # Verify all sections belong to this chapter
+    sections = TNSection.query.filter(
+        TNSection.id.in_(section_ids),
+        TNSection.chapter_id == chapter_id
+    ).all()
+    section_map = {s.id: s for s in sections}
+
+    for pos, sid in enumerate(section_ids):
+        if sid in section_map:
+            section_map[sid].position = pos
+
+    db.session.commit()
+    return jsonify({'message': 'Sections réordonnées', 'order': section_ids}), 200
+
+
+@api_v1_bp.route('/activities/<int:activity_id>/move', methods=['PATCH'])
+@jwt_required()
+def move_activity(activity_id):
+    """
+    Move or reorder an activity.
+    Body: { section_id: int, position: int }
+    — section_id can be same (reorder) or different (cross-section move)
+    """
+    user = _get_user()
+    act = SectionActivity.query.get_or_404(activity_id)
+    old_section = TNSection.query.get_or_404(act.section_id)
+    chapter = old_section.chapter
+    syllabus = chapter.syllabus
+    course = syllabus.course if syllabus else None
+    is_teacher = bool(course and user.is_teacher and course.teacher_id == user.id) or bool(user.is_superuser)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    data = request.get_json(silent=True) or {}
+    new_section_id = data.get('section_id', act.section_id)
+    new_position = data.get('position', act.position)
+
+    # If moving to a different section, verify it's in same chapter
+    if new_section_id != act.section_id:
+        new_section = TNSection.query.get_or_404(new_section_id)
+        if new_section.chapter_id != chapter.id:
+            return jsonify({'error': 'Cannot move activity to a different chapter'}), 400
+        act.section_id = new_section_id
+
+    # Shift other activities to make room at new position
+    activities_in_target = SectionActivity.query.filter(
+        SectionActivity.section_id == new_section_id,
+        SectionActivity.id != activity_id,
+    ).order_by(SectionActivity.position).all()
+
+    for i, a in enumerate(activities_in_target):
+        a.position = i if i < new_position else i + 1
+
+    act.position = new_position
+    db.session.commit()
+    return jsonify({'activity': act.to_dict()}), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>/activities/reorder', methods=['POST'])
+@jwt_required()
+def reorder_activities(section_id):
+    """
+    Reorder activities within a section.
+    Body: { activity_ids: [id1, id2, id3, ...] }
+    """
+    user, section, course, is_teacher = _section_access(section_id)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    data = request.get_json(silent=True) or {}
+    activity_ids = data.get('activity_ids', [])
+    if not activity_ids:
+        return jsonify({'error': 'activity_ids required'}), 400
+
+    activities = SectionActivity.query.filter(
+        SectionActivity.id.in_(activity_ids),
+        SectionActivity.section_id == section_id,
+    ).all()
+    activity_map = {a.id: a for a in activities}
+
+    for pos, aid in enumerate(activity_ids):
+        if aid in activity_map:
+            activity_map[aid].position = pos
+
+    db.session.commit()
+    return jsonify({'message': 'Activités réordonnées'}), 200
+
+

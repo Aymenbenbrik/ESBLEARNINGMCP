@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -8,6 +8,24 @@ import {
   useCreateSection, useDeleteSection, useUpdateSection,
 } from '@/lib/hooks/useChapters';
 import { useAuth } from '@/lib/hooks/useAuth';
+import {
+  useReorderSections,
+} from '@/lib/hooks/useChapters';
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { ChapterHeader } from '@/components/chapters/ChapterHeader';
 import { DocumentsList } from '@/components/chapters/DocumentsList';
 import { ChapterSummary } from '@/components/chapters/ChapterSummary';
@@ -24,7 +42,7 @@ import {
   FileText, MessageSquare, ClipboardList, Users,
   ChevronRight, BookOpen,
   PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen,
-  Pencil, Trash2, Plus, Check, X,
+  Pencil, Trash2, Plus, Check, X, GripVertical,
 } from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +61,26 @@ export default function ChapterDetailPage() {
   const createSectionMutation = useCreateSection(chapterId);
   const deleteSectionMutation = useDeleteSection(chapterId);
   const updateSectionMutation = useUpdateSection(chapterId);
+  const reorderSectionsMutation = useReorderSections(chapterId);
+  const [sectionOrder, setSectionOrder] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (data?.tn_chapter?.sections) {
+      setSectionOrder(data.tn_chapter.sections.map((s: any) => s.id));
+    }
+  }, [data?.tn_chapter?.sections]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  function handleSectionDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sectionOrder.indexOf(active.id as number);
+    const newIndex = sectionOrder.indexOf(over.id as number);
+    const newOrder = arrayMove(sectionOrder, oldIndex, newIndex);
+    setSectionOrder(newOrder);
+    reorderSectionsMutation.mutate(newOrder);
+  }
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -214,11 +252,20 @@ export default function ChapterDetailPage() {
               </CardHeader>
               <CardContent>
                 {tn_chapter && tn_chapter.sections.length > 0 ? (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCorners}
+                    onDragEnd={handleSectionDragEnd}
+                  >
+                  <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
                   <div className="space-y-3">
-                    {tn_chapter.sections.map((section) => (
+                    {sectionOrder.map((sId) => {
+                      const section = tn_chapter.sections.find((s: any) => s.id === sId);
+                      if (!section) return null;
+                      return (
+                      <SortableSection key={section.id} section={section} canEdit={isTeacher}>
                       <details
-                        key={section.id}
-                        className="group rounded-[20px] border border-bolt-line bg-white open:shadow-sm"
+                        className="group rounded-[20px] border border-bolt-line bg-white open:shadow-sm w-full"
                       >
                         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -279,11 +326,15 @@ export default function ChapterDetailPage() {
                         </summary>
                         <div className="border-t border-bolt-line px-4 pb-4 pt-4 space-y-4">
                           <SectionContentPanel sectionId={section.id} canEdit={chapter.can_edit} />
-                          <SectionActivities sectionId={section.id} canEdit={chapter.can_edit} />
+                          <SectionActivities sectionId={section.id} canEdit={chapter.can_edit} allSections={tn_chapter?.sections ?? []} />
                         </div>
                       </details>
-                    ))}
+                      </SortableSection>
+                      );
+                    })}
                   </div>
+                  </SortableContext>
+                  </DndContext>
                 ) : (
                   <div className="rounded-[20px] border border-dashed border-bolt-line p-8 text-center text-sm text-muted-foreground">
                     <BookOpen className="h-8 w-8 mx-auto mb-3 text-muted-foreground/40" />
@@ -380,5 +431,39 @@ export default function ChapterDetailPage() {
         onDelete={handleDelete}
       />
     </>
+  );
+}
+
+function SortableSection({
+  section,
+  children,
+  canEdit,
+}: {
+  section: any;
+  children: React.ReactNode;
+  canEdit: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: section.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+      {canEdit && (
+        <button
+          {...attributes}
+          {...listeners}
+          className="mt-4 cursor-grab p-1 text-muted-foreground hover:text-bolt-ink shrink-0"
+          title="Glisser pour reordonner"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
   );
 }

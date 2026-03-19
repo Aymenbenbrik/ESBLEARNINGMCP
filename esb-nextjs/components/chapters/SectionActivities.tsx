@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -56,13 +56,39 @@ import {
   Settings,
   Image,
   FileCode2,
+  GripVertical,
+  ArrowRightLeft,
 } from 'lucide-react';
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useReorderActivities, useMoveActivity } from '@/lib/hooks/useChapters';
 import { SectionAssignmentManager } from './SectionAssignmentManager';
 import { SectionAssignmentTaker } from './SectionAssignmentTaker';
 
 interface SectionActivitiesProps {
   sectionId: number;
   canEdit: boolean;
+  allSections?: Array<{ id: number; title: string; index: number | string }>;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1708,13 +1734,92 @@ function AddTextDocForm({ sectionId, onClose }: { sectionId: number; onClose: ()
   );
 }
 
+// ─── Sortable Activity Item ───────────────────────────────────────────────────
+
+function SortableActivityItem({
+  activity,
+  children,
+  canEdit,
+  allSections,
+  sectionId,
+  onMove,
+}: {
+  activity: any;
+  children: React.ReactNode;
+  canEdit: boolean;
+  allSections: Array<{ id: number; title: string; index: number | string }>;
+  sectionId: number;
+  onMove: (targetSectionId: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: activity.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const otherSections = allSections.filter((s) => s.id !== sectionId);
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-start gap-1.5">
+      <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
+        {canEdit && (
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab p-0.5 text-muted-foreground hover:text-bolt-ink"
+            title="Glisser pour réordonner"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
+        {canEdit && otherSections.length > 0 && (
+          <Select onValueChange={(val) => onMove(parseInt(val))}>
+            <SelectTrigger className="h-5 w-5 p-0 border-none shadow-none bg-transparent text-muted-foreground hover:text-bolt-ink">
+              <ArrowRightLeft className="h-3 w-3" />
+            </SelectTrigger>
+            <SelectContent>
+              {otherSections.map((s) => (
+                <SelectItem key={s.id} value={String(s.id)}>
+                  → Section {s.index} — {s.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps) {
+export function SectionActivities({ sectionId, canEdit, allSections = [] }: SectionActivitiesProps) {
   const { data: activities = [], isLoading } = useSectionActivities(sectionId);
   const { data: quiz } = useSectionQuiz(sectionId);
   const { data: assignment } = useAssignment(sectionId);
   const deleteMutation = useDeleteActivity(sectionId);
+  const reorderActivitiesMutation = useReorderActivities();
+  const moveActivityMutation = useMoveActivity();
+
+  const [activityOrder, setActivityOrder] = useState<number[]>([]);
+  useEffect(() => {
+    if (activities) setActivityOrder(activities.map((a: any) => a.id));
+  }, [activities]);
+
+  const activitySensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  function handleActivityDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = activityOrder.indexOf(active.id as number);
+    const newIdx = activityOrder.indexOf(over.id as number);
+    const newOrder = arrayMove(activityOrder, oldIdx, newIdx);
+    setActivityOrder(newOrder);
+    reorderActivitiesMutation.mutate({ sectionId, activityIds: newOrder });
+  }
 
   const [showYoutubeForm, setShowYoutubeForm] = useState(false);
   const [showQuizSection, setShowQuizSection] = useState(false);
@@ -1809,11 +1914,19 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
         <AddTextDocForm sectionId={sectionId} onClose={() => setShowTextDocForm(false)} />
       )}
 
+      <DndContext
+        sensors={activitySensors}
+        collisionDetection={closestCorners}
+        onDragEnd={handleActivityDragEnd}
+      >
+      <SortableContext items={activityOrder} strategy={verticalListSortingStrategy}>
+
       {/* YouTube embeds */}
       {youtubeActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {youtubeActivities.map((activity) => (
-            <div key={activity.id} className="group relative">
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+              <div className="group relative">
               <YoutubeEmbed
                 embedId={activity.youtube_embed_id!}
                 title={activity.title}
@@ -1827,7 +1940,8 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
                   <Trash2 className="h-3 w-3" />
                 </button>
               )}
-            </div>
+              </div>
+            </SortableActivityItem>
           ))}
         </div>
       )}
@@ -1836,7 +1950,8 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       {imageActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {imageActivities.map((activity) => (
-            <div key={activity.id} className="group relative rounded-[12px] border border-bolt-line overflow-hidden bg-white">
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+              <div className="group relative rounded-[12px] border border-bolt-line overflow-hidden bg-white">
               {activity.image_url && (
                 <img
                   src={activity.image_url}
@@ -1853,7 +1968,8 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
                   <Trash2 className="h-3 w-3" />
                 </button>
               )}
-            </div>
+              </div>
+            </SortableActivityItem>
           ))}
         </div>
       )}
@@ -1862,7 +1978,8 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       {textDocActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {textDocActivities.map((activity) => (
-            <div key={activity.id} className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+              <div className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
                 {canEdit && (
@@ -1877,7 +1994,8 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
               <pre className="whitespace-pre-wrap text-xs text-muted-foreground font-sans leading-relaxed">
                 {activity.content}
               </pre>
-            </div>
+              </div>
+            </SortableActivityItem>
           ))}
         </div>
       )}
@@ -1886,7 +2004,8 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
       {pdfExtractActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {pdfExtractActivities.map((activity) => (
-            <div key={activity.id} className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+              <div className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
                 {canEdit && (
@@ -1910,10 +2029,14 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
                   className="w-full h-80 rounded-[8px]"
                 />
               )}
-            </div>
+              </div>
+            </SortableActivityItem>
           ))}
         </div>
       )}
+
+      </SortableContext>
+      </DndContext>
 
       {/* Quiz section */}
       {(showQuizSection || quiz) && (

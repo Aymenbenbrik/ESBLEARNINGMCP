@@ -370,6 +370,20 @@ export const sectionsApi = {
   },
 };
 
+// ─── Drag-and-Drop Reorder / Move ────────────────────────────────────────────
+
+export const dndApi = {
+  reorderSections: async (chapterId: number, sectionIds: number[]): Promise<void> => {
+    await apiClient.post(`/api/v1/chapters/${chapterId}/sections/reorder`, { section_ids: sectionIds });
+  },
+  reorderActivities: async (sectionId: number, activityIds: number[]): Promise<void> => {
+    await apiClient.post(`/api/v1/sections/${sectionId}/activities/reorder`, { activity_ids: activityIds });
+  },
+  moveActivity: async (activityId: number, sectionId: number, position: number): Promise<void> => {
+    await apiClient.patch(`/api/v1/activities/${activityId}/move`, { section_id: sectionId, position });
+  },
+};
+
 // ─── Chapter Sidebar Data ─────────────────────────────────────────────────────
 
 export const chapterSidebarApi = {

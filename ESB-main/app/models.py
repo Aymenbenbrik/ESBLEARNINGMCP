@@ -631,7 +631,8 @@ class TNChapter(db.Model):
     title = db.Column(db.Text, nullable=False)
 
     syllabus = db.relationship('Syllabus', back_populates='tn_chapters')
-    sections = db.relationship('TNSection', back_populates='chapter', cascade='all, delete-orphan')
+    sections = db.relationship('TNSection', back_populates='chapter', cascade='all, delete-orphan',
+                               order_by='TNSection.position')
     aa_links = db.relationship('TNChapterAA', back_populates='chapter', cascade='all, delete-orphan')
 
     __table_args__ = (
@@ -645,6 +646,7 @@ class TNSection(db.Model):
     chapter_id = db.Column(db.Integer, db.ForeignKey('tn_chapter.id'), nullable=False)
     index = db.Column(db.String(20), nullable=False)  # e.g. "1.1"
     title = db.Column(db.Text, nullable=False)
+    position = db.Column(db.Integer, default=0)  # drag-and-drop order
 
     chapter = db.relationship('TNChapter', back_populates='sections')
     aa_links = db.relationship('TNSectionAA', back_populates='section', cascade='all, delete-orphan')

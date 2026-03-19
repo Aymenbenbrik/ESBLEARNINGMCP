@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { chaptersApi, AAMatchingData } from '../api/chapters';
-import { sectionsApi, chapterSidebarApi } from '../api/references';
+import { sectionsApi, chapterSidebarApi, dndApi } from '../api/references';
 import {
   Chapter,
   ChapterDetails,
@@ -211,6 +211,43 @@ export function useUpdateSection(chapterId: number) {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Échec de la mise à jour de la section');
+    },
+  });
+}
+
+// ── Section & Activity DnD ───────────────────────────────────────────────────
+
+export function useReorderSections(chapterId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sectionIds: number[]) => dndApi.reorderSections(chapterId, sectionIds),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chapterKeys.detail(chapterId) }),
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec du réordonnancement des sections');
+    },
+  });
+}
+
+export function useReorderActivities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sectionId, activityIds }: { sectionId: number; activityIds: number[] }) =>
+      dndApi.reorderActivities(sectionId, activityIds),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['section-activities', vars.sectionId] }),
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec du réordonnancement des activités');
+    },
+  });
+}
+
+export function useMoveActivity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ activityId, sectionId, position }: { activityId: number; sectionId: number; position: number }) =>
+      dndApi.moveActivity(activityId, sectionId, position),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['section-activities'] }),
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec du déplacement de l\'activité');
     },
   });
 }
