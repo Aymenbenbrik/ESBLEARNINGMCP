@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  transpilePackages: ["recharts", "survey-core", "survey-react-ui", "survey-creator-core", "survey-creator-react"],
 };
 
 export default nextConfig;
