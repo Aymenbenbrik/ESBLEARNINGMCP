@@ -19,8 +19,11 @@ import { BarChart3, BookOpen, Database } from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { safeNumber, safePercent } from '@/lib/format';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { AttendanceTab } from '@/components/courses/AttendanceTab';
+import { GradesTab } from '@/components/courses/GradesTab';
+import { ExamTab } from '@/components/courses/ExamTab';
 
-type TabId = 'description' | 'contenu' | 'dashboard';
+type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'examen';
 
 export default function CourseDetailPage() {
   const params = useParams();
@@ -81,6 +84,9 @@ export default function CourseDetailPage() {
     { id: 'description', label: 'Description du cours' },
     { id: 'contenu',     label: 'Contenu du module' },
     { id: 'dashboard',   label: isStudent ? 'Mon tableau de bord' : 'Dashboard classe' },
+    { id: 'presence',    label: '📋 Présence' },
+    { id: 'notes',       label: '📊 Notes' },
+    ...(course.can_edit ? [{ id: 'examen' as TabId, label: '📝 Examen' }] : []),
   ];
 
   return (
@@ -238,6 +244,21 @@ export default function CourseDetailPage() {
               </>
             )}
           </div>
+        )}
+
+        {/* Tab 4: Présence */}
+        {activeTab === 'presence' && (
+          <AttendanceTab courseId={courseId} canEdit={course.can_edit} />
+        )}
+
+        {/* Tab 5: Notes */}
+        {activeTab === 'notes' && (
+          <GradesTab courseId={courseId} canEdit={course.can_edit} />
+        )}
+
+        {/* Tab 6: Examen (teachers only) */}
+        {activeTab === 'examen' && course.can_edit && (
+          <ExamTab courseId={courseId} canEdit={course.can_edit} />
         )}
       </div>
 

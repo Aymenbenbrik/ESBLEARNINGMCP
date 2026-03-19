@@ -8,6 +8,11 @@ import {
   ModuleUploadResponse,
   Course,
   CourseDashboardResponse,
+  AttendanceSession,
+  AttendanceRecord,
+  GradeWeight,
+  StudentGrade,
+  CourseExam,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -88,4 +93,48 @@ export const coursesApi = {
     const response = await apiClient.get<CourseDashboardResponse>(`${BASE_URL}/${id}/dashboard`);
     return response.data;
   },
+};
+
+export const attendanceApi = {
+  getSessions: (courseId: number) =>
+    apiClient.get<{ sessions: AttendanceSession[]; total_students: number }>(`/api/v1/courses/${courseId}/attendance/sessions`),
+  createSession: (courseId: number, data: { title: string; date: string }) =>
+    apiClient.post<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions`, data),
+  updateSession: (courseId: number, sessionId: number, data: { title?: string; date?: string }) =>
+    apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}`, data),
+  deleteSession: (courseId: number, sessionId: number) =>
+    apiClient.delete(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}`),
+  getRecords: (courseId: number, sessionId: number) =>
+    apiClient.get<{ records: AttendanceRecord[]; session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}/records`),
+  saveRecords: (courseId: number, sessionId: number, records: { student_id: number; status: string }[]) =>
+    apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}/records`, { records }),
+  myAttendance: (courseId: number) =>
+    apiClient.get<{ attendance: any[]; summary: any }>(`/api/v1/courses/${courseId}/attendance/my`),
+};
+
+export const gradesApi = {
+  getWeights: (courseId: number) =>
+    apiClient.get<{ weights: GradeWeight }>(`/api/v1/courses/${courseId}/grade-weights`),
+  updateWeights: (courseId: number, data: Partial<GradeWeight>) =>
+    apiClient.put<{ weights: GradeWeight }>(`/api/v1/courses/${courseId}/grade-weights`, data),
+  getAllGrades: (courseId: number) =>
+    apiClient.get<{ grades: StudentGrade[]; weights: GradeWeight }>(`/api/v1/courses/${courseId}/grades`),
+  getMyGrade: (courseId: number) =>
+    apiClient.get<StudentGrade & { weights: GradeWeight }>(`/api/v1/courses/${courseId}/grades/me`),
+};
+
+export const examApi = {
+  get: (courseId: number) =>
+    apiClient.get<{ exam: CourseExam | null }>(`/api/v1/courses/${courseId}/exam`),
+  upload: (courseId: number, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return apiClient.post<{ exam: CourseExam }>(`/api/v1/courses/${courseId}/exam/upload`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  analyze: (courseId: number, examId: number) =>
+    apiClient.post<{ exam: CourseExam }>(`/api/v1/courses/${courseId}/exam/analyze`, { exam_id: examId }),
+  remove: (courseId: number, examId: number) =>
+    apiClient.delete(`/api/v1/courses/${courseId}/exam/${examId}`),
 };

@@ -304,3 +304,95 @@ export interface StudentDashboardResponse {
     completed_at: string;
   }[];
 }
+// ─── Attendance ─────────────────────────────────────────────────────────────
+
+export interface AttendanceRecord {
+  id: number;
+  session_id: number;
+  student_id: number;
+  student_name: string | null;
+  student_email: string | null;
+  status: 'present' | 'late' | 'absent';
+}
+
+export interface AttendanceSession {
+  id: number;
+  course_id: number;
+  title: string;
+  date: string; // YYYY-MM-DD
+  created_at: string;
+  record_count: number;
+  total_students?: number;
+  present_count?: number;
+  late_count?: number;
+  absent_count?: number;
+  records?: AttendanceRecord[];
+}
+
+// ─── Grades ──────────────────────────────────────────────────────────────────
+
+export interface GradeWeight {
+  id: number;
+  course_id: number;
+  quiz_weight: number;
+  assignment_weight: number;
+  attendance_weight: number;
+  exam_weight: number;
+  formula: string | null;
+  updated_at: string;
+}
+
+export interface StudentGrade {
+  student_id: number;
+  student_name: string;
+  student_email: string;
+  quiz_avg: number | null;
+  assignment_avg: number | null;
+  attendance_score: number | null;
+  exam_score: number | null;
+  final_grade: number | null;
+  quiz_count: number;
+  assignment_count: number;
+  total_sessions: number;
+}
+
+// ─── Exam ────────────────────────────────────────────────────────────────────
+
+export interface BloomDistribution {
+  remembering: number;
+  understanding: number;
+  applying: number;
+  analyzing: number;
+  evaluating: number;
+  creating: number;
+}
+
+export interface AAAlignment {
+  aa: string;
+  covered: boolean;
+  comment: string;
+}
+
+export interface ExamEvaluation {
+  overview: string;
+  questions_count: number;
+  estimated_duration: string;
+  avg_difficulty: string;
+  bloom_distribution: BloomDistribution;
+  aa_alignment: AAAlignment[];
+  strengths: string[];
+  feedback: string[];
+  suggestions: string[];
+  overall_score: number;
+}
+
+export interface CourseExam {
+  id: number;
+  course_id: number;
+  file_path: string | null;
+  original_name: string | null;
+  status: 'uploaded' | 'analyzing' | 'done' | 'error';
+  ai_evaluation: ExamEvaluation | null;
+  created_at: string;
+  updated_at: string;
+}

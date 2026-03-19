@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { coursesApi } from '../api/courses';
+import { coursesApi, attendanceApi, gradesApi, examApi } from '../api/courses';
 import {
   CoursesListResponse,
   CourseDetails,
@@ -9,6 +9,9 @@ import {
   ModuleUploadResponse,
   Course,
   CourseDashboardResponse,
+  GradeWeight,
+  AttendanceRecord,
+  CourseExam,
 } from '../types/course';
 import { toast } from 'sonner';
 
@@ -155,5 +158,195 @@ export function useCourseDashboard(id: number) {
     queryKey: courseKeys.dashboard(id),
     queryFn: () => coursesApi.getDashboard(id),
     enabled: !!id,
+  });
+}
+
+// ─── Attendance Hooks ────────────────────────────────────────────────────────
+
+export function useAttendanceSessions(courseId: number) {
+  return useQuery({
+    queryKey: ['attendance-sessions', courseId],
+    queryFn: async () => {
+      const r = await attendanceApi.getSessions(courseId);
+      return r.data;
+    },
+    enabled: !!courseId,
+  });
+}
+
+export function useSessionRecords(courseId: number, sessionId: number | null) {
+  return useQuery({
+    queryKey: ['attendance-records', courseId, sessionId],
+    queryFn: async () => {
+      const r = await attendanceApi.getRecords(courseId, sessionId!);
+      return r.data;
+    },
+    enabled: !!courseId && !!sessionId,
+  });
+}
+
+export function useCreateSession(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { title: string; date: string }) =>
+      attendanceApi.createSession(courseId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance-sessions', courseId] });
+      toast.success('Séance créée avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la création de la séance');
+    },
+  });
+}
+
+export function useSaveRecords(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      records,
+    }: {
+      sessionId: number;
+      records: { student_id: number; status: string }[];
+    }) => attendanceApi.saveRecords(courseId, sessionId, records),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['attendance-records', courseId, vars.sessionId] });
+      qc.invalidateQueries({ queryKey: ['attendance-sessions', courseId] });
+      toast.success('Présences enregistrées');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors de l'enregistrement");
+    },
+  });
+}
+
+export function useDeleteSession(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) => attendanceApi.deleteSession(courseId, sessionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance-sessions', courseId] });
+      toast.success('Séance supprimée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
+    },
+  });
+}
+
+export function useMyAttendance(courseId: number) {
+  return useQuery({
+    queryKey: ['my-attendance', courseId],
+    queryFn: async () => {
+      const r = await attendanceApi.myAttendance(courseId);
+      return r.data;
+    },
+    enabled: !!courseId,
+  });
+}
+
+// ─── Grades Hooks ─────────────────────────────────────────────────────────────
+
+export function useGradeWeights(courseId: number) {
+  return useQuery({
+    queryKey: ['grade-weights', courseId],
+    queryFn: async () => {
+      const r = await gradesApi.getWeights(courseId);
+      return r.data.weights;
+    },
+    enabled: !!courseId,
+  });
+}
+
+export function useUpdateGradeWeights(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<GradeWeight>) => gradesApi.updateWeights(courseId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grade-weights', courseId] });
+      qc.invalidateQueries({ queryKey: ['all-grades', courseId] });
+      toast.success('Pondérations mises à jour');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+}
+
+export function useAllGrades(courseId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['all-grades', courseId],
+    queryFn: async () => {
+      const r = await gradesApi.getAllGrades(courseId);
+      return r.data;
+    },
+    enabled: enabled && !!courseId,
+  });
+}
+
+export function useMyGrade(courseId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['my-grade', courseId],
+    queryFn: async () => {
+      const r = await gradesApi.getMyGrade(courseId);
+      return r.data;
+    },
+    enabled: enabled && !!courseId,
+  });
+}
+
+// ─── Exam Hooks ───────────────────────────────────────────────────────────────
+
+export function useCourseExam(courseId: number) {
+  return useQuery({
+    queryKey: ['course-exam', courseId],
+    queryFn: async () => {
+      const r = await examApi.get(courseId);
+      return r.data.exam;
+    },
+    enabled: !!courseId,
+  });
+}
+
+export function useUploadExam(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => examApi.upload(courseId, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['course-exam', courseId] });
+      toast.success('Examen uploadé avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors de l'upload");
+    },
+  });
+}
+
+export function useAnalyzeExam(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (examId: number) => examApi.analyze(courseId, examId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['course-exam', courseId] });
+      toast.success('Analyse lancée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors de l'analyse");
+    },
+  });
+}
+
+export function useDeleteExam(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (examId: number) => examApi.remove(courseId, examId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['course-exam', courseId] });
+      toast.success('Examen supprimé');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
+    },
   });
 }

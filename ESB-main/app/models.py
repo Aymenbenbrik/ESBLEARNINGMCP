@@ -1349,3 +1349,119 @@ class AssignmentSubmission(db.Model):
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
         }
 
+
+# ─── Attendance (Présence) ─────────────────────────────────────────────────────
+
+class AttendanceSession(db.Model):
+    """A teaching session for which attendance is tracked."""
+    __tablename__ = 'attendance_session'
+
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    course = db.relationship('Course', backref=db.backref('attendance_sessions', cascade='all, delete-orphan', lazy='dynamic'))
+    records = db.relationship('AttendanceRecord', backref='session', cascade='all, delete-orphan', lazy='dynamic')
+
+    def to_dict(self, include_records=False):
+        d = {
+            'id': self.id,
+            'course_id': self.course_id,
+            'title': self.title,
+            'date': self.date.isoformat() if self.date else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'record_count': self.records.count(),
+        }
+        if include_records:
+            d['records'] = [r.to_dict() for r in self.records]
+        return d
+
+
+class AttendanceRecord(db.Model):
+    """Per-student attendance status for a given session."""
+    __tablename__ = 'attendance_record'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('attendance_session.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(10), default='absent')  # present | late | absent
+
+    student = db.relationship('User', backref=db.backref('attendance_records', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('session_id', 'student_id', name='uq_attendance_record'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'student_id': self.student_id,
+            'student_name': self.student.username if self.student else None,
+            'student_email': self.student.email if self.student else None,
+            'status': self.status,
+        }
+
+
+# ─── Grade Weights & Exam ──────────────────────────────────────────────────────
+
+class GradeWeight(db.Model):
+    """Teacher-configured weights for computing the final grade of a course."""
+    __tablename__ = 'grade_weight'
+
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False, unique=True)
+    quiz_weight = db.Column(db.Float, default=30.0)        # % of final grade
+    assignment_weight = db.Column(db.Float, default=30.0)
+    attendance_weight = db.Column(db.Float, default=10.0)
+    exam_weight = db.Column(db.Float, default=30.0)
+    # custom formula string, e.g. "quiz*0.3 + assignment*0.3 + attendance*0.1 + exam*0.3"
+    formula = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = db.relationship('Course', backref=db.backref('grade_weight', uselist=False))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'course_id': self.course_id,
+            'quiz_weight': self.quiz_weight,
+            'assignment_weight': self.assignment_weight,
+            'attendance_weight': self.attendance_weight,
+            'exam_weight': self.exam_weight,
+            'formula': self.formula,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class CourseExam(db.Model):
+    """An exam file uploaded by the teacher with AI evaluation."""
+    __tablename__ = 'course_exam'
+
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    file_path = db.Column(db.String(500))       # relative path in uploads/
+    original_name = db.Column(db.String(300))
+    status = db.Column(db.String(20), default='uploaded')  # uploaded | analyzing | done | error
+    # AI result: {overview, questions_count, avg_difficulty, bloom_distribution,
+    #              aa_alignment, feedback: [str], suggestions: [str], score: float}
+    ai_evaluation = db.Column(db.JSON)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = db.relationship('Course', backref=db.backref('exams', cascade='all, delete-orphan', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'course_id': self.course_id,
+            'file_path': self.file_path,
+            'original_name': self.original_name,
+            'status': self.status,
+            'ai_evaluation': self.ai_evaluation,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
