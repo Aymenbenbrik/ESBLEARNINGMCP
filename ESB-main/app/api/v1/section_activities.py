@@ -706,10 +706,48 @@ def delete_section_quiz(section_id):
 # Section Quiz — Student
 # ---------------------------------------------------------------------------
 
+@api_v1_bp.route('/sections/<int:section_id>/quiz/config', methods=['PUT'])
+@jwt_required()
+def update_quiz_config(section_id):
+    """Update quiz settings: dates, attempts, feedback, duration, password."""
+    user = _get_user()
+    section = TNSection.query.get_or_404(section_id)
+    is_teacher, _ = _section_access(section, user)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    quiz = SectionQuiz.query.filter_by(section_id=section_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    if 'start_date' in data:
+        quiz.start_date = datetime.fromisoformat(data['start_date']) if data['start_date'] else None
+    if 'end_date' in data:
+        quiz.end_date = datetime.fromisoformat(data['end_date']) if data['end_date'] else None
+    if 'duration_minutes' in data:
+        v = data['duration_minutes']
+        quiz.duration_minutes = int(v) if v else None
+    if 'max_attempts' in data:
+        quiz.max_attempts = max(1, int(data.get('max_attempts', 1)))
+    if 'show_feedback' in data:
+        quiz.show_feedback = bool(data['show_feedback'])
+    if 'password' in data:
+        quiz.password = (data['password'] or '').strip() or None
+    if 'weight_percent' in data:
+        quiz.weight_percent = float(data.get('weight_percent', quiz.weight_percent))
+
+    db.session.commit()
+    return jsonify({'quiz': quiz.to_dict()}), 200
+
+
+# ---------------------------------------------------------------------------
+# Section Quiz — Student
+# ---------------------------------------------------------------------------
+
 @api_v1_bp.route('/sections/<int:section_id>/quiz/take', methods=['GET'])
 @jwt_required()
 def take_section_quiz(section_id):
     """Student fetches the quiz without correct answers."""
+    from datetime import timezone
     user = _get_user()
     section = TNSection.query.get_or_404(section_id)
     is_teacher, is_enrolled = _section_access(section, user)
@@ -720,21 +758,38 @@ def take_section_quiz(section_id):
     if not quiz:
         return jsonify({'error': 'No published quiz for this section'}), 404
 
-    # Check if already submitted
-    existing = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).first()
-    if existing:
-        return jsonify({'already_submitted': True, 'result': existing.to_dict()}), 200
+    now = datetime.utcnow()
+    # Check availability window
+    if quiz.start_date and now < quiz.start_date:
+        return jsonify({'error': 'Quiz not yet available', 'start_date': quiz.start_date.isoformat()}), 403
+    if quiz.end_date and now > quiz.end_date:
+        return jsonify({'error': 'Quiz deadline passed', 'end_date': quiz.end_date.isoformat()}), 403
+
+    # Count existing attempts
+    attempts = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).all()
+    max_attempts = quiz.max_attempts or 1
+    if len(attempts) >= max_attempts:
+        latest = max(attempts, key=lambda s: s.submitted_at or datetime.min)
+        return jsonify({
+            'already_submitted': True,
+            'attempts_used': len(attempts),
+            'max_attempts': max_attempts,
+            'result': latest.to_dict(),
+        }), 200
+
+    # Password check (via query param or header)
+    if quiz.password:
+        provided = request.args.get('password') or request.headers.get('X-Quiz-Password', '')
+        if provided != quiz.password:
+            return jsonify({'error': 'Password required', 'password_protected': True}), 401
 
     approved_questions = [q for q in quiz.questions if q.status == 'approved']
     return jsonify({
-        'quiz': {
-            'id': quiz.id,
-            'title': quiz.title,
-            'max_score': quiz.max_score,
-            'question_count': len(approved_questions),
-        },
+        'quiz': {**quiz.to_dict(), 'question_count': len(approved_questions)},
         'questions': [q.to_dict(hide_answer=True) for q in approved_questions],
         'already_submitted': False,
+        'attempts_used': len(attempts),
+        'max_attempts': max_attempts,
     }), 200
 
 
@@ -755,9 +810,18 @@ def submit_section_quiz(section_id):
     if not quiz:
         return jsonify({'error': 'No published quiz'}), 404
 
-    existing = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).first()
-    if existing:
-        return jsonify({'error': 'Already submitted', 'result': existing.to_dict()}), 409
+    # Check deadline
+    now = datetime.utcnow()
+    if quiz.end_date and now > quiz.end_date:
+        return jsonify({'error': 'Quiz deadline passed'}), 403
+
+    # Check attempts
+    existing_attempts = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).all()
+    max_attempts = quiz.max_attempts or 1
+    if len(existing_attempts) >= max_attempts:
+        return jsonify({'error': f'Maximum attempts reached ({max_attempts})'}), 409
+
+    attempt_number = len(existing_attempts) + 1
 
     body = request.get_json(silent=True) or {}
     answers = body.get('answers', {})   # {str(question_id): answer_string}
@@ -807,6 +871,7 @@ def submit_section_quiz(section_id):
     submission = SectionQuizSubmission(
         quiz_id=quiz.id,
         student_id=user.id,
+        attempt_number=attempt_number,
         answers=answers,
         graded_answers=graded_answers,
         score=score,
@@ -817,15 +882,21 @@ def submit_section_quiz(section_id):
     db.session.add(submission)
     db.session.commit()
 
-    return jsonify({
+    show_feedback = quiz.show_feedback if quiz.show_feedback is not None else True
+    response = {
         'message': 'Submitted successfully',
-        'score': score,
-        'max_score': max_score,
-        'percent': round(score / max_score * 100, 1) if max_score else 0,
+        'attempt_number': attempt_number,
+        'attempts_remaining': max(0, max_attempts - attempt_number),
         'grading_status': grading_status,
-        'graded_answers': graded_answers,
         'result': submission.to_dict(),
-    }), 201
+    }
+    if show_feedback:
+        response['score'] = score
+        response['max_score'] = max_score
+        response['percent'] = round(score / max_score * 100, 1) if max_score else 0
+        response['graded_answers'] = graded_answers
+
+    return jsonify(response), 201
 
 
 def _ai_grade_open(question_text: str, model_answer: str, student_answer: str, max_points: float) -> tuple:

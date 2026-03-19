@@ -9,6 +9,7 @@ import {
   SectionContent,
   UpdateSectionContentData,
   SectionQuizQuestion,
+  QuizConfig,
   CreateQuizFromBankData,
   SectionQuizSubmissionDetailed,
   SectionAssignment,
@@ -304,11 +305,12 @@ export function useDeleteSectionQuiz(sectionId: number) {
   });
 }
 
-export function useTakeQuiz(sectionId: number) {
+export function useTakeQuiz(sectionId: number, password?: string, enabled = true) {
   return useQuery({
-    queryKey: [...sectionQuizKeys.forSection(sectionId), 'take'],
-    queryFn: () => sectionQuizApi.take(sectionId),
-    enabled: !!sectionId,
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'take', password ?? null],
+    queryFn: () => sectionQuizApi.take(sectionId, password),
+    enabled: !!sectionId && enabled,
+    retry: false,
   });
 }
 
@@ -318,9 +320,25 @@ export function useSubmitSectionQuiz(sectionId: number) {
     mutationFn: (answers: Record<string, string>) => sectionQuizApi.submit(sectionId, answers),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
-      toast.success(`Résultat : ${data.score}/${data.max_score} (${data.percent}%)`);
+      if (data.score !== undefined && data.max_score !== undefined) {
+        toast.success(`Résultat : ${data.score}/${data.max_score} (${data.percent}%)`);
+      } else {
+        toast.success('Quiz soumis avec succès');
+      }
     },
     onError: () => toast.error('Erreur lors de la soumission'),
+  });
+}
+
+export function useUpdateQuizConfig(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (config: QuizConfig) => sectionQuizApi.updateConfig(sectionId, config),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
+      toast.success('Configuration enregistrée ✓');
+    },
+    onError: () => toast.error('Erreur lors de la sauvegarde'),
   });
 }
 

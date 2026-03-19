@@ -1139,6 +1139,14 @@ class SectionQuiz(db.Model):
     weight_percent = db.Column(db.Float, default=10.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Quiz settings
+    start_date = db.Column(db.DateTime, nullable=True)
+    end_date = db.Column(db.DateTime, nullable=True)
+    duration_minutes = db.Column(db.Integer, nullable=True)   # None = unlimited
+    max_attempts = db.Column(db.Integer, default=1)
+    show_feedback = db.Column(db.Boolean, default=True)       # show result after each attempt
+    password = db.Column(db.String(100), nullable=True)       # None = no password
+
     section = db.relationship('TNSection', backref=db.backref('section_quizzes', cascade='all, delete-orphan'))
     questions = db.relationship('SectionQuizQuestion', backref='quiz',
                                 cascade='all, delete-orphan', order_by='SectionQuizQuestion.position')
@@ -1156,6 +1164,13 @@ class SectionQuiz(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'question_count': len(self.questions),
             'approved_count': sum(1 for q in self.questions if q.status == 'approved'),
+            # Settings
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'duration_minutes': self.duration_minutes,
+            'max_attempts': self.max_attempts or 1,
+            'show_feedback': self.show_feedback if self.show_feedback is not None else True,
+            'password_protected': bool(self.password),
         }
         if include_questions:
             d['questions'] = [q.to_dict() for q in self.questions]
@@ -1211,6 +1226,7 @@ class SectionQuizSubmission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     quiz_id = db.Column(db.Integer, db.ForeignKey('section_quiz.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    attempt_number = db.Column(db.Integer, default=1, nullable=False)
     answers = db.Column(db.JSON)
     # graded_answers: {str(question_id): {proposed, final, comment, validated}}
     graded_answers = db.Column(db.JSON)
@@ -1221,10 +1237,6 @@ class SectionQuizSubmission(db.Model):
 
     student = db.relationship('User', backref=db.backref('section_quiz_submissions', lazy='dynamic'))
 
-    __table_args__ = (
-        db.UniqueConstraint('quiz_id', 'student_id', name='uq_section_quiz_submission'),
-    )
-
     def to_dict(self):
         return {
             'id': self.id,
@@ -1232,6 +1244,7 @@ class SectionQuizSubmission(db.Model):
             'student_id': self.student_id,
             'student_name': self.student.username if self.student else None,
             'student_email': self.student.email if self.student else None,
+            'attempt_number': self.attempt_number or 1,
             'answers': self.answers,
             'graded_answers': self.graded_answers or {},
             'score': self.score,

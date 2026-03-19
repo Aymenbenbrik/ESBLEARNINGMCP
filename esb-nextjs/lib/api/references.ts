@@ -15,6 +15,8 @@ import {
   SectionQuizSubmissionDetailed,
   GradedAnswer,
   TakeQuizResponse,
+  SubmitQuizResponse,
+  QuizConfig,
   QuizBankStats,
   CreateQuizFromBankData,
   SectionAssignment,
@@ -208,9 +210,10 @@ export const sectionQuizApi = {
     await apiClient.delete(`/api/v1/sections/${sectionId}/quiz`);
   },
 
-  take: async (sectionId: number): Promise<TakeQuizResponse> => {
+  take: async (sectionId: number, password?: string): Promise<TakeQuizResponse> => {
+    const params = password ? `?password=${encodeURIComponent(password)}` : '';
     const res = await apiClient.get<TakeQuizResponse>(
-      `/api/v1/sections/${sectionId}/quiz/take`
+      `/api/v1/sections/${sectionId}/quiz/take${params}`
     );
     return res.data;
   },
@@ -218,8 +221,8 @@ export const sectionQuizApi = {
   submit: async (
     sectionId: number,
     answers: Record<string, string>
-  ): Promise<{ score: number; max_score: number; percent: number; graded_answers?: Record<string, any>; grading_status?: string; result: SectionQuizSubmission }> => {
-    const res = await apiClient.post<{ score: number; max_score: number; percent: number; graded_answers?: Record<string, any>; grading_status?: string; result: SectionQuizSubmission }>(
+  ): Promise<SubmitQuizResponse> => {
+    const res = await apiClient.post<SubmitQuizResponse>(
       `/api/v1/sections/${sectionId}/quiz/submit`,
       { answers }
     );
@@ -241,6 +244,14 @@ export const sectionQuizApi = {
       { grades }
     );
     return res.data.submission;
+  },
+
+  updateConfig: async (sectionId: number, config: QuizConfig): Promise<{ quiz: SectionQuiz }> => {
+    const res = await apiClient.put<{ quiz: SectionQuiz }>(
+      `/api/v1/sections/${sectionId}/quiz/config`,
+      config
+    );
+    return res.data;
   },
 
   bankStats: async (sectionId: number): Promise<QuizBankStats> => {

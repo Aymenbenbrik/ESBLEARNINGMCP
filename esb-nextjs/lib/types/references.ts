@@ -105,6 +105,23 @@ export interface SectionQuiz {
   question_count: number;
   approved_count: number;
   questions?: SectionQuizQuestion[];
+  // Config fields
+  start_date?: string | null;
+  end_date?: string | null;
+  duration_minutes?: number | null;
+  max_attempts?: number;
+  show_feedback?: boolean;
+  password_protected?: boolean;
+}
+
+export interface QuizConfig {
+  start_date?: string | null;
+  end_date?: string | null;
+  duration_minutes?: number | null;
+  max_attempts?: number;
+  show_feedback?: boolean;
+  password?: string;
+  weight_percent?: number;
 }
 
 export interface SectionQuizQuestion {
@@ -155,6 +172,7 @@ export interface SectionQuizSubmission {
   max_score: number;
   grading_status: 'auto' | 'pending' | 'graded';
   submitted_at: string;
+  attempt_number?: number;
 }
 
 export interface GradedAnswer {
@@ -168,10 +186,25 @@ export interface GradedAnswer {
 export type SectionQuizSubmissionDetailed = SectionQuizSubmission;
 
 export interface TakeQuizResponse {
-  quiz: { id: number; title: string; max_score: number; question_count: number };
+  quiz: SectionQuiz;
   questions: SectionQuizQuestion[];
   already_submitted: boolean;
   result?: SectionQuizSubmission;
+  attempts_used?: number;
+  max_attempts?: number;
+}
+
+export interface SubmitQuizResponse {
+  message?: string;
+  attempt_number?: number;
+  attempts_remaining?: number;
+  grading_status?: 'auto' | 'pending';
+  result: SectionQuizSubmission;
+  // Only present if show_feedback=true
+  score?: number;
+  max_score?: number;
+  percent?: number;
+  graded_answers?: Record<string, GradedAnswer>;
 }
 
 // ─── Section Assignment Types ─────────────────────────────────────────────────
