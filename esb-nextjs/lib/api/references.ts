@@ -17,6 +17,8 @@ import {
   TakeQuizResponse,
   QuizBankStats,
   CreateQuizFromBankData,
+  SectionAssignment,
+  AssignmentSubmission,
 } from '../types/references';
 
 // ─── Course References ────────────────────────────────────────────────────────
@@ -255,4 +257,33 @@ export const sectionQuizApi = {
     );
     return res.data;
   },
+};
+
+// ─── Section Assignment ───────────────────────────────────────────────────────
+
+export const sectionAssignmentApi = {
+  get: (sectionId: number) =>
+    apiClient.get<{ assignment: SectionAssignment | null }>(`/api/v1/sections/${sectionId}/assignment`),
+  create: (sectionId: number, data: Partial<SectionAssignment>) =>
+    apiClient.post<{ assignment: SectionAssignment }>(`/api/v1/sections/${sectionId}/assignment`, data),
+  update: (sectionId: number, data: Partial<SectionAssignment>) =>
+    apiClient.put<{ assignment: SectionAssignment }>(`/api/v1/sections/${sectionId}/assignment`, data),
+  remove: (sectionId: number) =>
+    apiClient.delete(`/api/v1/sections/${sectionId}/assignment`),
+  submit: (sectionId: number, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    return apiClient.post<{ submission: AssignmentSubmission }>(
+      `/api/v1/sections/${sectionId}/assignment/submit`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+  },
+  getSubmissions: (sectionId: number) =>
+    apiClient.get<{ submissions: AssignmentSubmission[] }>(`/api/v1/sections/${sectionId}/assignment/submissions`),
+  gradeSubmission: (sectionId: number, subId: number, grade: number, feedback: string) =>
+    apiClient.put<{ submission: AssignmentSubmission }>(
+      `/api/v1/sections/${sectionId}/assignment/submissions/${subId}/grade`,
+      { grade, feedback }
+    ),
 };

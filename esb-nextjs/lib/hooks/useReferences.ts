@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { referencesApi, sectionContentApi, sectionActivitiesApi, sectionQuizApi } from '../api/references';
+import { referencesApi, sectionContentApi, sectionActivitiesApi, sectionQuizApi, sectionAssignmentApi } from '../api/references';
 import {
   CourseReference,
   ChapterReferenceLink,
@@ -11,6 +11,7 @@ import {
   SectionQuizQuestion,
   CreateQuizFromBankData,
   SectionQuizSubmissionDetailed,
+  SectionAssignment,
 } from '../types/references';
 import { toast } from 'sonner';
 
@@ -365,5 +366,91 @@ export function useGradeSubmission(sectionId: number) {
       toast.success('Notes validées avec succès');
     },
     onError: () => toast.error('Erreur lors de la validation des notes'),
+  });
+}
+
+// ─── Section Assignment ───────────────────────────────────────────────────────
+
+export function useAssignment(sectionId: number) {
+  return useQuery({
+    queryKey: ['assignment', sectionId],
+    queryFn: async () => {
+      const res = await sectionAssignmentApi.get(sectionId);
+      return res.data.assignment;
+    },
+    enabled: !!sectionId,
+  });
+}
+
+export function useCreateAssignment(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<SectionAssignment>) => sectionAssignmentApi.create(sectionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignment', sectionId] });
+      toast.success('Devoir créé');
+    },
+    onError: () => toast.error('Erreur lors de la création'),
+  });
+}
+
+export function useUpdateAssignment(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<SectionAssignment>) => sectionAssignmentApi.update(sectionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignment', sectionId] });
+      toast.success('Devoir mis à jour');
+    },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
+  });
+}
+
+export function useDeleteAssignment(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => sectionAssignmentApi.remove(sectionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignment', sectionId] });
+      toast.success('Devoir supprimé');
+    },
+    onError: () => toast.error('Erreur lors de la suppression'),
+  });
+}
+
+export function useSubmitAssignment(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (files: File[]) => sectionAssignmentApi.submit(sectionId, files),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignment', sectionId] });
+      toast.success('Devoir soumis avec succès');
+    },
+    onError: () => toast.error('Erreur lors de la soumission'),
+  });
+}
+
+export function useAssignmentSubmissions(sectionId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['assignment-submissions', sectionId],
+    queryFn: async () => {
+      const res = await sectionAssignmentApi.getSubmissions(sectionId);
+      return res.data.submissions;
+    },
+    enabled: enabled && !!sectionId,
+  });
+}
+
+export function useGradeAssignment(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ subId, grade, feedback }: { subId: number; grade: number; feedback: string }) =>
+      sectionAssignmentApi.gradeSubmission(sectionId, subId, grade, feedback),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignment-submissions', sectionId] });
+      qc.invalidateQueries({ queryKey: ['assignment', sectionId] });
+      toast.success('Note validée');
+    },
+    onError: () => toast.error('Erreur lors de la notation'),
   });
 }

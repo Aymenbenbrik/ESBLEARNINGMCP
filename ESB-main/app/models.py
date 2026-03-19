@@ -1278,3 +1278,74 @@ class SectionActivity(db.Model):
             'transcript_status': self.transcript_status,
         }
 
+
+# ─── Assignment (Devoir) ──────────────────────────────────────────────────────
+
+class SectionAssignment(db.Model):
+    """A homework/assignment attached to a TNSection. Teacher creates, students submit files."""
+    __tablename__ = 'section_assignment'
+
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)                   # assignment instructions
+    deliverables = db.Column(db.Text)                  # what students must submit
+    deadline = db.Column(db.DateTime)                  # submission deadline
+    allow_late = db.Column(db.Boolean, default=False)  # accept after deadline?
+    max_attempts = db.Column(db.Integer, default=1)    # how many re-submissions allowed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    section = db.relationship('TNSection', backref=db.backref('assignments', cascade='all, delete-orphan'))
+    submissions = db.relationship('AssignmentSubmission', backref='assignment',
+                                  cascade='all, delete-orphan', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'section_id': self.section_id,
+            'title': self.title,
+            'description': self.description,
+            'deliverables': self.deliverables,
+            'deadline': self.deadline.isoformat() if self.deadline else None,
+            'allow_late': self.allow_late,
+            'max_attempts': self.max_attempts,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class AssignmentSubmission(db.Model):
+    """A student's file submission for a SectionAssignment."""
+    __tablename__ = 'assignment_submission'
+
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('section_assignment.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    # files: JSON array of {path, original_name, file_type, size}
+    files = db.Column(db.JSON)
+    attempt_number = db.Column(db.Integer, default=1)
+    is_late = db.Column(db.Boolean, default=False)
+    status = db.Column(db.String(20), default='submitted')  # submitted | graded
+    grade = db.Column(db.Float)
+    feedback = db.Column(db.Text)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('User', backref=db.backref('assignment_submissions', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'assignment_id': self.assignment_id,
+            'student_id': self.student_id,
+            'student_name': self.student.username if self.student else None,
+            'student_email': self.student.email if self.student else None,
+            'files': self.files or [],
+            'attempt_number': self.attempt_number,
+            'is_late': self.is_late,
+            'status': self.status,
+            'grade': self.grade,
+            'feedback': self.feedback,
+            'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
+        }
+

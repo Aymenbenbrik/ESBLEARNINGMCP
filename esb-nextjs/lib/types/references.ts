@@ -74,7 +74,7 @@ export interface UpdateSectionContentData {
 
 // ─── Section Activities Types ─────────────────────────────────────────────────
 
-export type ActivityType = 'youtube' | 'quiz';
+export type ActivityType = 'youtube' | 'quiz' | 'assignment';
 
 export interface SectionActivity {
   id: number;
@@ -172,4 +172,46 @@ export interface TakeQuizResponse {
   questions: SectionQuizQuestion[];
   already_submitted: boolean;
   result?: SectionQuizSubmission;
+}
+
+// ─── Section Assignment Types ─────────────────────────────────────────────────
+
+export interface SectionAssignment {
+  id: number;
+  section_id: number;
+  title: string;
+  description: string | null;
+  deliverables: string | null;
+  deadline: string | null; // ISO datetime
+  allow_late: boolean;
+  max_attempts: number;
+  created_at: string;
+  updated_at: string;
+  // Teacher extras
+  submission_count?: number;
+  // Student extras
+  my_submissions?: AssignmentSubmission[];
+  attempts_used?: number;
+}
+
+export interface AssignmentSubmission {
+  id: number;
+  assignment_id: number;
+  student_id: number;
+  student_name: string | null;
+  student_email: string | null;
+  files: AssignmentFile[];
+  attempt_number: number;
+  is_late: boolean;
+  status: 'submitted' | 'graded';
+  grade: number | null;
+  feedback: string | null;
+  submitted_at: string;
+}
+
+export interface AssignmentFile {
+  path: string;
+  original_name: string;
+  file_type: string;
+  size: number; // bytes
 }

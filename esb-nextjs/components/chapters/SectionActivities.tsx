@@ -15,6 +15,7 @@ import {
   useCreateQuizFromBank,
   useQuizResult,
   useGradeSubmission,
+  useAssignment,
 } from '@/lib/hooks/useReferences';
 import { SectionActivity, SectionQuiz, SectionQuizQuestion, SectionQuizSubmissionDetailed, GradedAnswer } from '@/lib/types/references';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,10 @@ import {
   Layers,
   Database,
   Star,
+  FileText,
 } from 'lucide-react';
+import { SectionAssignmentManager } from './SectionAssignmentManager';
+import { SectionAssignmentTaker } from './SectionAssignmentTaker';
 
 interface SectionActivitiesProps {
   sectionId: number;
@@ -1204,10 +1208,12 @@ function SectionQuizTaker({ sectionId }: { sectionId: number }) {
 export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps) {
   const { data: activities = [], isLoading } = useSectionActivities(sectionId);
   const { data: quiz } = useSectionQuiz(sectionId);
+  const { data: assignment } = useAssignment(sectionId);
   const deleteMutation = useDeleteActivity(sectionId);
 
   const [showYoutubeForm, setShowYoutubeForm] = useState(false);
   const [showQuizSection, setShowQuizSection] = useState(false);
+  const [showAssignmentSection, setShowAssignmentSection] = useState(false);
 
   const youtubeActivities = activities.filter((a) => a.activity_type === 'youtube');
 
@@ -1223,7 +1229,7 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
               size="sm"
               variant="outline"
               className="h-7 rounded-full px-3 text-xs"
-              onClick={() => { setShowYoutubeForm((v) => !v); setShowQuizSection(false); }}
+              onClick={() => { setShowYoutubeForm((v) => !v); setShowQuizSection(false); setShowAssignmentSection(false); }}
             >
               <Youtube className="mr-1 h-3.5 w-3.5 text-red-500" />
               Vidéo YouTube
@@ -1232,10 +1238,19 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
               size="sm"
               variant="outline"
               className="h-7 rounded-full px-3 text-xs"
-              onClick={() => { setShowQuizSection((v) => !v); setShowYoutubeForm(false); }}
+              onClick={() => { setShowQuizSection((v) => !v); setShowYoutubeForm(false); setShowAssignmentSection(false); }}
             >
               <ClipboardList className="mr-1 h-3.5 w-3.5 text-bolt-accent" />
               {quiz ? 'Quiz' : 'Créer un Quiz'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => { setShowAssignmentSection((v) => !v); setShowYoutubeForm(false); setShowQuizSection(false); }}
+            >
+              <FileText className="mr-1 h-3.5 w-3.5 text-violet-500" />
+              {assignment ? 'Devoir' : 'Créer un devoir'}
             </Button>
           </div>
         )}
@@ -1290,11 +1305,22 @@ export function SectionActivities({ sectionId, canEdit }: SectionActivitiesProps
         </div>
       )}
 
+      {/* Assignment section */}
+      {(showAssignmentSection || assignment) && (
+        <div className="mt-3">
+          {canEdit ? (
+            <SectionAssignmentManager sectionId={sectionId} />
+          ) : (
+            <SectionAssignmentTaker sectionId={sectionId} />
+          )}
+        </div>
+      )}
+
       {/* Empty state */}
-      {youtubeActivities.length === 0 && !quiz && !showYoutubeForm && !showQuizSection && (
+      {youtubeActivities.length === 0 && !quiz && !assignment && !showYoutubeForm && !showQuizSection && !showAssignmentSection && (
         <p className="mt-3 text-center text-xs text-muted-foreground">
           {canEdit
-            ? 'Ajoutez une vidéo YouTube ou créez un quiz depuis la banque de questions.'
+            ? 'Ajoutez une vidéo YouTube, créez un quiz ou un devoir depuis la banque de questions.'
             : 'Aucune activité pour cette section.'}
         </p>
       )}
