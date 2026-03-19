@@ -16,7 +16,11 @@ import { SectionContentPanel } from '@/components/chapters/SectionContentPanel';
 import { SectionActivities } from '@/components/chapters/SectionActivities';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, MessageSquare, ClipboardList, Users, ChevronRight, Upload, BookOpen } from 'lucide-react';
+import {
+  FileText, MessageSquare, ClipboardList, Users,
+  ChevronRight, Upload, BookOpen,
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen,
+} from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,6 +35,8 @@ export default function ChapterDetailPage() {
   const deleteMutation = useDeleteChapter();
   const generateSummaryMutation = useGenerateSummary();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   const handleDelete = () => {
     deleteMutation.mutate(chapterId, {
@@ -128,17 +134,32 @@ export default function ChapterDetailPage() {
           />
         </div>
 
-        {/* ── MAIN: 3-column grid ──────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* ── MAIN: collapsible sidebars + center ───────────────────── */}
+        <div className="flex gap-4 items-start">
 
-          {/* LEFT: Documents + References (narrow) */}
-          <div className="lg:col-span-2 space-y-5">
-            <DocumentsList documents={documents} chapterId={chapterId} canEdit={chapter.can_edit} />
-            <ChapterReferences courseId={courseId} chapterId={chapterId} canEdit={chapter.can_edit} />
+          {/* ── LEFT SIDEBAR: Documents ─────────────────────────────── */}
+          <div className={`shrink-0 transition-all duration-300 ${leftOpen ? 'w-64' : 'w-10'}`}>
+            {/* Toggle button */}
+            <button
+              onClick={() => setLeftOpen(o => !o)}
+              className="mb-3 flex items-center gap-1.5 rounded-full border border-bolt-line bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm hover:text-bolt-ink transition-colors"
+              title={leftOpen ? 'Masquer les documents' : 'Afficher les documents'}
+            >
+              {leftOpen
+                ? <><PanelLeftClose className="h-3.5 w-3.5" /><span>Documents</span></>
+                : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
+
+            {leftOpen && (
+              <div className="space-y-4 overflow-hidden">
+                <DocumentsList documents={documents} chapterId={chapterId} canEdit={chapter.can_edit} />
+              </div>
+            )}
           </div>
 
-          {/* CENTER: TN Sections (largest) */}
-          <div className="lg:col-span-7">
+          {/* ── CENTER: Sections + Summary + References ──────────────── */}
+          <div className="flex-1 min-w-0 space-y-5">
+            {/* Sections accordion */}
             {tn_chapter && tn_chapter.sections.length > 0 ? (
               <Card className="rounded-[24px] border-bolt-line shadow-sm">
                 <CardHeader>
@@ -179,36 +200,51 @@ export default function ChapterDetailPage() {
                 Aucune section disponible pour ce chapitre.
               </div>
             )}
+
+            {/* Summary */}
+            <ChapterSummary
+              summary={chapter.summary}
+              canGenerate={chapter.can_edit}
+              onGenerate={handleGenerateSummary}
+              onRegenerate={handleRegenerateSummary}
+              isGenerating={generateSummaryMutation.isPending}
+            />
+
+            {/* References (below summary) */}
+            <ChapterReferences courseId={courseId} chapterId={chapterId} canEdit={chapter.can_edit} />
           </div>
 
-          {/* RIGHT: Activities per section */}
-          <div className="lg:col-span-3 space-y-4">
-            <h2 className="text-sm font-semibold text-bolt-ink px-1">Activités</h2>
-            {tn_chapter && tn_chapter.sections.length > 0 ? (
-              tn_chapter.sections.map((section) => (
-                <div key={section.id} className="rounded-[16px] border border-bolt-line bg-white p-4 shadow-sm space-y-2">
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Section {section.index}</p>
-                  <p className="text-xs font-medium text-bolt-ink leading-snug mb-2">{section.title}</p>
-                  <SectionActivities sectionId={section.id} canEdit={chapter.can_edit} />
-                </div>
-              ))
-            ) : (
-              <div className="rounded-[16px] border border-dashed border-bolt-line p-4 text-center text-xs text-muted-foreground">
-                Aucune activité.
+          {/* ── RIGHT SIDEBAR: Activities ────────────────────────────── */}
+          <div className={`shrink-0 transition-all duration-300 ${rightOpen ? 'w-72' : 'w-10'}`}>
+            {/* Toggle button */}
+            <button
+              onClick={() => setRightOpen(o => !o)}
+              className="mb-3 flex items-center gap-1.5 rounded-full border border-bolt-line bg-white px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm hover:text-bolt-ink transition-colors"
+              title={rightOpen ? 'Masquer les activités' : 'Afficher les activités'}
+            >
+              {rightOpen
+                ? <><span>Activités</span><PanelRightClose className="h-3.5 w-3.5" /></>
+                : <PanelRightOpen className="h-4 w-4" />}
+            </button>
+
+            {rightOpen && (
+              <div className="space-y-4 overflow-hidden">
+                {tn_chapter && tn_chapter.sections.length > 0 ? (
+                  tn_chapter.sections.map((section) => (
+                    <div key={section.id} className="rounded-[16px] border border-bolt-line bg-white p-4 shadow-sm space-y-2">
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Section {section.index}</p>
+                      <p className="text-xs font-medium text-bolt-ink leading-snug mb-2">{section.title}</p>
+                      <SectionActivities sectionId={section.id} canEdit={chapter.can_edit} />
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[16px] border border-dashed border-bolt-line p-4 text-center text-xs text-muted-foreground">
+                    Aucune activité.
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
-
-        {/* ── BOTTOM: Chapter Summary ───────────────────────────────── */}
-        <div className="mt-6">
-          <ChapterSummary
-            summary={chapter.summary}
-            canGenerate={chapter.can_edit}
-            onGenerate={handleGenerateSummary}
-            onRegenerate={handleRegenerateSummary}
-            isGenerating={generateSummaryMutation.isPending}
-          />
         </div>
       </div>
 
