@@ -115,7 +115,8 @@ export default function ChapterDetailPage() {
           </div>
         )}
 
-        <div className="space-y-6">
+        {/* ── Top: Summary + Chapter AA Matching (full width) ──────── */}
+        <div className="space-y-6 mb-6">
           <ChapterSummary
             summary={chapter.summary}
             canGenerate={chapter.can_edit}
@@ -123,116 +124,92 @@ export default function ChapterDetailPage() {
             onRegenerate={handleRegenerateSummary}
             isGenerating={generateSummaryMutation.isPending}
           />
-
-          {/* ── AA Matching ───────────────────────────────────────────── */}
           <ChapterAAMatching chapterId={chapterId} canEdit={chapter.can_edit} />
+        </div>
 
-          <DocumentsList documents={documents} chapterId={chapterId} canEdit={chapter.can_edit} />
+        {/* ── Main grid: Left (sections + docs + refs) | Right (activities) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* ── References ─────────────────────────────────────────────── */}
-          <ChapterReferences
-            courseId={courseId}
-            chapterId={chapterId}
-            canEdit={chapter.can_edit}
-          />
+          {/* ── LEFT COLUMN ──────────────────────────────────────────── */}
+          <div className="lg:col-span-2 space-y-6">
 
-          {tn_chapter && tn_chapter.sections.length > 0 && (
-            <Card className="rounded-[24px] border-bolt-line shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <span>TN sections · affichage minimal & moderne</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(tn_chapter.aaa || []).slice(0, 6).map((a) => (
-                      <span
-                        key={a.label}
-                        title={a.description || a.label}
-                        className="rounded-full bg-bolt-accent/10 px-2.5 py-1 text-xs font-semibold text-bolt-accent"
+            {/* 1. TN Sections (without AA per section) */}
+            {tn_chapter && tn_chapter.sections.length > 0 && (
+              <Card className="rounded-[24px] border-bolt-line shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold">Sections du chapitre</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {tn_chapter.sections.map((section) => (
+                      <details
+                        key={section.id}
+                        className="group rounded-[20px] border border-bolt-line bg-white open:shadow-sm"
                       >
-                        {a.label}
-                      </span>
-                    ))}
-                    {(tn_chapter.aap || []).slice(0, 6).map((a) => (
-                      <span
-                        key={a.label}
-                        title={a.description || a.label}
-                        className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"
-                      >
-                        {a.label}
-                      </span>
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4">
+                          <p className="font-semibold text-sm">
+                            Section {section.index} — {section.title}
+                          </p>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                        </summary>
+
+                        <div className="border-t border-bolt-line px-4 pb-4 pt-4 space-y-3">
+                          {chapter.can_edit && (
+                            <Button asChild variant="outline" size="sm" className="rounded-full">
+                              <Link
+                                href={`/courses/${courseId}/chapters/${chapterId}/documents/new?title=${encodeURIComponent(`Section ${section.index} - ${section.title}`)}`}
+                              >
+                                <Upload className="mr-2 h-4 w-4" />
+                                Ajouter un fichier de cours
+                              </Link>
+                            </Button>
+                          )}
+                          <SectionContentPanel
+                            sectionId={section.id}
+                            canEdit={chapter.can_edit}
+                          />
+                        </div>
+                      </details>
                     ))}
                   </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {tn_chapter.sections.map((section) => (
-                    <details
-                      key={section.id}
-                      className="group rounded-[20px] border border-bolt-line bg-white open:shadow-sm"
-                    >
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4">
-                        <div>
-                          <p className="font-semibold">
-                            Section {section.index}: {section.title}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {section.aaa && section.aaa.length > 0
-                              ? `${section.aaa.slice(0, 8).map((x) => x.label).join(' • ')}${section.aaa.length > 8 ? ' …' : ''}`
-                              : 'No AA mapping found for this section.'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full bg-bolt-ink/5 px-2 py-1 text-xs font-semibold text-bolt-muted">
-                            {(section.aaa || []).length} AA
-                          </span>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-90" />
-                        </div>
-                      </summary>
+                </CardContent>
+              </Card>
+            )}
 
-                      <div className="border-t border-bolt-line px-4 pb-4 pt-4">
-                        {(section.aaa && section.aaa.length > 0) ? (
-                          <div className="mb-4 flex flex-wrap gap-2">
-                            {section.aaa.map((a) => (
-                              <span
-                                key={a.label}
-                                title={a.description || a.label}
-                                className="rounded-full bg-bolt-accent/10 px-2.5 py-1 text-xs font-semibold text-bolt-accent"
-                              >
-                                {a.label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
+            {/* 2. Documents */}
+            <DocumentsList documents={documents} chapterId={chapterId} canEdit={chapter.can_edit} />
 
-                        {chapter.can_edit ? (
-                          <Button asChild variant="outline" size="sm" className="rounded-full">
-                            <Link
-                              href={`/courses/${courseId}/chapters/${chapterId}/documents/new?title=${encodeURIComponent(`Section ${section.index} - ${section.title}`)}`}
-                            >
-                              <Upload className="mr-2 h-4 w-4" />
-                              Ajouter un fichier de cours
-                            </Link>
-                          </Button>
-                        ) : null}
+            {/* 3. References */}
+            <ChapterReferences
+              courseId={courseId}
+              chapterId={chapterId}
+              canEdit={chapter.can_edit}
+            />
+          </div>
 
-                        {/* ── AI Section Content ──────────────────────── */}
-                        <SectionContentPanel
-                          sectionId={section.id}
-                          canEdit={chapter.can_edit}
-                        />
+          {/* ── RIGHT COLUMN: Activities per section ─────────────────── */}
+          <div className="space-y-4">
+            <h2 className="text-base font-semibold text-bolt-ink px-1">Activités du chapitre</h2>
 
-                        {/* ── Section Activities (YouTube + Quiz) ──────── */}
-                        <SectionActivities
-                          sectionId={section.id}
-                          canEdit={chapter.can_edit}
-                        />
-                      </div>
-                    </details>
-                  ))}
+            {tn_chapter && tn_chapter.sections.length > 0 ? (
+              tn_chapter.sections.map((section) => (
+                <div key={section.id} className="rounded-[16px] border border-bolt-line bg-white p-4 shadow-sm space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Section {section.index}
+                  </p>
+                  <p className="text-sm font-medium text-bolt-ink leading-snug mb-3">{section.title}</p>
+                  <SectionActivities
+                    sectionId={section.id}
+                    canEdit={chapter.can_edit}
+                  />
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ))
+            ) : (
+              <div className="rounded-[16px] border border-bolt-line bg-white p-6 text-center text-sm text-muted-foreground shadow-sm">
+                Aucune section disponible pour ce chapitre.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
