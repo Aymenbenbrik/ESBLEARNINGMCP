@@ -602,3 +602,23 @@ def tp_chatbot(tp_id):
     except Exception as e:
         logger.error(f"tp_chatbot error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@api_v1_bp.route('/chapters/<int:chapter_id>/ai-detect-tp', methods=['POST'])
+@jwt_required()
+def ai_detect_tp(chapter_id):
+    """AI analyzes chapter sections to suggest TP activities."""
+    from app.services.mcp_tools import detect_tp_opportunities
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.is_teacher and not user.is_superuser:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    data = request.get_json(silent=True) or {}
+    language = data.get('language', 'Python')
+
+    try:
+        result = detect_tp_opportunities(chapter_id, language)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"ai_detect_tp error: {e}")
+        return jsonify({'error': str(e)}), 500

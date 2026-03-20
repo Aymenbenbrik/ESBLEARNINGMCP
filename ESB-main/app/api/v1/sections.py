@@ -69,7 +69,7 @@ def _section_access(section_id: int):
 @api_v1_bp.route('/chapters/<int:chapter_id>/sections', methods=['POST'])
 @jwt_required()
 def create_section(chapter_id):
-    """Teacher adds a section to a chapter."""
+    """Teacher adds a section or sub-section to a chapter."""
     user, tn_chapter, course, is_teacher = _chapter_access(chapter_id)
     if not is_teacher:
         return jsonify({'error': 'Teachers only'}), 403
@@ -79,16 +79,36 @@ def create_section(chapter_id):
     if not title:
         return jsonify({'error': 'title required'}), 400
 
-    # Auto-generate index: chapter_label.N
-    existing = TNSection.query.filter_by(chapter_id=tn_chapter.id).all()
-    chapter_label = str(tn_chapter.index) if tn_chapter.index else str(len(existing) + 1)
-    max_n = max((int(s.index.split('.')[-1]) for s in existing if '.' in s.index), default=0)
-    index = f"{chapter_label}.{max_n + 1}"
+    parent_section_id = data.get('parent_section_id')
 
-    section = TNSection(chapter_id=tn_chapter.id, index=index, title=title)
+    if parent_section_id:
+        # Create a sub-section under an existing section
+        parent = TNSection.query.get_or_404(parent_section_id)
+        existing_all = TNSection.query.filter_by(chapter_id=parent.chapter_id).all()
+        existing_indexes = {s.index for s in existing_all}
+        n = 1
+        while f"{parent.index}.{n}" in existing_indexes:
+            n += 1
+        index = f"{parent.index}.{n}"
+        section = TNSection(
+            chapter_id=parent.chapter_id,
+            parent_section_id=parent_section_id,
+            index=index,
+            title=title,
+        )
+    else:
+        # Auto-generate index: chapter_label.N (top-level sections only)
+        existing = TNSection.query.filter_by(chapter_id=tn_chapter.id).filter(
+            TNSection.parent_section_id == None  # noqa: E711
+        ).all()
+        chapter_label = str(tn_chapter.index) if tn_chapter.index else str(len(existing) + 1)
+        max_n = max((int(s.index.split('.')[-1]) for s in existing if '.' in s.index), default=0)
+        index = f"{chapter_label}.{max_n + 1}"
+        section = TNSection(chapter_id=tn_chapter.id, index=index, title=title)
+
     db.session.add(section)
     db.session.commit()
-    return jsonify({'section': {'id': section.id, 'index': section.index, 'title': section.title}}), 201
+    return jsonify({'section': section.to_dict()}), 201
 
 
 @api_v1_bp.route('/sections/<int:section_id>', methods=['PUT'])
@@ -115,6 +135,37 @@ def delete_section(section_id):
     db.session.delete(section)
     db.session.commit()
     return jsonify({'message': 'Section supprimée'}), 200
+
+
+@api_v1_bp.route('/sections/<int:section_id>', methods=['GET'])
+@jwt_required()
+def get_section_detail(section_id):
+    """Get section detail with activities and sub-sections."""
+    user, section, course, is_teacher = _section_access(section_id)
+    activities = SectionActivity.query.filter_by(section_id=section_id).order_by(SectionActivity.position).all()
+    return jsonify({
+        'section': section.to_dict(),
+        'activities': [a.to_dict() for a in activities],
+        'is_teacher': is_teacher,
+        'course_id': course.id if course else None,
+        'chapter_id': section.chapter_id,
+    })
+
+
+@api_v1_bp.route('/activities/<int:activity_id>', methods=['PATCH'])
+@jwt_required()
+def update_activity(activity_id):
+    """Update activity title."""
+    user = _get_user()
+    activity = SectionActivity.query.get_or_404(activity_id)
+    _, section, course, is_teacher = _section_access(activity.section_id)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+    data = request.get_json(silent=True) or {}
+    if 'title' in data:
+        activity.title = data['title'].strip()
+    db.session.commit()
+    return jsonify({'activity': activity.to_dict()})
 
 
 # ─── Image activity ────────────────────────────────────────────────────────────
@@ -464,3 +515,80 @@ def reorder_activities(section_id):
     return jsonify({'message': 'Activités réordonnées'}), 200
 
 
+
+
+# ─── File activity ─────────────────────────────────────────────────────────────
+
+@api_v1_bp.route('/sections/<int:section_id>/activities/file', methods=['POST'])
+@jwt_required()
+def add_file_activity(section_id):
+    """Upload a file (PDF, DOCX, ZIP, etc.) as a section activity."""
+    user, section, course, is_teacher = _section_access(section_id)
+    if not is_teacher:
+        return jsonify({'error': 'Teachers only'}), 403
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    title = request.form.get('title', file.filename or 'Fichier')
+
+    ALLOWED_EXTS = {'pdf', 'docx', 'doc', 'zip', 'pptx', 'xlsx'}
+    ext = file.filename.rsplit('.', 1)[-1].lower() if file.filename and '.' in file.filename else ''
+    if ext not in ALLOWED_EXTS:
+        return jsonify({'error': f'Extension .{ext} non autorisée. Autorisées: {", ".join(sorted(ALLOWED_EXTS))}'}), 400
+
+    upload_dir = os.path.join(current_app.root_path, '..', 'uploads', 'section_files')
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+    file_url = f"/uploads/section_files/{filename}"
+
+    max_pos = db.session.query(db.func.max(SectionActivity.position)).filter_by(section_id=section_id).scalar() or 0
+    act = SectionActivity(
+        section_id=section_id, activity_type='file', title=title,
+        image_url=file_url, file_path=filepath, file_name=file.filename,
+        position=max_pos + 1,
+    )
+    db.session.add(act)
+    db.session.commit()
+    return jsonify({'activity': act.to_dict()}), 201
+
+
+# ─── AI Section Summary ────────────────────────────────────────────────────────
+
+@api_v1_bp.route('/sections/<int:section_id>/ai-summary', methods=['POST'])
+@jwt_required()
+def ai_section_summary(section_id):
+    """Generate AI summary for a section based on its activities."""
+    user, section, course, is_teacher = _section_access(section_id)
+    # Both teacher and student can use this
+
+    from app.services.mcp_tools import _llm
+    activities = SectionActivity.query.filter_by(section_id=section_id).all()
+
+    context_parts = [f"Section: {section.title}"]
+    for act in activities:
+        if act.activity_type == 'text_doc' and act.text_content:
+            context_parts.append(f"Document '{act.title}':\n{act.text_content[:1000]}")
+        elif act.activity_type == 'youtube':
+            context_parts.append(f"Vidéo: {act.title}")
+
+    context = "\n\n".join(context_parts)
+
+    try:
+        llm = _llm(0.3)
+        prompt = f"""Génère un résumé pédagogique concis (200-300 mots) de cette section de cours.
+Inclus les points clés, les concepts importants et les objectifs d'apprentissage.
+
+{context}
+
+Résumé en français:"""
+
+        response = llm.invoke(prompt)
+        summary = response.content if hasattr(response, 'content') else str(response)
+        return jsonify({'summary': summary})
+    except Exception as e:
+        logger.error(f"ai_section_summary error: {e}")
+        return jsonify({'error': str(e)}), 500

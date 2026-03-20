@@ -160,6 +160,16 @@ export const sectionActivitiesApi = {
     return res.data.activities;
   },
 
+  getSectionDetail: async (sectionId: number) => {
+    const res = await apiClient.get(`/api/v1/sections/${sectionId}`);
+    return res.data;
+  },
+
+  updateActivityTitle: async (activityId: number, title: string) => {
+    const res = await apiClient.patch(`/api/v1/activities/${activityId}`, { title });
+    return res.data;
+  },
+
   addYoutube: async (sectionId: number, url: string, title?: string): Promise<SectionActivity> => {
     const res = await apiClient.post<SectionActivity>(
       `/api/v1/sections/${sectionId}/activities/youtube`,
@@ -195,6 +205,25 @@ export const sectionActivitiesApi = {
       `/api/v1/sections/${sectionId}/activities/pdf-extract`,
       { title, document_id: documentId, page_start: pageStart, page_end: pageEnd }
     );
+    return res.data;
+  },
+
+  addFile: async (sectionId: number, file: File, title: string): Promise<SectionActivity> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const res = await fetch(`${apiUrl}/api/v1/sections/${sectionId}/activities/file`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    if (!res.ok) throw new Error('Failed to upload file');
+    return res.json();
+  },
+
+  aiSummary: async (sectionId: number): Promise<{ summary: string }> => {
+    const res = await apiClient.post(`/api/v1/sections/${sectionId}/ai-summary`);
     return res.data;
   },
 
@@ -360,6 +389,10 @@ export const sectionAssignmentApi = {
 export const sectionsApi = {
   create: async (chapterId: number, title: string): Promise<{ section: { id: number; index: number; title: string } }> => {
     const res = await apiClient.post(`/api/v1/chapters/${chapterId}/sections`, { title });
+    return res.data;
+  },
+  createSection: async (chapterId: number, data: { title: string; parent_section_id?: number }): Promise<{ section: any }> => {
+    const res = await apiClient.post(`/api/v1/chapters/${chapterId}/sections`, data);
     return res.data;
   },
   update: async (sectionId: number, data: { title?: string; index?: string }): Promise<void> => {

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { chaptersApi, AAMatchingData } from '../api/chapters';
-import { sectionsApi, chapterSidebarApi, dndApi } from '../api/references';
+import { sectionsApi, chapterSidebarApi, dndApi, sectionActivitiesApi } from '../api/references';
 import {
   Chapter,
   ChapterDetails,
@@ -248,6 +248,47 @@ export function useMoveActivity() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['section-activities'] }),
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Échec du déplacement de l\'activité');
+    },
+  });
+}
+
+// ── Section Detail ────────────────────────────────────────────────────────────
+
+export function useSection(sectionId: number | null) {
+  return useQuery({
+    queryKey: ['section', sectionId],
+    queryFn: () => sectionActivitiesApi.getSectionDetail(sectionId!),
+    enabled: !!sectionId,
+  });
+}
+
+export function useCreateSubSection(chapterId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentSectionId, title }: { parentSectionId: number; title: string }) =>
+      sectionsApi.createSection(chapterId, { title, parent_section_id: parentSectionId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chapterKeys.detail(chapterId) });
+      toast.success('Sous-section ajoutée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la création de la sous-section');
+    },
+  });
+}
+
+export function useUpdateActivityTitle(sectionId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ activityId, title }: { activityId: number; title: string }) =>
+      sectionActivitiesApi.updateActivityTitle(activityId, title),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['section-activities', sectionId] });
+      qc.invalidateQueries({ queryKey: ['section', sectionId] });
+      toast.success('Titre mis à jour');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la mise à jour du titre');
     },
   });
 }

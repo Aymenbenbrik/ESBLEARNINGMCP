@@ -7,6 +7,7 @@ import {
   useChapter, useDeleteChapter, useGenerateSummary,
   useCreateSection, useDeleteSection, useUpdateSection,
   useReorderSections, useChapterDeadlines, useActivityProgress,
+  useCreateSubSection,
 } from '@/lib/hooks/useChapters';
 import { useCourse } from '@/lib/hooks/useCourses';
 import { useAuth } from '@/lib/hooks/useAuth';
@@ -44,6 +45,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { practicalWorkApi } from '@/lib/api/practicalWork';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Loader2, Bot } from 'lucide-react';
 
 export default function ChapterDetailPage() {
   const params = useParams();
@@ -71,6 +80,15 @@ export default function ChapterDetailPage() {
   const [editingSectionId, setEditingSectionId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [addingSubSectionFor, setAddingSubSectionFor] = useState<number | null>(null);
+  const [newSubSectionTitle, setNewSubSectionTitle] = useState('');
+  const createSubSectionMutation = useCreateSubSection(chapterId);
+
+  // AI detect TP state
+  const [showDetectTpModal, setShowDetectTpModal] = useState(false);
+  const [detectTpLanguage, setDetectTpLanguage] = useState('Python');
+  const [detectTpLoading, setDetectTpLoading] = useState(false);
+  const [detectTpSuggestions, setDetectTpSuggestions] = useState<Array<{title: string; description: string; type: string; estimated_duration: string}>>([]);
 
   useEffect(() => {
     if (data?.tn_chapter?.sections) {
@@ -125,6 +143,26 @@ export default function ChapterDetailPage() {
       onSuccess: () => setDeletingId(null),
       onError: () => setDeletingId(null),
     });
+  };
+
+  const handleAddSubSection = (parentSectionId: number) => {
+    if (!newSubSectionTitle.trim()) return;
+    createSubSectionMutation.mutate(
+      { parentSectionId, title: newSubSectionTitle.trim() },
+      { onSuccess: () => { setNewSubSectionTitle(''); setAddingSubSectionFor(null); } }
+    );
+  };
+
+  const handleDetectTp = async () => {
+    setDetectTpLoading(true);
+    try {
+      const result = await practicalWorkApi.detectTpOpportunities(chapterId, detectTpLanguage);
+      setDetectTpSuggestions(result.suggestions || []);
+    } catch {
+      // toast not available here without import, use console
+    } finally {
+      setDetectTpLoading(false);
+    }
   };
 
   // Compute progress from deadlines
@@ -298,6 +336,17 @@ export default function ChapterDetailPage() {
                         {generateSummaryMutation.isPending ? 'Génération...' : 'Résumé IA'}
                       </Button>
                     )}
+                    {isTeacher && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full text-xs px-3 border-bolt-line"
+                        onClick={() => { setShowDetectTpModal(true); setDetectTpSuggestions([]); }}
+                      >
+                        <Bot className="mr-1.5 h-3.5 w-3.5" />
+                        Détecter des TPs
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -387,7 +436,12 @@ export default function ChapterDetailPage() {
                                       ) : (
                                         <>
                                           <span className="text-xs text-muted-foreground font-medium shrink-0">Section {section.index}</span>
-                                          <h4 className="font-semibold text-sm text-bolt-ink flex-1 truncate">{section.title}</h4>
+                                          <Link
+                                            href={`/courses/${courseId}/chapters/${chapterId}/sections/${section.id}`}
+                                            className="font-semibold text-sm text-bolt-ink flex-1 truncate no-underline hover:text-blue-600 transition-colors"
+                                          >
+                                            {section.title}
+                                          </Link>
                                           <div className="flex items-center gap-0.5 shrink-0">
                                             <button onClick={() => handleStartEdit(section.id, section.title)} className="rounded-full p-1.5 text-muted-foreground hover:text-bolt-ink hover:bg-gray-100 transition-colors">
                                               <Pencil className="h-3 w-3" />
@@ -402,6 +456,37 @@ export default function ChapterDetailPage() {
                                     <div className="px-4 py-3 space-y-2">
                                       <SectionContentPanel sectionId={section.id} canEdit={chapter.can_edit} />
                                       <SectionActivities sectionId={section.id} canEdit={chapter.can_edit} allSections={tn_chapter?.sections ?? []} />
+                                      {isTeacher && (
+                                        addingSubSectionFor === section.id ? (
+                                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-bolt-line/50">
+                                            <Input
+                                              placeholder="Titre de la sous-section"
+                                              value={newSubSectionTitle}
+                                              onChange={e => setNewSubSectionTitle(e.target.value)}
+                                              className="h-7 rounded-[8px] text-sm flex-1"
+                                              autoFocus
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') handleAddSubSection(section.id);
+                                                if (e.key === 'Escape') { setAddingSubSectionFor(null); setNewSubSectionTitle(''); }
+                                              }}
+                                            />
+                                            <Button size="sm" className="h-7 rounded-full px-3 text-xs" onClick={() => handleAddSubSection(section.id)} disabled={createSubSectionMutation.isPending || !newSubSectionTitle.trim()}>
+                                              Ajouter
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="h-7 rounded-full text-xs" onClick={() => { setAddingSubSectionFor(null); setNewSubSectionTitle(''); }}>
+                                              Annuler
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => setAddingSubSectionFor(section.id)}
+                                            className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-bolt-ink transition-colors"
+                                          >
+                                            <Plus className="h-3 w-3" />
+                                            Ajouter une sous-section
+                                          </button>
+                                        )
+                                      )}
                                     </div>
                                   </div>
                                 </SortableSection>
@@ -469,6 +554,82 @@ export default function ChapterDetailPage() {
         chapterName={chapter.title}
         onDelete={handleDelete}
       />
+
+      {/* AI Detect TP Modal */}
+      <Dialog open={showDetectTpModal} onOpenChange={setShowDetectTpModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-violet-600" />
+              Détecter des TPs par IA
+            </DialogTitle>
+            <DialogDescription>
+              L&apos;IA analyse le contenu du chapitre et propose des travaux pratiques pertinents.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-bolt-ink whitespace-nowrap">Langage :</label>
+              <Select value={detectTpLanguage} onValueChange={setDetectTpLanguage}>
+                <SelectTrigger className="w-40 h-9 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['Python', 'SQL', 'R', 'Java', 'C', 'C++'].map(lang => (
+                    <SelectItem key={lang} value={lang}>{lang}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleDetectTp}
+                disabled={detectTpLoading}
+                className="rounded-full px-4 h-9 text-sm bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                {detectTpLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Bot className="h-4 w-4 mr-1.5" />}
+                {detectTpLoading ? 'Analyse...' : 'Analyser'}
+              </Button>
+            </div>
+
+            {detectTpSuggestions.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-bolt-ink">{detectTpSuggestions.length} TP{detectTpSuggestions.length > 1 ? 's' : ''} suggéré{detectTpSuggestions.length > 1 ? 's' : ''}</p>
+                {detectTpSuggestions.map((s, i) => (
+                  <div key={i} className="rounded-xl border border-bolt-line bg-white p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-sm text-bolt-ink">{s.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{s.description}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{s.type}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">⏱ {s.estimated_duration}</span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 rounded-full text-xs border-violet-300 text-violet-700 hover:bg-violet-50"
+                        onClick={() => {
+                          const params = new URLSearchParams({ title: s.title, description: s.description });
+                          router.push(`/courses/${courseId}/chapters/${chapterId}/tp/create?${params.toString()}`);
+                          setShowDetectTpModal(false);
+                        }}
+                      >
+                        Créer ce TP
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!detectTpLoading && detectTpSuggestions.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                Cliquez sur &quot;Analyser&quot; pour détecter des TPs basés sur le contenu du chapitre.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

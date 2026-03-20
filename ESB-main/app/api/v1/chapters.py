@@ -147,12 +147,21 @@ def get_chapter(chapter_id):
                             'id': section.id,
                             'index': section.index,
                             'title': section.title,
+                            'position': section.position,
+                            'parent_section_id': section.parent_section_id,
+                            'sub_sections': [{
+                                'id': s.id,
+                                'index': s.index,
+                                'title': s.title,
+                                'position': s.position,
+                                'parent_section_id': s.parent_section_id,
+                            } for s in (section.sub_sections or [])],
                             'aaa': [{
                                 'number': int(link.aa.number),
                                 'label': f"AA {int(link.aa.number)}",
                                 'description': (link.description_override or getattr(link.aa, 'description', '') or '')
                             } for link in sorted((section.aa_links or []), key=lambda l: int(l.aa.number))]
-                        } for section in (tnc.sections or [])]
+                        } for section in (tnc.sections or []) if not section.parent_section_id]
                     }
                     break
 

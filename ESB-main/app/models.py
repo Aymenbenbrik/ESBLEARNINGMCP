@@ -644,16 +644,36 @@ class TNSection(db.Model):
     __tablename__ = 'tn_section'
     id = db.Column(db.Integer, primary_key=True)
     chapter_id = db.Column(db.Integer, db.ForeignKey('tn_chapter.id'), nullable=False)
+    parent_section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=True)
     index = db.Column(db.String(20), nullable=False)  # e.g. "1.1"
     title = db.Column(db.Text, nullable=False)
     position = db.Column(db.Integer, default=0)  # drag-and-drop order
 
     chapter = db.relationship('TNChapter', back_populates='sections')
     aa_links = db.relationship('TNSectionAA', back_populates='section', cascade='all, delete-orphan')
+    sub_sections = db.relationship(
+        'TNSection',
+        backref=db.backref('parent', remote_side=[id]),
+        foreign_keys='TNSection.parent_section_id',
+        cascade='all, delete-orphan',
+    )
 
     __table_args__ = (
         db.UniqueConstraint('chapter_id', 'index', name='uq_tn_section_idx'),
     )
+
+    def to_dict(self, include_sub_sections=True):
+        d = {
+            'id': self.id,
+            'chapter_id': self.chapter_id,
+            'parent_section_id': self.parent_section_id,
+            'index': self.index,
+            'title': self.title,
+            'position': self.position,
+        }
+        if include_sub_sections:
+            d['sub_sections'] = [s.to_dict(include_sub_sections=False) for s in self.sub_sections]
+        return d
 
 
 class TNChapterAA(db.Model):
@@ -1267,7 +1287,7 @@ class SectionActivity(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     section_id = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=False)
-    activity_type = db.Column(db.String(20), nullable=False)   # 'youtube'|'quiz'|'image'|'text_doc'|'assignment'|'pdf_extract'
+    activity_type = db.Column(db.String(20), nullable=False)   # 'youtube'|'quiz'|'image'|'text_doc'|'assignment'|'pdf_extract'|'file'
     title = db.Column(db.String(200), nullable=False)
     position = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1284,6 +1304,9 @@ class SectionActivity(db.Model):
     text_content = db.Column(db.Text, nullable=True)
     # Assignment reference
     assignment_id = db.Column(db.Integer, db.ForeignKey('section_assignment.id'), nullable=True)
+    # File activity
+    file_path = db.Column(db.String(500), nullable=True)
+    file_name = db.Column(db.String(300), nullable=True)
 
     section = db.relationship('TNSection', backref=db.backref('activities', cascade='all, delete-orphan',
                                                               order_by='SectionActivity.position'))
@@ -1308,6 +1331,8 @@ class SectionActivity(db.Model):
             'image_filename': self.image_filename,
             'text_content': self.text_content,
             'assignment_id': self.assignment_id,
+            'file_path': self.file_path,
+            'file_name': self.file_name,
         }
 
 

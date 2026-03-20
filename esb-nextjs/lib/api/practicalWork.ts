@@ -126,4 +126,9 @@ export const practicalWorkApi = {
     });
     return data;
   },
+
+  detectTpOpportunities: async (chapterId: number, language = 'Python'): Promise<{ suggestions: Array<{ title: string; description: string; type: string; estimated_duration: string }> }> => {
+    const res = await apiClient.post(`/api/v1/chapters/${chapterId}/ai-detect-tp`, { language });
+    return res.data;
+  },
 };

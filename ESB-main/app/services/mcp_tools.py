@@ -731,3 +731,61 @@ Réponds TOUJOURS en français."""
     except Exception as e:
         logger.error(f"chat_with_student error: {e}")
         return {'reply': "Je rencontre une difficulté technique. Essayez de décomposer votre problème étape par étape !"}
+
+# ─── detect_tp_opportunities ─────────────────────────────────────────────────
+
+def detect_tp_opportunities(chapter_id: int, language: str = "Python") -> dict:
+    """
+    Analyzes chapter sections to detect practical work opportunities.
+    Returns a list of suggested TP topics with titles and descriptions.
+    """
+    from app.models import TNChapter
+    tn_chapter = TNChapter.query.get(chapter_id)
+    if not tn_chapter:
+        return {"suggestions": []}
+
+    sections = tn_chapter.sections if tn_chapter.sections else []
+    context = "Sections du chapitre:\n" + "\n".join(f"- {s.title}" for s in sections)
+
+    # Try to enrich with text activities
+    for section in sections[:5]:
+        for act in (section.activities or []):
+            if hasattr(act, 'activity_type') and act.activity_type == 'text_doc' and act.text_content:
+                context += f"\n\nContenu de '{section.title}':\n{act.text_content[:800]}"
+                break
+
+    llm = _llm(0.3)
+    prompt = f"""Tu es un expert pédagogique. Analyse le contenu suivant d'un chapitre de cours et propose 3 à 5 activités pratiques (TP) pertinentes.
+
+Contenu du chapitre:
+{context}
+
+Langage de programmation suggéré: {language}
+
+Pour chaque TP suggéré, donne:
+1. Un titre court et précis
+2. Une description en 2-3 phrases expliquant l'objectif
+3. Le type de TP (exercice, projet, analyse de données, etc.)
+
+Réponds en JSON strict avec ce format:
+{{
+  "suggestions": [
+    {{
+      "title": "Titre du TP",
+      "description": "Description de l'objectif pédagogique",
+      "type": "exercice|projet|analyse",
+      "estimated_duration": "1h|2h|3h"
+    }}
+  ]
+}}"""
+
+    try:
+        response = llm.invoke(prompt)
+        import json, re
+        text = response.content if hasattr(response, 'content') else str(response)
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except Exception as e:
+        logger.error(f"detect_tp_opportunities error: {e}")
+    return {"suggestions": []}

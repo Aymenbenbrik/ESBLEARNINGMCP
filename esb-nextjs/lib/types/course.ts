@@ -32,6 +32,10 @@ export interface TNSection {
   id: number;
   index: string;
   title: string;
+  chapter_id?: number;
+  parent_section_id?: number | null;
+  position?: number;
+  sub_sections?: TNSection[];
   aaa?: TNNormItem[];
 }
 

@@ -110,6 +110,14 @@ def _bootstrap_db(app: Flask):
             if 'chapter_id' not in c:
                 db.session.execute(text('ALTER TABLE chat_session ADD COLUMN chapter_id INTEGER'))
 
+        # TNSection: add parent_section_id for sub-sections support
+        if table_exists('tn_section'):
+            c = cols('tn_section')
+            if 'parent_section_id' not in c:
+                db.session.execute(text(
+                    'ALTER TABLE tn_section ADD COLUMN parent_section_id INTEGER REFERENCES tn_section(id)'
+                ))
+
         db.session.commit()
 
 

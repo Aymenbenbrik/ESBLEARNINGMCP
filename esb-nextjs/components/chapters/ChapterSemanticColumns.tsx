@@ -345,7 +345,8 @@ function TPCard({
 
 function SemanticColumn({
   col,
-  activities,
+  sections,
+  allActivities,
   documents,
   practicalWorks,
   canEdit,
@@ -355,7 +356,8 @@ function SemanticColumn({
   isLoading,
 }: {
   col: (typeof COLUMNS)[number];
-  activities: SectionActivity[];
+  sections: TNSection[];
+  allActivities: SectionActivity[];
   documents?: Document[];
   practicalWorks?: PracticalWork[];
   canEdit: boolean;
@@ -366,7 +368,25 @@ function SemanticColumn({
 }) {
   const [showAddVideo, setShowAddVideo] = useState(false);
 
+  // Group activities by section for grouped display
+  const activitiesBySection = sections.reduce<Record<number, SectionActivity[]>>((acc, s) => {
+    acc[s.id] = allActivities.filter(
+      a => a.section_id === s.id && col.types.includes(a.activity_type as ActivityType)
+    );
+    // Also include sub-section activities
+    (s.sub_sections ?? []).forEach(sub => {
+      acc[sub.id] = allActivities.filter(
+        a => a.section_id === sub.id && col.types.includes(a.activity_type as ActivityType)
+      );
+    });
+    return acc;
+  }, {});
+
+  const activities = allActivities.filter(a => col.types.includes(a.activity_type as ActivityType));
+
   const totalItems = activities.length + (documents?.length ?? 0) + (practicalWorks?.length ?? 0);
+
+  const hasSectionGroups = sections.length > 1 || sections.some(s => (s.sub_sections ?? []).length > 0);
 
   return (
     <div className={`rounded-2xl border-2 ${col.border} ${col.bg} flex flex-col min-h-[320px]`}>
@@ -403,27 +423,112 @@ function SemanticColumn({
               />
             ))}
 
-            {/* Activities */}
-            {activities.map((activity) => (
-              <ActivityCard
-                key={activity.id}
-                activity={activity}
-                courseId={courseId}
-                chapterId={chapterId}
-                canEdit={canEdit}
-              />
-            ))}
-
-            {/* Practical Works (TP Code) */}
-            {practicalWorks?.map((tp) => (
-              <TPCard
-                key={`tp-${tp.id}`}
-                tp={tp}
-                courseId={courseId}
-                chapterId={chapterId}
-                canEdit={canEdit}
-              />
-            ))}
+            {col.id !== 'pratiques' ? (
+              /* Activities grouped by section */
+              hasSectionGroups ? (
+                sections.map(section => {
+                  const sectionActivities = activitiesBySection[section.id] ?? [];
+                  const subSections = section.sub_sections ?? [];
+                  const hasSubContent = subSections.some(sub => (activitiesBySection[sub.id] ?? []).length > 0);
+                  if (sectionActivities.length === 0 && !hasSubContent) return null;
+                  return (
+                    <div key={section.id}>
+                      {sections.length > 1 && (
+                        <Link
+                          href={`/courses/${courseId}/chapters/${chapterId}/sections/${section.id}`}
+                          className="block text-xs font-semibold text-muted-foreground hover:text-bolt-ink hover:underline transition-colors mb-1 no-underline truncate"
+                        >
+                          {section.index} — {section.title}
+                        </Link>
+                      )}
+                      <div className="space-y-1.5">
+                        {sectionActivities.map(activity => (
+                          <ActivityCard
+                            key={activity.id}
+                            activity={activity}
+                            courseId={courseId}
+                            chapterId={chapterId}
+                            canEdit={canEdit}
+                          />
+                        ))}
+                        {/* Sub-sections */}
+                        {subSections.map(sub => {
+                          const subActivities = activitiesBySection[sub.id] ?? [];
+                          if (subActivities.length === 0) return null;
+                          return (
+                            <div key={sub.id} className="ml-3 space-y-1">
+                              <Link
+                                href={`/courses/${courseId}/chapters/${chapterId}/sections/${sub.id}`}
+                                className="block text-xs text-muted-foreground/70 hover:text-bolt-ink hover:underline transition-colors no-underline truncate"
+                              >
+                                ↳ {sub.index} {sub.title}
+                              </Link>
+                              {subActivities.map(activity => (
+                                <ActivityCard
+                                  key={activity.id}
+                                  activity={activity}
+                                  courseId={courseId}
+                                  chapterId={chapterId}
+                                  canEdit={canEdit}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                /* Flat list (single section, no sub-sections) */
+                activities.map((activity) => (
+                  <ActivityCard
+                    key={activity.id}
+                    activity={activity}
+                    courseId={courseId}
+                    chapterId={chapterId}
+                    canEdit={canEdit}
+                  />
+                ))
+              )
+            ) : (
+              /* Pratiques: activities (text_doc/image/pdf_extract) + Practical Works (TP Code) */
+              <>
+                {(hasSectionGroups ? (
+                  sections.flatMap(section => {
+                    const sectionActivities = activitiesBySection[section.id] ?? [];
+                    return sectionActivities.map(activity => (
+                      <ActivityCard
+                        key={activity.id}
+                        activity={activity}
+                        courseId={courseId}
+                        chapterId={chapterId}
+                        canEdit={canEdit}
+                      />
+                    ));
+                  })
+                ) : (
+                  activities.map((activity) => (
+                    <ActivityCard
+                      key={activity.id}
+                      activity={activity}
+                      courseId={courseId}
+                      chapterId={chapterId}
+                      canEdit={canEdit}
+                    />
+                  ))
+                ))}
+                {practicalWorks?.map((tp) => (
+                  <TPCard
+                    key={`tp-${tp.id}`}
+                    tp={tp}
+                    courseId={courseId}
+                    chapterId={chapterId}
+                    canEdit={canEdit}
+                  />
+                ))}
+              </>
+            )}
 
             {totalItems === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -528,19 +633,6 @@ export function ChapterSemanticColumns({
   const allActivities = queries.flatMap((q) => q.data ?? []);
   const allPracticalWorks = tpQueries.flatMap((q) => q.data ?? []);
 
-  // Categorize activities
-  const docActivities = allActivities.filter((a) =>
-    COLUMNS[0].types.includes(a.activity_type as ActivityType)
-  );
-  const practicalActivities = allActivities.filter((a) =>
-    COLUMNS[1].types.includes(a.activity_type as ActivityType)
-  );
-  const consolidationActivities = allActivities.filter((a) =>
-    COLUMNS[2].types.includes(a.activity_type as ActivityType)
-  );
-
-  const columnActivities = [docActivities, practicalActivities, consolidationActivities];
-
   if (sectionIds.length === 0 && !canEdit) {
     return (
       <div className="rounded-2xl border-2 border-dashed border-bolt-line p-16 text-center">
@@ -567,7 +659,8 @@ export function ChapterSemanticColumns({
         <SemanticColumn
           key={col.id}
           col={col}
-          activities={columnActivities[idx]}
+          sections={sections}
+          allActivities={allActivities}
           documents={idx === 0 ? documents : undefined}
           practicalWorks={idx === 1 ? allPracticalWorks : undefined}
           canEdit={canEdit}
