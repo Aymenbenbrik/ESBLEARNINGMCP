@@ -5,8 +5,9 @@ import { Upload, Trash2, Brain, FileText, CheckCircle, XCircle, Lightbulb, Info 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCourseExam, useUploadExam, useAnalyzeExam, useDeleteExam } from '@/lib/hooks/useCourses';
+import { useCourseExam, useUploadExam, useAnalyzeExam, useDeleteExam, useTnExams } from '@/lib/hooks/useCourses';
 import { BloomDistribution, AAAlignment, ExamEvaluation } from '@/lib/types/course';
+import { ExamMCPPanel } from './ExamMCPPanel';
 
 interface Props {
   courseId: number;
@@ -167,6 +168,7 @@ function EvalDashboard({ ev }: { ev: ExamEvaluation }) {
 
 export function ExamTab({ courseId, canEdit }: Props) {
   const { data: exam, isLoading } = useCourseExam(courseId);
+  const { data: tnExams } = useTnExams(courseId);
   const uploadExam = useUploadExam(courseId);
   const analyzeExam = useAnalyzeExam(courseId);
   const deleteExam = useDeleteExam(courseId);
@@ -274,6 +276,27 @@ export function ExamTab({ courseId, canEdit }: Props) {
         <div>
           <h3 className="text-base font-semibold mb-4">🤖 Évaluation IA</h3>
           <EvalDashboard ev={exam.ai_evaluation} />
+        </div>
+      )}
+
+      {/* MCP Analyse Approfondie — for TN Exam Documents */}
+      {tnExams && tnExams.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-base font-semibold">📋 Examens TN uploadés</h3>
+          {tnExams.map(doc => (
+            <div key={doc.id} className="rounded-xl border border-bolt-line bg-white shadow-sm p-4 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <FileText className="h-4 w-4" />
+                <span className="font-medium text-gray-800">{doc.title || 'Examen sans titre'}</span>
+                {doc.has_analysis && <Badge className="bg-green-100 text-green-800 border-0 text-xs">Analysé ✓</Badge>}
+              </div>
+              <ExamMCPPanel
+                courseId={courseId}
+                documentId={doc.id}
+                documentTitle={doc.title || 'Examen'}
+              />
+            </div>
+          ))}
         </div>
       )}
     </div>

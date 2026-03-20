@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { coursesApi, attendanceApi, gradesApi, examApi } from '../api/courses';
+import { coursesApi, attendanceApi, gradesApi, examApi, tnExamsApi } from '../api/courses';
 import {
   CoursesListResponse,
   CourseDetails,
@@ -13,6 +13,7 @@ import {
   AttendanceRecord,
   CourseActivity,
   CourseExam,
+  TnExamDocument,
 } from '../types/course';
 import { toast } from 'sonner';
 
@@ -373,5 +374,16 @@ export function useDeleteExam(courseId: number) {
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
     },
+  });
+}
+
+export function useTnExams(courseId: number) {
+  return useQuery<TnExamDocument[]>({
+    queryKey: ['tn-exams', courseId],
+    queryFn: async () => {
+      const r = await tnExamsApi.list(courseId);
+      return r.data.exams;
+    },
+    enabled: !!courseId,
   });
 }

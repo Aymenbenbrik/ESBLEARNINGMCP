@@ -217,3 +217,87 @@ def download_tn_exam_report(course_id: int, document_id: int):
     directory = os.path.join(uploads_dir, os.path.dirname(rel))
     filename = os.path.basename(rel)
     return send_from_directory(directory, filename, as_attachment=True, download_name=filename)
+
+
+# ─── MCP MULTI-AGENT EXAM EVALUATION ─────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/analyze-mcp', methods=['POST'])
+@jwt_required()
+def start_mcp_analysis(course_id: int, document_id: int):
+    """Launch MCP multi-agent exam evaluation pipeline (async background)."""
+    _log_route_access('start_mcp_analysis', course_id, document_id)
+    _, course, error = _get_teacher_course(course_id)
+    if error:
+        return error
+
+    doc = Document.query.filter_by(id=document_id, course_id=course.id, document_type='tn_exam').first()
+    if not doc:
+        return jsonify({'error': 'Exam document not found'}), 404
+
+    file_path = doc.file_path
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({'error': f'File not found: {file_path}'}), 404
+
+    from app.services.exam_agent_graph import run_exam_evaluation
+    session_id = run_exam_evaluation(
+        course_id=course.id,
+        file_path=file_path,
+        exam_title=doc.title or 'Examen Final',
+        document_id=document_id,
+    )
+
+    return jsonify({'session_id': session_id, 'status': 'running', 'message': 'Analyse MCP lancée'}), 202
+
+
+@tn_exams_api_bp.route('/<int:document_id>/mcp-sessions', methods=['GET'])
+@jwt_required()
+def list_mcp_sessions(course_id: int, document_id: int):
+    """List all MCP sessions for this exam document."""
+    _, course, error = _get_teacher_course(course_id)
+    if error:
+        return error
+    from app.models import ExamAnalysisSession
+    sessions = ExamAnalysisSession.query.filter_by(
+        course_id=course.id, document_id=document_id
+    ).order_by(ExamAnalysisSession.created_at.desc()).limit(10).all()
+    return jsonify({'sessions': [s.to_dict() for s in sessions]})
+
+
+@tn_exams_api_bp.route('/mcp-session/<int:session_id>', methods=['GET'])
+@jwt_required()
+def get_mcp_session(course_id: int, session_id: int):
+    """Get current status + results of a MCP analysis session."""
+    _, course, error = _get_teacher_course(course_id)
+    if error:
+        return error
+    from app.models import ExamAnalysisSession, ExamExtractedQuestion
+    session = ExamAnalysisSession.query.filter_by(id=session_id, course_id=course.id).first()
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+    result = session.to_dict()
+    questions = ExamExtractedQuestion.query.filter_by(session_id=session_id).order_by(
+        ExamExtractedQuestion.number
+    ).all()
+    result['questions'] = [q.to_dict() for q in questions]
+    return jsonify(result)
+
+
+@tn_exams_api_bp.route('/mcp-session/<int:session_id>/pdf', methods=['GET'])
+@jwt_required()
+def download_mcp_pdf(course_id: int, session_id: int):
+    """Download the compiled LaTeX PDF."""
+    _, course, error = _get_teacher_course(course_id)
+    if error:
+        return error
+    from app.models import ExamAnalysisSession
+    from flask import send_file
+    session = ExamAnalysisSession.query.filter_by(id=session_id, course_id=course.id).first()
+    if not session or not session.latex_pdf_path:
+        return jsonify({'error': 'PDF not available'}), 404
+    if not os.path.exists(session.latex_pdf_path):
+        return jsonify({'error': 'PDF file missing on disk'}), 404
+    return send_file(
+        session.latex_pdf_path,
+        as_attachment=True,
+        download_name=f'exam_proposal_{session_id}.pdf',
+    )

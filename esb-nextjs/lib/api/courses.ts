@@ -14,6 +14,7 @@ import {
   GradeWeight,
   StudentGrade,
   CourseExam,
+  TnExamDocument,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -142,4 +143,9 @@ export const examApi = {
     apiClient.post<{ exam: CourseExam }>(`/api/v1/courses/${courseId}/exam/analyze`, { exam_id: examId }),
   remove: (courseId: number, examId: number) =>
     apiClient.delete(`/api/v1/courses/${courseId}/exam/${examId}`),
+};
+
+export const tnExamsApi = {
+  list: (courseId: number) =>
+    apiClient.get<{ exams: TnExamDocument[] }>(`/api/v1/courses/${courseId}/tn-exams`),
 };

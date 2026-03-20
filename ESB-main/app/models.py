@@ -1526,6 +1526,87 @@ class CourseExam(db.Model):
         }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# EXAM MCP ANALYSIS — Multi-Agent LangGraph System
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ExamAnalysisSession(db.Model):
+    """Tracks one MCP multi-agent exam analysis run."""
+    __tablename__ = 'exam_analysis_session'
+
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=True)
+    status = db.Column(db.String(32), default='pending')   # pending|running|done|error
+    current_agent = db.Column(db.String(64), nullable=True)
+    progress = db.Column(db.Integer, default=0)            # 0-100
+    state_json = db.Column(db.Text, nullable=True)         # full ExamEvaluationState as JSON
+    latex_source = db.Column(db.Text, nullable=True)
+    latex_pdf_path = db.Column(db.String(512), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = db.relationship('Course', backref=db.backref('exam_sessions', lazy='dynamic'))
+    document = db.relationship('Document', backref=db.backref('exam_sessions', lazy='dynamic'))
+    questions = db.relationship(
+        'ExamExtractedQuestion', backref='session',
+        lazy='dynamic', cascade='all,delete-orphan'
+    )
+
+    def to_dict(self):
+        state = {}
+        if self.state_json:
+            import json as _json
+            try:
+                state = _json.loads(self.state_json)
+            except Exception:
+                pass
+        return {
+            'id': self.id,
+            'course_id': self.course_id,
+            'document_id': self.document_id,
+            'status': self.status,
+            'current_agent': self.current_agent,
+            'progress': self.progress,
+            'error_message': self.error_message,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'latex_source': self.latex_source,
+            'latex_pdf_path': self.latex_pdf_path,
+            'state': state,
+        }
+
+
+class ExamExtractedQuestion(db.Model):
+    """One question extracted from the exam by the MCP agents."""
+    __tablename__ = 'exam_extracted_question'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('exam_analysis_session.id'), nullable=False)
+    number = db.Column(db.Integer, nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    points = db.Column(db.Float, nullable=True)
+    aa_codes = db.Column(db.JSON, nullable=True)
+    bloom_level = db.Column(db.String(64), nullable=True)
+    difficulty = db.Column(db.String(64), nullable=True)
+    difficulty_justification = db.Column(db.Text, nullable=True)
+    source_covered = db.Column(db.Boolean, nullable=True)
+    adjustment_suggestion = db.Column(db.Text, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'number': self.number,
+            'text': self.text,
+            'points': self.points,
+            'aa_codes': self.aa_codes or [],
+            'bloom_level': self.bloom_level,
+            'difficulty': self.difficulty,
+            'difficulty_justification': self.difficulty_justification,
+            'source_covered': self.source_covered,
+            'adjustment_suggestion': self.adjustment_suggestion,
+        }
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRACTICAL WORK (TP Code) — MCP + LangGraph AI System

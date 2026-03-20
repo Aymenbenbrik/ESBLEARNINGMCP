@@ -308,6 +308,7 @@ def create_app(config_name=None):
     from app.api.v1.class_chat import class_chat_api_bp
     from app.api.v1 import course_question_bank as _cqb  # noqa: F401 – registers routes on api_v1_bp
     from app.api.v1 import practical_work as _pw  # noqa: F401 – registers TP routes on api_v1_bp
+    from app.api.v1.tn_exams import tn_exams_api_bp
     api_v1_bp.register_blueprint(auth_api_bp)
     api_v1_bp.register_blueprint(users_api_bp)
     api_v1_bp.register_blueprint(courses_api_bp)
@@ -324,6 +325,7 @@ def create_app(config_name=None):
     api_v1_bp.register_blueprint(practice_quiz_api_bp)
     api_v1_bp.register_blueprint(dashboards_api_bp)
     api_v1_bp.register_blueprint(class_chat_api_bp)
+    api_v1_bp.register_blueprint(tn_exams_api_bp)
     app.register_blueprint(api_v1_bp)
 
     # Exempt API routes from CSRF

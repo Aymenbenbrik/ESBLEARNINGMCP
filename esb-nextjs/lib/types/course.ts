@@ -409,3 +409,22 @@ export interface CourseExam {
   created_at: string;
   updated_at: string;
 }
+
+export interface TnExamDocument {
+  id: number;
+  title: string | null;
+  file_path: string | null;
+  file_type: string | null;
+  document_type: string;
+  course_id: number;
+  created_at: string | null;
+  updated_at: string | null;
+  has_analysis: boolean;
+  has_report: boolean;
+  analysis_report_path: string | null;
+  analysis_results: Record<string, unknown> | null;
+  total_questions: number | null;
+  source_coverage_rate: number | null;
+  difficulty_index: number | null;
+  bloom_index: number | null;
+}

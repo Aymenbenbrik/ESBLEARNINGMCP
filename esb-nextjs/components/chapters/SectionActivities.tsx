@@ -1797,7 +1797,10 @@ function SortableActivityItem({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function SectionActivities({ sectionId, canEdit, allSections = [] }: SectionActivitiesProps) {
-  const { data: activities = [], isLoading } = useSectionActivities(sectionId);
+  const { data: activitiesData, isLoading } = useSectionActivities(sectionId);
+  // Stabilise the array reference — a new [] default on every render would trigger
+  // the useEffect below on every render, causing an infinite setState loop.
+  const activities = useMemo(() => activitiesData ?? [], [activitiesData]);
   const { data: quiz } = useSectionQuiz(sectionId);
   const { data: assignment } = useAssignment(sectionId);
   const deleteMutation = useDeleteActivity(sectionId);
@@ -1806,7 +1809,7 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
 
   const [activityOrder, setActivityOrder] = useState<number[]>([]);
   useEffect(() => {
-    if (activities) setActivityOrder(activities.map((a: any) => a.id));
+    setActivityOrder(activities.map((a: any) => a.id));
   }, [activities]);
 
   const activitySensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
