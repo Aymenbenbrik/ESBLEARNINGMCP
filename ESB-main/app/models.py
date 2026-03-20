@@ -1036,8 +1036,11 @@ class QuestionBankQuestion(db.Model):
     # - QCM/VF:       the explanation of the correct choice
     # - drag_drop:    JSON string of [{left, right}] pairs
     # - open_ended:   the model written answer
-    # - code:         the complete code solution
+    # - code:         the complete code solution (AI-generated, hidden from students)
     answer = db.Column(db.Text, nullable=True)
+    # Code/practical question fields
+    programming_language = db.Column(db.String(30), nullable=True)   # 'python', 'javascript', etc.
+    test_cases = db.Column(db.Text, nullable=True)                    # Hidden test code appended to student code
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -1497,3 +1500,127 @@ class CourseExam(db.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRACTICAL WORK (TP Code) — MCP + LangGraph AI System
+# ─────────────────────────────────────────────────────────────────────────────
+
+SUPPORTED_LANGUAGES = ['python', 'sql', 'r', 'java', 'c', 'cpp']
+
+class PracticalWork(db.Model):
+    """
+    A code-based practical work (TP) attached to a TNSection.
+    AI workflow: statement generation → AA suggestion → reference solution.
+    """
+    __tablename__ = 'practical_work'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    section_id   = db.Column(db.Integer, db.ForeignKey('tn_section.id'), nullable=False)
+    title        = db.Column(db.String(200), nullable=False)
+    language     = db.Column(db.String(20), nullable=False)   # python|sql|r|java|c|cpp
+    max_grade    = db.Column(db.Float, default=20.0)
+    status       = db.Column(db.String(20), default='draft')  # draft|published
+    tp_nature    = db.Column(db.String(20), default='formative')  # formative | sommative
+
+    # Énoncé
+    statement         = db.Column(db.Text, nullable=True)
+    statement_source  = db.Column(db.String(20), default='teacher')  # teacher|ai
+
+    # Apprentissages Attendus
+    aa_codes = db.Column(db.JSON, default=list)   # e.g. ["AA1.1", "AA1.2"]
+
+    # Parsed questions (from AI or teacher)
+    questions = db.Column(db.JSON, nullable=True)  # [{id, title, text, points}]
+
+    # AI-generated reference correction
+    reference_solution  = db.Column(db.Text, nullable=True)
+    reference_validated = db.Column(db.Boolean, default=False)
+    correction_criteria = db.Column(db.Text, nullable=True)  # AI evaluation grid
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    section     = db.relationship('TNSection',
+                                  backref=db.backref('practical_works',
+                                                     cascade='all, delete-orphan'))
+    submissions = db.relationship('PracticalWorkSubmission',
+                                  backref='practical_work',
+                                  cascade='all, delete-orphan',
+                                  lazy='dynamic')
+
+    def to_dict(self, include_solution=False):
+        d = {
+            'id':                 self.id,
+            'section_id':         self.section_id,
+            'title':              self.title,
+            'language':           self.language,
+            'max_grade':          self.max_grade,
+            'status':             self.status,
+            'tp_nature':          self.tp_nature or 'formative',
+            'statement':          self.statement,
+            'statement_source':   self.statement_source,
+            'aa_codes':           self.aa_codes or [],
+            'questions':          self.questions or [],
+            'reference_validated': self.reference_validated,
+            'correction_criteria': self.correction_criteria,
+            'created_at':         self.created_at.isoformat() if self.created_at else None,
+            'updated_at':         self.updated_at.isoformat() if self.updated_at else None,
+            'submission_count':   self.submissions.count(),
+        }
+        if include_solution:
+            d['reference_solution'] = self.reference_solution
+        return d
+
+
+class PracticalWorkSubmission(db.Model):
+    """
+    A student code submission for a PracticalWork.
+    AI automatically corrects it and proposes a grade; teacher validates.
+    """
+    __tablename__ = 'practical_work_submission'
+
+    id             = db.Column(db.Integer, primary_key=True)
+    tp_id          = db.Column(db.Integer, db.ForeignKey('practical_work.id'), nullable=False)
+    student_id     = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    code           = db.Column(db.Text, nullable=False)
+    answers        = db.Column(db.JSON, nullable=True)   # [{question_id, code}] for multi-zone submissions
+    attempt_number = db.Column(db.Integer, default=1)
+    submitted_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # AI correction pipeline
+    correction_status = db.Column(db.String(20), default='pending')  # pending|correcting|done|failed
+    correction_report = db.Column(db.Text, nullable=True)  # Markdown
+    proposed_grade    = db.Column(db.Float, nullable=True)
+
+    # Teacher validation
+    status          = db.Column(db.String(20), default='submitted')  # submitted|correcting|graded
+    final_grade     = db.Column(db.Float, nullable=True)
+    teacher_comment = db.Column(db.Text, nullable=True)
+    graded_at       = db.Column(db.DateTime, nullable=True)
+    graded_by_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    student    = db.relationship('User', foreign_keys=[student_id],
+                                 backref=db.backref('tp_submissions', lazy='dynamic'))
+    graded_by  = db.relationship('User', foreign_keys=[graded_by_id])
+
+    def to_dict(self, include_code=True):
+        d = {
+            'id':                self.id,
+            'tp_id':             self.tp_id,
+            'student_id':        self.student_id,
+            'student_name':      self.student.username if self.student else None,
+            'attempt_number':    self.attempt_number,
+            'submitted_at':      self.submitted_at.isoformat() if self.submitted_at else None,
+            'correction_status': self.correction_status,
+            'correction_report': self.correction_report,
+            'proposed_grade':    self.proposed_grade,
+            'status':            self.status,
+            'final_grade':       self.final_grade,
+            'teacher_comment':   self.teacher_comment,
+            'graded_at':         self.graded_at.isoformat() if self.graded_at else None,
+        }
+        if include_code:
+            d['code'] = self.code
+            d['answers'] = self.answers or []
+        return d

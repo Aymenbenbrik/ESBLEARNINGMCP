@@ -1018,21 +1018,50 @@ def submit_section_quiz(section_id):
                 'validated': True,
             }
         else:
-            # AI grading for open_ended / code / drag_drop
-            proposed, comment = _ai_grade_open(
-                question_text=q.question_text,
-                model_answer=q.explanation or '',
-                student_answer=student_ans,
-                max_points=q.points,
-            )
-            has_pending = True
-            graded_answers[qid] = {
-                'answer': student_ans,
-                'proposed': proposed,
-                'final': None,          # Teacher must validate
-                'comment': comment,
-                'validated': False,
-            }
+            # code type: Piston execution + Gemini pedagogical analysis
+            if q.question_type == 'code':
+                lang = getattr(q, 'programming_language', None) or 'python'
+                test_cases = getattr(q, 'test_cases', None) or ''
+                grade_result = _ai_grade_code(
+                    question_text=q.question_text,
+                    model_answer=q.answer or q.explanation or '',
+                    student_code=student_ans,
+                    language=lang,
+                    test_cases=test_cases,
+                    max_points=q.points,
+                )
+                has_pending = True
+                graded_answers[qid] = {
+                    'answer': student_ans,
+                    'proposed': grade_result['note_suggeree'],
+                    'final': None,
+                    'comment': grade_result['points_amelioration'],
+                    'validated': False,
+                    # Rich Gemini analysis
+                    'execution_output': grade_result.get('execution_output', ''),
+                    'execution_error': grade_result.get('execution_error', ''),
+                    'tests_passed': grade_result.get('tests_passed', False),
+                    'critique_positive': grade_result.get('critique_positive', ''),
+                    'points_amelioration': grade_result.get('points_amelioration', ''),
+                    'solution_optimale': grade_result.get('solution_optimale', ''),
+                    'note_suggeree': grade_result.get('note_suggeree', 0),
+                }
+            else:
+                # AI grading for open_ended / drag_drop
+                proposed, comment = _ai_grade_open(
+                    question_text=q.question_text,
+                    model_answer=q.explanation or '',
+                    student_answer=student_ans,
+                    max_points=q.points,
+                )
+                has_pending = True
+                graded_answers[qid] = {
+                    'answer': student_ans,
+                    'proposed': proposed,
+                    'final': None,          # Teacher must validate
+                    'comment': comment,
+                    'validated': False,
+                }
 
     grading_status = 'pending' if has_pending else 'auto'
 
@@ -1099,6 +1128,96 @@ Réponds UNIQUEMENT avec un JSON valide :
     except Exception as e:
         logger.warning(f'AI grading failed: {e}')
     return 0.0, "Correction automatique indisponible — en attente de l'enseignant."
+
+
+def _ai_grade_code(question_text: str, model_answer: str, student_code: str,
+                   language: str, test_cases: str, max_points: float) -> dict:
+    """
+    Grade a practical code question:
+    1. Execute student code (+ hidden tests) via Piston
+    2. Ask Gemini for pedagogical analysis: note_suggeree, critique_positive,
+       points_amelioration, solution_optimale
+    Returns a rich dict with all fields.
+    """
+    from app.services.piston_service import execute_code, execute_with_tests
+
+    # Default result
+    result = {
+        'note_suggeree': 0.0,
+        'critique_positive': '',
+        'points_amelioration': 'Correction automatique indisponible.',
+        'solution_optimale': model_answer or '',
+        'execution_output': '',
+        'execution_error': '',
+        'tests_passed': False,
+    }
+
+    if not student_code.strip():
+        result['points_amelioration'] = "Aucun code soumis."
+        return result
+
+    # Step 1 — Execute via Piston
+    try:
+        if test_cases and test_cases.strip():
+            exec_result = execute_with_tests(language, student_code, test_cases)
+        else:
+            exec_result = execute_code(language, student_code)
+
+        result['execution_output'] = exec_result.get('stdout', '')
+        result['execution_error'] = exec_result.get('stderr', '') or exec_result.get('error', '')
+        result['tests_passed'] = exec_result.get('passed', exec_result.get('success', False))
+    except Exception as exc:
+        logger.warning(f'Piston execution failed: {exc}')
+        result['execution_error'] = str(exc)
+
+    # Step 2 — Gemini pedagogical analysis
+    try:
+        api_key = current_app.config.get('GOOGLE_API_KEY', '')
+        model_name = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
+        llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key,
+                                     temperature=0.3, max_tokens=600)
+
+        prompt = f"""Tu es un professeur de programmation bienveillant et rigoureux.
+Analyse la copie de cet étudiant et fournis une évaluation pédagogique structurée.
+
+ÉNONCÉ : {question_text}
+
+LANGAGE : {language}
+
+CODE SOUMIS PAR L'ÉTUDIANT :
+{student_code}
+
+RÉSULTAT DE L'EXÉCUTION :
+{result['execution_output'] or '(aucune sortie)'}
+{'ERREURS : ' + result['execution_error'] if result['execution_error'] else ''}
+
+SOLUTION MODÈLE (ne pas révéler telle quelle) :
+{model_answer or '(non fournie)'}
+
+NOTE MAXIMALE : {max_points}
+
+Réponds UNIQUEMENT avec ce JSON valide (sans markdown) :
+{{
+  "note_suggeree": <nombre décimal entre 0 et {max_points}>,
+  "critique_positive": "<points forts du code, max 80 mots>",
+  "points_amelioration": "<erreurs et pistes d'amélioration, max 80 mots>",
+  "solution_optimale": "<code solution complet et commenté en {language}>"
+}}"""
+
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip()
+        import re as _re
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if m:
+            data = json.loads(m.group())
+            result['note_suggeree'] = float(max(0.0, min(max_points, data.get('note_suggeree', 0.0))))
+            result['critique_positive'] = str(data.get('critique_positive', ''))[:500]
+            result['points_amelioration'] = str(data.get('points_amelioration', ''))[:500]
+            result['solution_optimale'] = str(data.get('solution_optimale', model_answer or ''))[:2000]
+    except Exception as exc:
+        logger.warning(f'Gemini code grading failed: {exc}')
+
+    return result
 
 
 @api_v1_bp.route('/sections/<int:section_id>/quiz/result', methods=['GET'])
