@@ -736,56 +736,109 @@ Réponds TOUJOURS en français."""
 
 def detect_tp_opportunities(chapter_id: int, language: str = "Python") -> dict:
     """
-    Analyzes chapter sections to detect practical work opportunities.
-    Returns a list of suggested TP topics with titles and descriptions.
+    Analyzes chapter documents and sections to detect practical work opportunities.
+    Uses the regular Chapter model (chapter_id = Chapter.id) to access documents.
+    Returns suggestions + metadata about scanned documents.
     """
-    from app.models import TNChapter
-    tn_chapter = TNChapter.query.get(chapter_id)
-    if not tn_chapter:
-        return {"suggestions": []}
+    import json as _json
+    import re as _re
+    from app.models import Chapter, TNChapter, Syllabus
 
-    sections = tn_chapter.sections if tn_chapter.sections else []
-    context = "Sections du chapitre:\n" + "\n".join(f"- {s.title}" for s in sections)
+    # --- 1. Get the regular Chapter (with documents) ---
+    chapter = Chapter.query.get(chapter_id)
+    if not chapter:
+        return {"suggestions": [], "docs_scanned": 0, "doc_names": [], "error": "Chapitre introuvable"}
 
-    # Try to enrich with text activities
-    for section in sections[:5]:
-        for act in (section.activities or []):
-            if hasattr(act, 'activity_type') and act.activity_type == 'text_doc' and act.text_content:
-                context += f"\n\nContenu de '{section.title}':\n{act.text_content[:800]}"
-                break
+    # --- 2. Build context from chapter documents ---
+    docs = chapter.documents.all()
+    doc_names = [d.title for d in docs]
+    context_parts = [f"Titre du chapitre: {chapter.title}"]
 
+    for doc in docs[:5]:  # limit to 5 documents
+        doc_text = ""
+        # Use summary if available
+        if hasattr(doc, 'summary') and doc.summary:
+            doc_text = doc.summary[:1200]
+        # Fallback to description
+        elif hasattr(doc, 'description') and doc.description:
+            doc_text = doc.description[:800]
+        if doc_text:
+            context_parts.append(f"\n--- Document: {doc.title} ---\n{doc_text}")
+
+    # --- 3. Enrich with section titles via Syllabus → TNChapter link ---
+    try:
+        syllabus = Syllabus.query.filter_by(course_id=chapter.course_id).first()
+        if syllabus:
+            for tn_ch in syllabus.tn_chapters:
+                if tn_ch.index == chapter.order:
+                    section_titles = [s.title for s in (tn_ch.sections or [])]
+                    if section_titles:
+                        context_parts.append("\nSections du chapitre: " + ", ".join(section_titles))
+                    break
+    except Exception:
+        pass
+
+    # --- 4. Enrich with text activities from sections ---
+    try:
+        from app.models import TNSection, SectionActivity
+        if syllabus:
+            for tn_ch in syllabus.tn_chapters:
+                if tn_ch.index == chapter.order:
+                    for section in (tn_ch.sections or [])[:4]:
+                        acts = SectionActivity.query.filter_by(
+                            section_id=section.id, activity_type='text_doc'
+                        ).first()
+                        if acts and acts.text_content:
+                            context_parts.append(
+                                f"\nContenu '{section.title}':\n{acts.text_content[:600]}"
+                            )
+    except Exception:
+        pass
+
+    if len(context_parts) <= 1:
+        context_parts.append("(Pas de contenu disponible — génération basée sur le titre du chapitre)")
+
+    context = "\n".join(context_parts)
+
+    # --- 5. Call Gemini ---
     llm = _llm(0.3)
-    prompt = f"""Tu es un expert pédagogique. Analyse le contenu suivant d'un chapitre de cours et propose 3 à 5 activités pratiques (TP) pertinentes.
+    prompt = f"""Tu es un expert pédagogique universitaire. Analyse le contenu ci-dessous et propose 3 à 5 travaux pratiques (TP) pertinents et progressifs.
 
-Contenu du chapitre:
 {context}
 
-Langage de programmation suggéré: {language}
+Langage de programmation: {language}
 
-Pour chaque TP suggéré, donne:
-1. Un titre court et précis
-2. Une description en 2-3 phrases expliquant l'objectif
-3. Le type de TP (exercice, projet, analyse de données, etc.)
+Pour chaque TP proposé, fournis:
+1. Un titre court et précis (max 60 caractères)
+2. Une description pédagogique de 2-3 phrases (objectif + compétences visées)
+3. Le type: "exercice", "projet", "analyse_donnees", "implementation", "simulation"
+4. La durée estimée: "1h", "2h", "3h", "4h"
+5. La difficulté: "debutant", "intermediaire", "avance"
 
-Réponds en JSON strict avec ce format:
+Réponds UNIQUEMENT en JSON valide:
 {{
   "suggestions": [
     {{
-      "title": "Titre du TP",
-      "description": "Description de l'objectif pédagogique",
-      "type": "exercice|projet|analyse",
-      "estimated_duration": "1h|2h|3h"
+      "title": "...",
+      "description": "...",
+      "type": "exercice",
+      "estimated_duration": "2h",
+      "difficulty": "intermediaire"
     }}
   ]
 }}"""
 
     try:
         response = llm.invoke(prompt)
-        import json, re
         text = response.content if hasattr(response, 'content') else str(response)
-        match = re.search(r'\{.*\}', text, re.DOTALL)
+        # Extract JSON block
+        match = _re.search(r'\{[\s\S]*\}', text)
         if match:
-            return json.loads(match.group())
+            result = _json.loads(match.group())
+            result["docs_scanned"] = len(docs)
+            result["doc_names"] = doc_names
+            return result
     except Exception as e:
         logger.error(f"detect_tp_opportunities error: {e}")
-    return {"suggestions": []}
+
+    return {"suggestions": [], "docs_scanned": len(docs), "doc_names": doc_names}

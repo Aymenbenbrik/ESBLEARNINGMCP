@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -52,7 +52,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Bot } from 'lucide-react';
+import { Loader2, Bot, FileSearch, CheckCircle2 as CheckCircleIcon, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function ChapterDetailPage() {
   const params = useParams();
@@ -88,7 +89,9 @@ export default function ChapterDetailPage() {
   const [showDetectTpModal, setShowDetectTpModal] = useState(false);
   const [detectTpLanguage, setDetectTpLanguage] = useState('Python');
   const [detectTpLoading, setDetectTpLoading] = useState(false);
-  const [detectTpSuggestions, setDetectTpSuggestions] = useState<Array<{title: string; description: string; type: string; estimated_duration: string}>>([]);
+  const [detectTpSuggestions, setDetectTpSuggestions] = useState<Array<{title: string; description: string; type: string; estimated_duration: string; difficulty?: string}>>([]);
+  const [detectTpProgress, setDetectTpProgress] = useState<{step: string; current: number; total: number; docNames: string[]}>({ step: '', current: 0, total: 0, docNames: [] });
+  const detectTpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (data?.tn_chapter?.sections) {
@@ -155,11 +158,65 @@ export default function ChapterDetailPage() {
 
   const handleDetectTp = async () => {
     setDetectTpLoading(true);
+    setDetectTpSuggestions([]);
+    setDetectTpProgress({ step: 'Chargement des documents...', current: 0, total: 0, docNames: [] });
+
     try {
+      // Step 1: Get metadata (fast) to show doc list in progress
+      let docNames: string[] = [];
+      let docCount = 0;
+      try {
+        const meta = await practicalWorkApi.detectTpMeta(chapterId);
+        docNames = meta.doc_names;
+        docCount = meta.doc_count;
+        setDetectTpProgress({ step: `${docCount} document(s) trouvé(s)`, current: 0, total: docCount, docNames });
+      } catch { /* ignore meta errors, proceed anyway */ }
+
+      // Step 2: Animate through doc names while AI works
+      let animIdx = 0;
+      if (docNames.length > 0) {
+        const perDocMs = Math.max(800, Math.min(2500, 10000 / docNames.length));
+        detectTpTimerRef.current = setInterval(() => {
+          animIdx = Math.min(animIdx + 1, docNames.length);
+          if (animIdx < docNames.length) {
+            setDetectTpProgress(p => ({
+              ...p,
+              step: `Analyse : ${docNames[animIdx]}`,
+              current: animIdx + 1,
+            }));
+          } else {
+            setDetectTpProgress(p => ({ ...p, step: 'Génération des suggestions IA...', current: docNames.length }));
+            if (detectTpTimerRef.current) clearInterval(detectTpTimerRef.current);
+          }
+        }, perDocMs);
+      } else {
+        setDetectTpProgress({ step: 'Analyse du contenu du chapitre...', current: 1, total: 1, docNames: [] });
+      }
+
+      // Step 3: Call AI
       const result = await practicalWorkApi.detectTpOpportunities(chapterId, detectTpLanguage);
-      setDetectTpSuggestions(result.suggestions || []);
-    } catch {
-      // toast not available here without import, use console
+
+      // Stop animation
+      if (detectTpTimerRef.current) clearInterval(detectTpTimerRef.current);
+
+      if (result.error) {
+        toast.error(`Erreur : ${result.error}`);
+      } else {
+        setDetectTpSuggestions(result.suggestions || []);
+        setDetectTpProgress(p => ({
+          ...p,
+          step: `Analyse terminée — ${result.docs_scanned ?? docCount} document(s) analysé(s)`,
+          current: result.docs_scanned ?? docCount,
+          total: result.docs_scanned ?? docCount,
+        }));
+        if ((result.suggestions || []).length === 0) {
+          toast.info('Aucun TP détecté. Ajoutez des documents au chapitre pour de meilleurs résultats.');
+        }
+      }
+    } catch (err: unknown) {
+      if (detectTpTimerRef.current) clearInterval(detectTpTimerRef.current);
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Erreur lors de la détection des TPs';
+      toast.error(message);
     } finally {
       setDetectTpLoading(false);
     }
@@ -556,21 +613,26 @@ export default function ChapterDetailPage() {
       />
 
       {/* AI Detect TP Modal */}
-      <Dialog open={showDetectTpModal} onOpenChange={setShowDetectTpModal}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <Dialog open={showDetectTpModal} onOpenChange={(open) => {
+        if (!open && detectTpTimerRef.current) clearInterval(detectTpTimerRef.current);
+        setShowDetectTpModal(open);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-violet-600" />
               Détecter des TPs par IA
             </DialogTitle>
             <DialogDescription>
-              L&apos;IA analyse le contenu du chapitre et propose des travaux pratiques pertinents.
+              L&apos;IA analyse les documents du chapitre et propose des travaux pratiques pertinents.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
+          <div className="space-y-5 mt-2">
+
+            {/* Controls */}
             <div className="flex items-center gap-3">
               <label className="text-sm font-medium text-bolt-ink whitespace-nowrap">Langage :</label>
-              <Select value={detectTpLanguage} onValueChange={setDetectTpLanguage}>
+              <Select value={detectTpLanguage} onValueChange={setDetectTpLanguage} disabled={detectTpLoading}>
                 <SelectTrigger className="w-40 h-9 rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
@@ -586,22 +648,87 @@ export default function ChapterDetailPage() {
                 className="rounded-full px-4 h-9 text-sm bg-violet-600 hover:bg-violet-700 text-white"
               >
                 {detectTpLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Bot className="h-4 w-4 mr-1.5" />}
-                {detectTpLoading ? 'Analyse...' : 'Analyser'}
+                {detectTpLoading ? 'Analyse en cours...' : 'Analyser'}
               </Button>
             </div>
 
+            {/* Progress bar */}
+            {(detectTpLoading || detectTpProgress.step) && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  {detectTpLoading
+                    ? <Loader2 className="h-4 w-4 animate-spin text-violet-600 shrink-0" />
+                    : <CheckCircleIcon className="h-4 w-4 text-green-600 shrink-0" />
+                  }
+                  <span className="text-sm text-violet-800 font-medium truncate">{detectTpProgress.step}</span>
+                </div>
+                {detectTpProgress.total > 0 && (
+                  <>
+                    <div className="w-full bg-violet-200 rounded-full h-2">
+                      <div
+                        className="bg-violet-600 h-2 rounded-full transition-all duration-700"
+                        style={{ width: `${Math.round((detectTpProgress.current / detectTpProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-violet-600">
+                      <span className="flex items-center gap-1">
+                        <FileSearch className="h-3 w-3" />
+                        {detectTpProgress.current}/{detectTpProgress.total} document(s) analysé(s)
+                      </span>
+                      {detectTpSuggestions.length > 0 && (
+                        <span className="font-semibold text-green-700">
+                          ✓ {detectTpSuggestions.length} TP{detectTpSuggestions.length > 1 ? 's' : ''} détecté{detectTpSuggestions.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+                {/* Document checklist */}
+                {detectTpProgress.docNames.length > 0 && (
+                  <div className="space-y-1 pt-1 border-t border-violet-200">
+                    {detectTpProgress.docNames.map((name, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        {i < detectTpProgress.current
+                          ? <CheckCircleIcon className="h-3 w-3 text-green-500 shrink-0" />
+                          : i === detectTpProgress.current && detectTpLoading
+                            ? <Loader2 className="h-3 w-3 animate-spin text-violet-500 shrink-0" />
+                            : <div className="h-3 w-3 rounded-full border border-violet-300 shrink-0" />
+                        }
+                        <span className={i < detectTpProgress.current ? 'text-green-700' : i === detectTpProgress.current ? 'text-violet-700 font-medium' : 'text-muted-foreground'}>
+                          {name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Results */}
             {detectTpSuggestions.length > 0 && (
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-bolt-ink">{detectTpSuggestions.length} TP{detectTpSuggestions.length > 1 ? 's' : ''} suggéré{detectTpSuggestions.length > 1 ? 's' : ''}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-bolt-ink">
+                    {detectTpSuggestions.length} TP{detectTpSuggestions.length > 1 ? 's' : ''} suggéré{detectTpSuggestions.length > 1 ? 's' : ''}
+                  </p>
+                  <span className="text-xs text-muted-foreground">{detectTpProgress.total} doc(s) analysé(s)</span>
+                </div>
                 {detectTpSuggestions.map((s, i) => (
-                  <div key={i} className="rounded-xl border border-bolt-line bg-white p-4 space-y-2">
+                  <div key={i} className="rounded-xl border border-bolt-line bg-white p-4 space-y-2 hover:border-violet-300 transition-colors">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <p className="font-semibold text-sm text-bolt-ink">{s.title}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{s.description}</p>
-                        <div className="flex items-center gap-2 mt-2">
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{s.description}</p>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{s.type}</span>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">⏱ {s.estimated_duration}</span>
+                          {s.difficulty && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              s.difficulty === 'avance' ? 'bg-red-100 text-red-700' :
+                              s.difficulty === 'intermediaire' ? 'bg-amber-100 text-amber-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>{s.difficulty}</span>
+                          )}
                         </div>
                       </div>
                       <Button
@@ -622,9 +749,11 @@ export default function ChapterDetailPage() {
               </div>
             )}
 
-            {!detectTpLoading && detectTpSuggestions.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                Cliquez sur &quot;Analyser&quot; pour détecter des TPs basés sur le contenu du chapitre.
+            {!detectTpLoading && !detectTpProgress.step && detectTpSuggestions.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm space-y-2">
+                <Bot className="h-10 w-10 mx-auto text-violet-200" />
+                <p>Cliquez sur <strong>Analyser</strong> pour détecter des TPs basés sur les documents du chapitre.</p>
+                <p className="text-xs text-muted-foreground/70">💡 Ajoutez des documents au chapitre pour de meilleures suggestions.</p>
               </div>
             )}
           </div>

@@ -604,10 +604,27 @@ def tp_chatbot(tp_id):
         return jsonify({'error': str(e)}), 500
 
 
+@api_v1_bp.route('/chapters/<int:chapter_id>/ai-detect-tp/meta', methods=['GET'])
+@jwt_required()
+def ai_detect_tp_meta(chapter_id):
+    """Return document count + names for this chapter (fast, no AI)."""
+    from app.models import Chapter as RegularChapter
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.is_teacher and not user.is_superuser:
+        return jsonify({'error': 'Teachers only'}), 403
+    chapter = RegularChapter.query.get_or_404(chapter_id)
+    docs = chapter.documents.all()
+    return jsonify({
+        'doc_count': len(docs),
+        'doc_names': [d.title for d in docs],
+        'chapter_title': chapter.title,
+    })
+
+
 @api_v1_bp.route('/chapters/<int:chapter_id>/ai-detect-tp', methods=['POST'])
 @jwt_required()
 def ai_detect_tp(chapter_id):
-    """AI analyzes chapter sections to suggest TP activities."""
+    """AI analyzes chapter documents to suggest TP activities."""
     from app.services.mcp_tools import detect_tp_opportunities
     user = User.query.get(int(get_jwt_identity()))
     if not user.is_teacher and not user.is_superuser:

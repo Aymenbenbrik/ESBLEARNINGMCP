@@ -127,7 +127,17 @@ export const practicalWorkApi = {
     return data;
   },
 
-  detectTpOpportunities: async (chapterId: number, language = 'Python'): Promise<{ suggestions: Array<{ title: string; description: string; type: string; estimated_duration: string }> }> => {
+  detectTpMeta: async (chapterId: number): Promise<{ doc_count: number; doc_names: string[]; chapter_title: string }> => {
+    const res = await apiClient.get(`/api/v1/chapters/${chapterId}/ai-detect-tp/meta`);
+    return res.data;
+  },
+
+  detectTpOpportunities: async (chapterId: number, language = 'Python'): Promise<{
+    suggestions: Array<{ title: string; description: string; type: string; estimated_duration: string; difficulty?: string }>;
+    docs_scanned: number;
+    doc_names: string[];
+    error?: string;
+  }> => {
     const res = await apiClient.post(`/api/v1/chapters/${chapterId}/ai-detect-tp`, { language });
     return res.data;
   },
