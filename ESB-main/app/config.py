@@ -37,7 +37,8 @@ class Config:
     
     # Gemini API configuration
     GOOGLE_API_KEY = None
-    GEMINI_MODEL = "gemini-2.5-flash" 
+    GEMINI_MODEL = "gemini-2.5-flash"
+    GEMINI_MODEL_ROBUST = "gemini-2.5-pro"
     GEMINI_TEMPERATURE = 0.3
     # config.py
     PAGEINDEX_API_KEY = os.getenv('PAGEINDEX_API_KEY')

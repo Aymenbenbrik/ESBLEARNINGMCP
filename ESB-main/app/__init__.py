@@ -118,6 +118,12 @@ def _bootstrap_db(app: Flask):
                     'ALTER TABLE tn_section ADD COLUMN parent_section_id INTEGER REFERENCES tn_section(id)'
                 ))
 
+        # PracticalWork: add suggestion_context for AI detection flow
+        if table_exists('practical_work'):
+            c = cols('practical_work')
+            if 'suggestion_context' not in c:
+                db.session.execute(text('ALTER TABLE practical_work ADD COLUMN suggestion_context TEXT'))
+
         db.session.commit()
 
 
@@ -139,6 +145,8 @@ def create_app(config_name=None):
     if not app.config['GOOGLE_API_KEY']:
         # Fallback provided key if not in env (though env is preferred)
         app.config['GOOGLE_API_KEY'] = ""  # Clé manquante — définir GOOGLE_API_KEY dans .env
+    app.config['GEMINI_MODEL'] = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+    app.config['GEMINI_MODEL_ROBUST'] = os.environ.get('GEMINI_MODEL_ROBUST', 'gemini-2.5-pro')
     
     # SET FILE UPLOAD SIZE LIMITS
     # Maximum file size: 500MB (adjust based on your needs and server storage)

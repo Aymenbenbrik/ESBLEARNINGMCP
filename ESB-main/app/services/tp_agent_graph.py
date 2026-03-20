@@ -36,6 +36,7 @@ class TPCreationState(TypedDict):
     section_id: int
     language: str
     hint: Optional[str]
+    suggestion_context: Optional[str]
     max_grade: float
 
     # Results — updated by nodes
@@ -99,10 +100,14 @@ def _node_generate_statement(state: TPCreationState) -> dict:
         # Teacher provided their own statement — skip AI generation
         return {}
     try:
+        # Merge suggestion_context (from AI detection) into hint for richer generation
+        hint = state.get('hint', '') or ''
+        suggestion_context = state.get('suggestion_context', '') or ''
+        merged_hint = f"{suggestion_context}\n\n{hint}".strip() if suggestion_context else hint
         result = generate_tp_statement(
             context=state.get('section_context', ''),
             language=state['language'],
-            hint=state.get('hint', ''),
+            hint=merged_hint,
         )
         return {
             "title": result.get("title", "TP"),
@@ -291,6 +296,7 @@ def run_tp_creation(
     hint: str = "",
     max_grade: float = 20.0,
     teacher_statement: str = "",
+    suggestion_context: str = "",
 ) -> TPCreationState:
     """
     Run the full TP creation workflow.
@@ -301,6 +307,7 @@ def run_tp_creation(
         "section_id":         section_id,
         "language":           language,
         "hint":               hint,
+        "suggestion_context": suggestion_context or None,
         "max_grade":          max_grade,
         "section_context":    None,
         "available_aa":       None,

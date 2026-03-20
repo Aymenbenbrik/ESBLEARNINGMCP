@@ -54,6 +54,7 @@ export interface CreateTPData {
   max_grade?: number;
   statement?: string;
   tp_nature?: 'formative' | 'sommative';
+  suggestion_context?: string;
 }
 
 export interface UpdateTPData {

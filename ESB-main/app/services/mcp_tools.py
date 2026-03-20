@@ -172,6 +172,18 @@ def _llm(temperature: float = 0.3):
     )
 
 
+def _llm_robust(temperature: float = 0.3):
+    """High-quality LLM for complex generation tasks (statement, reference, correction)."""
+    api_key = current_app.config.get('GOOGLE_API_KEY', '')
+    robust_model = current_app.config.get('GEMINI_MODEL_ROBUST', 'gemini-2.5-pro')
+    return ChatGoogleGenerativeAI(
+        model=robust_model,
+        google_api_key=api_key,
+        temperature=temperature,
+        max_tokens=8192,
+    )
+
+
 # ─── Tool 1 : get_section_context ─────────────────────────────────────────────
 
 def get_section_context(section_id: int) -> dict:
@@ -258,29 +270,45 @@ def get_section_context(section_id: int) -> dict:
 
 def generate_tp_statement(context: str, language: str, hint: str = "") -> dict:
     """
-    MCP Tool: Generates a TP statement from course context.
-    Returns: { statement: str, title: str }
+    MCP Tool: Generates a complete, structured TP statement from course context.
+    Returns: { statement: str, title: str, question_count: int }
     """
     lang_label = LANGUAGE_LABELS.get(language, language)
 
-    system = f"""Tu es un enseignant expert en {lang_label} qui crée des travaux pratiques pédagogiques.
-Génère un énoncé de TP complet et structuré en français, adapté au niveau universitaire.
+    system = f"""Tu es un enseignant universitaire expert en {lang_label} qui crée des travaux pratiques pédagogiques complets.
 
-Format de réponse (JSON strict):
+Ta mission est de créer un TP complet, structuré et prêt pour les étudiants.
+
+Le TP doit:
+- Avoir un titre accrocheur et précis (max 70 caractères)
+- Contenir 3 à 5 questions numérotées progressives (du plus simple au plus complexe)
+- Chaque question doit avoir des instructions claires et un objectif mesurable
+- Inclure des exemples de données/entrées quand pertinent
+- Être formaté en Markdown avec des blocs de code si nécessaire
+- Durée estimée: 2-3 heures pour un étudiant de niveau universitaire
+
+Structure de l'énoncé:
+1. Une introduction contextualisant le TP (2-3 phrases)
+2. Les objectifs pédagogiques (liste à puces)
+3. 3 à 5 questions numérotées progressives avec instructions précises
+4. Pour chaque question: objectif, données si nécessaire, résultat attendu
+
+Format de réponse JSON strict:
 {{
-  "title": "Titre court du TP",
-  "statement": "Énoncé complet en Markdown avec sections : ## Contexte, ## Objectifs, ## Travail demandé, ## Contraintes"
+  "title": "Titre précis et accrocheur du TP",
+  "statement": "### Introduction\\n...\\n\\n### Objectifs\\n...\\n\\n**Question 1 :**\\n...",
+  "question_count": <entier entre 3 et 5>
 }}"""
 
-    hint_text = f"\nConsigne de l'enseignant : {hint}" if hint else ""
-    user_msg = f"""Contexte pédagogique de la section:
-{context[:3000]}
+    hint_text = f"\n\nObjectif pédagogique principal (à respecter impérativement) :\n{hint}" if hint else ""
+    user_msg = f"""Contexte pédagogique de la section (cours, documents) :
+{context[:3500]}
 {hint_text}
 
-Génère un TP {lang_label} pertinent basé sur ce contexte. L'énoncé doit être complet, clair et progressif."""
+Génère un TP {lang_label} complet et structuré basé sur ce contexte. L'énoncé doit être directement utilisable par les étudiants (aucune note enseignant à l'intérieur)."""
 
     try:
-        llm = _llm(temperature=0.5)
+        llm = _llm_robust(temperature=0.5)
         response = llm.invoke([SystemMessage(content=system), HumanMessage(content=user_msg)])
         raw = response.content.strip()
 
@@ -291,12 +319,15 @@ Génère un TP {lang_label} pertinent basé sur ce contexte. L'énoncé doit êt
             raw = raw.split('```')[1].split('```')[0].strip()
 
         result = json.loads(raw)
-        return {"title": result.get("title", "TP"), "statement": result.get("statement", raw)}
+        return {
+            "title": result.get("title", "TP"),
+            "statement": result.get("statement", raw),
+            "question_count": result.get("question_count", 3),
+        }
     except json.JSONDecodeError:
-        # If JSON fails, return raw as statement
         lines = raw.split('\n')
         title = lines[0].strip('#').strip() if lines else "TP"
-        return {"title": title, "statement": raw}
+        return {"title": title, "statement": raw, "question_count": 3}
     except Exception as e:
         logger.error(f"generate_tp_statement error: {e}")
         return {"error": str(e), "title": "TP", "statement": ""}
@@ -403,15 +434,7 @@ FORMAT JSON STRICT (ne pas s'écarter):
 Génère la solution de référence complète et la grille d'évaluation détaillée."""
 
     try:
-        # Use higher token limit for comprehensive solutions
-        api_key = current_app.config.get('GOOGLE_API_KEY', '')
-        model = current_app.config.get('GEMINI_MODEL', 'gemini-2.0-flash')
-        llm = ChatGoogleGenerativeAI(
-            model=model,
-            google_api_key=api_key,
-            temperature=0.1,
-            max_tokens=8192,  # Higher limit for complete solutions
-        )
+        llm = _llm_robust(temperature=0.2)
         response = llm.invoke([SystemMessage(content=system), HumanMessage(content=user_msg)])
         raw = response.content.strip()
         if '```json' in raw:
@@ -484,7 +507,7 @@ Format JSON strict:
 Génère le rapport de correction complet sur {max_grade} points."""
 
     try:
-        llm = _llm(temperature=0.1)
+        llm = _llm_robust(temperature=0.1)
         response = llm.invoke([SystemMessage(content=system), HumanMessage(content=user_msg)])
         raw = response.content.strip()
         if '```json' in raw:
@@ -801,7 +824,7 @@ def detect_tp_opportunities(chapter_id: int, language: str = "Python") -> dict:
     context = "\n".join(context_parts)
 
     # --- 5. Call Gemini ---
-    llm = _llm(0.3)
+    llm = _llm_robust(0.3)
     prompt = f"""Tu es un expert pédagogique universitaire. Analyse le contenu ci-dessous et propose 3 à 5 travaux pratiques (TP) pertinents et progressifs.
 
 {context}

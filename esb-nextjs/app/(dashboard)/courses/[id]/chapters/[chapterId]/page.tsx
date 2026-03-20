@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -731,18 +731,30 @@ export default function ChapterDetailPage() {
                           )}
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 rounded-full text-xs border-violet-300 text-violet-700 hover:bg-violet-50"
-                        onClick={() => {
-                          const params = new URLSearchParams({ title: s.title, description: s.description });
-                          router.push(`/courses/${courseId}/chapters/${chapterId}/tp/create?${params.toString()}`);
-                          setShowDetectTpModal(false);
-                        }}
-                      >
-                        Créer ce TP
-                      </Button>
+                      <div className="mt-3 pt-2 border-t border-gray-100">
+                        <p className="text-xs text-muted-foreground mb-1">Créer dans la section :</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(tn_chapter?.sections ?? []).slice(0, 6).map((sec: any) => (
+                            <button
+                              key={sec.id}
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  title: s.title,
+                                  description: s.description,
+                                  language: detectTpLanguage.toLowerCase(),
+                                  difficulty: s.difficulty || '',
+                                  sectionId: String(sec.id),
+                                });
+                                router.push(`/courses/${courseId}/chapters/${chapterId}/tp/create?${params.toString()}`);
+                                setShowDetectTpModal(false);
+                              }}
+                              className="text-xs px-2 py-1 rounded-full bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
+                            >
+                              {sec.index} {sec.title.slice(0, 20)}{sec.title.length > 20 ? '...' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}

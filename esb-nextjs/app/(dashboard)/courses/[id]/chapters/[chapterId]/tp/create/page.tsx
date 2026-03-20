@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import { useState, Suspense } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Sparkles, CheckCircle, Code2, FileText, Target, BookOpen, Plus, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, CheckCircle, Code2, FileText, Target, BookOpen, Plus, X, Loader2, Bot } from 'lucide-react';
 import {
   useCreateTP,
   useUpdateTP,
@@ -11,8 +11,10 @@ import {
   useGenerateReference,
   usePublishTP,
 } from '@/lib/hooks/usePracticalWork';
+import { useChapter } from '@/lib/hooks/useChapters';
 import { practicalWorkApi } from '@/lib/api/practicalWork';
 import type { TPLanguage, TPQuestion } from '@/lib/types/practicalWork';
+import { toast } from 'sonner';
 
 const LANGUAGES: { value: TPLanguage; label: string; icon: string }[] = [
   { value: 'python', label: 'Python', icon: '🐍' },
@@ -50,16 +52,29 @@ function CreateTPForm() {
   const chapterId = params.chapterId as string;
   const sectionId = Number(searchParams.get('sectionId'));
 
+  // Pre-fill from AI detection URL params
+  const urlTitle = searchParams.get('title') || '';
+  const urlDescription = searchParams.get('description') || '';
+  const urlLanguage = (searchParams.get('language') || '').toLowerCase() as TPLanguage;
+  const isFromDetection = !!urlTitle;
+
+  const chapterIdNum = parseInt(chapterId);
+  const { data: chapterData } = useChapter(chapterIdNum);
+  const sections = (chapterData as any)?.tn_chapter?.sections ?? [];
+
   const [step, setStep] = useState(1);
   const [tpId, setTpId] = useState<number | null>(null);
 
-  const [title, setTitle] = useState('');
-  const [language, setLanguage] = useState<TPLanguage>('python');
+  const [title, setTitle] = useState(urlTitle);
+  const [language, setLanguage] = useState<TPLanguage>(
+    LANGUAGES.find(l => l.value === urlLanguage) ? urlLanguage : 'python'
+  );
   const [maxGrade, setMaxGrade] = useState(20);
   const [tpNature, setTpNature] = useState<'formative' | 'sommative'>('formative');
+  const [selectedSectionId, setSelectedSectionId] = useState(sectionId || 0);
 
   const [statement, setStatement] = useState('');
-  const [aiHint, setAiHint] = useState('');
+  const [aiHint, setAiHint] = useState(urlDescription);
 
   const [aaCodes, setAaCodes] = useState<string[]>([]);
   const [suggestedAA, setSuggestedAA] = useState<string[]>([]);
@@ -75,18 +90,22 @@ function CreateTPForm() {
   const [correctionCriteria, setCorrectionCriteria] = useState('');
   const [referenceValidated, setReferenceValidated] = useState(false);
 
-  const createTP = useCreateTP(sectionId);
+  const createTP = useCreateTP(selectedSectionId);
   const updateTP = useUpdateTP(tpId ?? 0);
   const generateStatement = useGenerateStatement(tpId ?? 0);
   const suggestAA = useSuggestAA(tpId ?? 0);
   const generateReference = useGenerateReference(tpId ?? 0);
-  const publishTP = usePublishTP(tpId ?? 0, sectionId);
+  const publishTP = usePublishTP(tpId ?? 0, selectedSectionId);
 
   const backUrl = `/courses/${courseId}/chapters/${chapterId}`;
 
   const handleStep1Submit = async () => {
     if (!title.trim()) return;
-    const tp = await createTP.mutateAsync({ title: title.trim(), language, max_grade: maxGrade, tp_nature: tpNature });
+    if (!selectedSectionId) { toast.error('Sélectionnez une section pour ce TP'); return; }
+    const tp = await createTP.mutateAsync({
+      title: title.trim(), language, max_grade: maxGrade, tp_nature: tpNature,
+      suggestion_context: urlDescription,
+    });
     setTpId(tp.id);
     if (tp.statement) setStatement(tp.statement);
     setStep(2);
@@ -244,6 +263,35 @@ function CreateTPForm() {
         {step === 1 && (
           <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Informations de base</h2>
+            {/* Pre-filled from detection banner */}
+            {isFromDetection && (
+              <div className="mb-6 rounded-xl bg-violet-50 border border-violet-200 p-3 flex items-start gap-2">
+                <Bot className="h-4 w-4 text-violet-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-violet-800">Pré-rempli depuis la détection IA</p>
+                  <p className="text-xs text-violet-600 mt-0.5">Le titre et l&apos;indice de génération ont été auto-complétés depuis l&apos;analyse des documents du chapitre.</p>
+                </div>
+              </div>
+            )}
+            {/* Section picker */}
+            {sections.length > 0 && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Section <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-2 gap-2">
+                  {sections.map((s: any) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelectedSectionId(s.id)}
+                      className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${selectedSectionId === s.id ? "border-[#8B1A2E] bg-[#8B1A2E]/5 text-[#8B1A2E] font-medium" : "border-gray-200 text-gray-700 hover:border-gray-300"}`}
+                    >
+                      <span className="text-xs text-gray-500 block">{s.index}</span>
+                      <p className="font-medium truncate">{s.title}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Titre du TP <span className="text-red-500">*</span>

@@ -97,6 +97,7 @@ def create_practical_work(section_id):
     title = data.get('title', '').strip()
     language = data.get('language', 'python').lower()
     max_grade = float(data.get('max_grade', 20.0))
+    suggestion_context = data.get('suggestion_context', '').strip()
 
     if not title:
         return jsonify({'error': 'title is required'}), 400
@@ -115,6 +116,7 @@ def create_practical_work(section_id):
         aa_codes=data.get('aa_codes', []),
         status='draft',
         tp_nature=data.get('tp_nature', 'formative'),
+        suggestion_context=suggestion_context or None,
     )
     db.session.add(tp)
     db.session.commit()
@@ -226,6 +228,10 @@ def generate_tp_statement_endpoint(tp_id):
 
     data = request.get_json() or {}
     hint = data.get('hint', '')
+    # Use suggestion_context from request body or fall back to what was stored on TP at creation
+    suggestion_context = data.get('suggestion_context', '') or getattr(tp, 'suggestion_context', '') or ''
+    # Merge suggestion_context into hint for richer generation
+    merged_hint = f"{suggestion_context}\n\n{hint}".strip() if suggestion_context else hint
 
     try:
         from app.services.mcp_tools import get_section_context, generate_tp_statement
@@ -234,7 +240,7 @@ def generate_tp_statement_endpoint(tp_id):
         result = generate_tp_statement(
             context=ctx.get('context', ''),
             language=tp.language,
-            hint=hint,
+            hint=merged_hint,
         )
 
         tp.statement = result.get('statement', '')

@@ -1551,6 +1551,7 @@ class PracticalWork(db.Model):
     # Énoncé
     statement         = db.Column(db.Text, nullable=True)
     statement_source  = db.Column(db.String(20), default='teacher')  # teacher|ai
+    suggestion_context = db.Column(db.Text, nullable=True)  # AI detection context passed at creation
 
     # Apprentissages Attendus
     aa_codes = db.Column(db.JSON, default=list)   # e.g. ["AA1.1", "AA1.2"]
