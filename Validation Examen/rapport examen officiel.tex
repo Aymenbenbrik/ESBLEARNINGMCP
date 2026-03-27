@@ -1,0 +1,187 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french,english]{babel}
+\usepackage{geometry}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{colortbl}
+\usepackage{pifont}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{polar}
+
+\geometry{margin=2.2cm}
+
+% =========================
+% IDENTITE
+% =========================
+\definecolor{EspritBleu}{RGB}{0,102,153}
+\definecolor{GrisClair}{RGB}{240,240,240}
+
+\newcommand{\NomEcole}{ESPRIT School of Business}
+\newcommand{\Accreditation}{BGA / AACSB Accredited}
+\newcommand{\Departement}{Department of Computer Science and Applied Mathematics}
+\newcommand{\LogoEcole}{Logo.png}
+
+% =========================
+% HEADER
+% =========================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\NomEcole}
+\fancyhead[R]{Exam Evaluation Report}
+\fancyfoot[C]{\Departement}
+
+% =========================
+% CASES
+% =========================
+\newcommand{\cbox}{\ding{110}}
+\newcommand{\yesno}{\cbox\ Yes \hspace{0.5cm} \cbox\ No}
+
+\begin{document}
+
+% =========================
+% HEADER
+% =========================
+\begin{center}
+\includegraphics[width=2.5cm]{\LogoEcole}\\
+{\LARGE \textbf{\NomEcole}}\\
+{\small \Accreditation}\\
+{\small \Departement}\\[0.3cm]
+
+{\Large \textcolor{EspritBleu}{\textbf{Exam Evaluation Report / Rapport d’Évaluation d’Examen}}}
+\end{center}
+
+% =========================
+% INFO
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}General Information / Informations Générales}}
+
+\begin{longtable}{|p{6cm}|p{9cm}|}
+\hline
+Course / Cours & \\ \hline
+Class / Classe & \\ \hline
+Language / Langue & \\ \hline
+Duration / Durée & \\ \hline
+Date & \\ \hline
+Instructor(s) & \\ \hline
+\end{longtable}
+
+% =========================
+% FORM
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Exam Format / Forme de l’Examen}}
+
+\begin{longtable}{|p{10cm}|p{5cm}|}
+\hline
+Answer on exam sheet & \yesno \\ \hline
+Documents allowed & \yesno \\ \hline
+Calculator allowed & \yesno \\ \hline
+Computer allowed & \yesno \\ \hline
+Internet allowed & \yesno \\ \hline
+Duration appropriate & \yesno \\ \hline
+Validated by all instructors & \yesno \\ \hline
+\end{longtable}
+
+% =========================
+% CONTENT
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Exam Content / Contenu}}
+
+\begin{longtable}{|p{4cm}|p{3cm}|p{3cm}|p{3cm}|}
+\hline
+Type & Presence & Points & Detailed marking \\ \hline
+MCQ & \yesno & /20 & \yesno \\ \hline
+Written & \yesno & /20 & \yesno \\ \hline
+Practical & \yesno & /20  & \yesno \\ \hline
+Case Study & \yesno & /20 & \yesno \\ \hline
+\end{longtable}
+
+% =========================
+% MAPPING AA
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Mapping Learning Outcomes (AA)}}
+
+\begin{longtable}{|p{4cm}|p{3cm}|p{3cm}|p{3cm}|}
+\hline
+AA & Question & Bloom Level & Points \\ \hline
+AA1 & Q1 & Application & 5 \\ \hline
+AA2 & Q2 & Analysis & 10 \\ \hline
+AA3 & Q3 & Evaluation & 10 \\ \hline
+\end{longtable}
+
+% =========================
+% BLOOM RADAR
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Bloom Taxonomy Distribution}}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{polaraxis}
+\addplot coordinates {
+(0,5) (60,4) (120,3) (180,4) (240,2) (300,1)
+};
+\end{polaraxis}
+\end{tikzpicture}
+\end{center}
+
+% =========================
+% QUALITY
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Quality Indicators}}
+
+\begin{longtable}{|p{8cm}|p{3cm}|}
+\hline
+Alignment with Learning Outcomes & \yesno \\ \hline
+Bloom coverage & \yesno \\ \hline
+Difficulty balance & \yesno \\ \hline
+Instructions clarity & \yesno \\ \hline
+Assessment fairness & \yesno \\ \hline
+\end{longtable}
+
+% =========================
+% CLASSIFICATION
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Question Classification}}
+
+\begin{longtable}{|p{4cm}|p{3cm}|p{3cm}|p{4cm}|}
+\hline
+Question & Type & Bloom Level & Skill \\ \hline
+Q1 & MCQ & Knowledge & Recall \\ \hline
+Q2 & Problem & Application & Problem solving \\ \hline
+Q3 & Case & Analysis & Critical thinking \\ \hline
+\end{longtable}
+
+% =========================
+% SCORE
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Final Score}}
+
+\begin{center}
+\begin{tabular}{|p{8cm}|p{4cm}|}
+\hline
+Exam Content & /70 \\ \hline
+Quality Indicators & /20 \\ \hline
+\rowcolor{EspritBleu}
+\textcolor{white}{\textbf{Total}} & \textcolor{white}{\textbf{/90}} \\ \hline
+\end{tabular}
+\end{center}
+
+% =========================
+% VALIDATION
+% =========================
+\section*{\colorbox{EspritBleu}{\color{white}Validation}}
+
+\begin{longtable}{|p{6cm}|p{4cm}|p{4cm}|}
+\hline
+Name & Signature & Date \\ \hline
+ & & \\ \hline
+\end{longtable}
+
+\end{document}

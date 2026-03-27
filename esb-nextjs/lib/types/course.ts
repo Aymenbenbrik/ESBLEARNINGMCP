@@ -272,6 +272,7 @@ export interface CourseDashboardResponse {
     score: number;
     completed_at: string;
   }[];
+  exam_stats?: ExamStatsDashboard;
 }
 
 // ============================================================================
@@ -371,6 +372,20 @@ export interface StudentGrade {
 
 // ─── Exam ────────────────────────────────────────────────────────────────────
 
+export type ExamType = 'examen' | 'ds' | 'pratique';
+
+export const EXAM_TYPE_LABELS: Record<ExamType, string> = {
+  examen: 'Examen final',
+  ds: 'Devoir Surveillé',
+  pratique: 'Épreuve pratique',
+};
+
+export const EXAM_TYPE_COLORS: Record<ExamType, string> = {
+  examen: 'bg-purple-100 text-purple-800 border-purple-200',
+  ds: 'bg-blue-100 text-blue-800 border-blue-200',
+  pratique: 'bg-orange-100 text-orange-800 border-orange-200',
+};
+
 export interface BloomDistribution {
   remembering: number;
   understanding: number;
@@ -386,17 +401,41 @@ export interface AAAlignment {
   comment: string;
 }
 
+export interface DifficultyByChapter {
+  chapter: string;
+  difficulty: string;
+  questions_count: number;
+  comment: string;
+}
+
+export interface ImprovementProposal {
+  aa: string;
+  bloom_level: string;
+  question_type: 'mcq' | 'open_ended';
+  is_practical: boolean;
+  difficulty: string;
+  question_text: string;
+  rationale: string;
+}
+
 export interface ExamEvaluation {
   overview: string;
   questions_count: number;
   estimated_duration: string;
   avg_difficulty: string;
+  has_practical_questions: boolean;
+  practical_questions_count: number;
   bloom_distribution: BloomDistribution;
+  difficulty_by_chapter: DifficultyByChapter[];
   aa_alignment: AAAlignment[];
   strengths: string[];
   feedback: string[];
   suggestions: string[];
   overall_score: number;
+  improvement_proposals: ImprovementProposal[];
+  // Error state fields (set when analysis fails)
+  error?: string;
+  error_message?: string;
 }
 
 export interface CourseExam {
@@ -405,9 +444,47 @@ export interface CourseExam {
   file_path: string | null;
   original_name: string | null;
   status: 'uploaded' | 'analyzing' | 'done' | 'error';
+  exam_type: ExamType;
+  weight: number;
+  target_aa_ids: number[];
+  has_practical_target: boolean;
   ai_evaluation: ExamEvaluation | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ExamStatsDashboard {
+  total_exams: number;
+  exams_analyzed: number;
+  by_type: Record<string, number>;
+  avg_overall_score: number | null;
+  avg_aa_coverage: number | null;
+  practical_exams_count: number;
+  exams: {
+    id: number;
+    course_id: number;
+    original_name: string | null;
+    exam_type: ExamType;
+    weight: number;
+    status: 'uploaded' | 'analyzing' | 'done' | 'error';
+    overall_score: number | null;
+    questions_count: number | null;
+    has_practical_questions: boolean;
+    aa_coverage: number | null;
+    bloom_distribution: Record<string, number> | null;
+    created_at: string | null;
+  }[];
+}
+
+export interface GeneratedQuestion {
+  text: string;
+  type: 'qcm' | 'ouvert' | 'pratique' | 'vrai_faux';
+  bloom_level: keyof BloomDistribution;
+  aa_targeted: string;
+  difficulty: 'Fondamental' | 'Intermédiaire' | 'Avancé';
+  points: number;
+  answer_hint: string;
+  options?: string[];
 }
 
 export interface TnExamDocument {

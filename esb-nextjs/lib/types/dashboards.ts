@@ -128,10 +128,12 @@ export interface MyDashboardResponse {
     score: number;
     completed_at: string;
   }[];
+  exam_stats?: import('./course').ExamStatsDashboard;
   courses: {
     id: number;
     title: string;
     description?: string | null;
     stats: CourseDashboardStats;
+    exam_stats?: import('./course').ExamStatsDashboard;
   }[];
 }

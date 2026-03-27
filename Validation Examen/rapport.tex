@@ -1,0 +1,281 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{colortbl}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{pifont}
+\usepackage{tabularx}
+\usepackage{colortbl}
+\usepackage{multirow}
+\usepackage{amssymb} % <-- ajouter ceci
+
+% =========================
+% CASES A COCHER
+% =========================
+\newcommand{\checkbox}{\(\square\)}
+\newcommand{\checkedbox}{\(\boxtimes\)}
+\newcommand{\yesno}{\checkbox\ Oui \hspace{1cm} \checkbox\ Non}
+\newcommand{\cbox}{\(\square\)}
+\geometry{margin=2.2cm}
+
+% =========================
+% CHARTE GRAPHIQUE ECOLE
+% =========================
+\definecolor{EcoleBleu}{RGB}{0,84,159}      % Couleur principale
+\definecolor{EcoleGris}{RGB}{240,240,240}   % Gris clair
+\definecolor{EcoleVert}{RGB}{0,140,70}      % Couleur secondaire
+\definecolor{EcoleRouge}{RGB}{180,30,40}    % Pour alertes / non conforme
+
+\newcommand{\NomEcole}{Esprit School Of Business}
+\newcommand{\Faculte}{ESB / Département IMA}
+\newcommand{\LogoEcole}{logo-ecole.png} % Remplacer par le nom du fichier logo
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{EcoleBleu}{\textbf{\NomEcole}}}
+%\fancyhead[C]{\textcolor{EcoleBleu}{\textbf{Rapport d'Évaluation d'Examen}}}
+\fancyhead[R]{\textcolor{EcoleBleu}{\thepage}}
+\fancyfoot[C]{\textit{\Faculte}}
+
+\renewcommand{\headrulewidth}{0.8pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\titleformat{\section}
+{\color{white}\normalfont\Large\bfseries}
+{}{0em}
+{}
+[\color{EcoleBleu}\titlerule]
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+
+% =========================
+% CASES A COCHER
+% =========================
+
+% =========================
+% CELLULES
+% =========================
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+
+% =========================
+% EN-TETE PERSONNALISE
+% =========================
+\begin{table}[h!]
+\centering
+\begin{tabular}{m{2.5cm} m{11cm} m{2.5cm}}
+\includegraphics[width=2.2cm]{Logo.png} &
+\centering
+{\large \textbf{Rapport d'Évaluation d'Examen}}
+&
+\\
+\end{tabular}
+\end{table}
+
+\vspace{0.5cm}
+
+% =========================
+% 1. INFORMATIONS GENERALES
+% =========================
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Informations Générales}}}
+
+\renewcommand{\arraystretch}{1.5}
+\begin{longtable}{|p{6cm}|p{9cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Élément} & \textbf{Information} \\ \hline
+Nom de l'épreuve & \\ \hline
+Classe & \\ \hline
+Langue de l'épreuve & \\ \hline
+Durée de l'épreuve & \\ \hline
+Date de l'épreuve & \\ \hline
+Nom(s) de(s) enseignant(s) & \\ \hline
+Nombre de pages & \\ \hline
+\end{longtable}
+
+% =========================
+% 2. FORME DE L'EXAMEN
+% =========================
+
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Forme de l’Examen}}}
+
+\begin{longtable}{|p{10cm}|p{5cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Critère} & \textbf{Choix} \\ \hline
+
+L’étudiant répond sur la feuille de l’examen 
+& \yesno \\ \hline
+
+Documents autorisés 
+& \yesno \\ \hline
+
+Utilisation de la calculatrice autorisée 
+& \yesno \\ \hline
+
+Utilisation du PC autorisée 
+& \yesno \\ \hline
+
+Accès à Internet autorisé 
+& \yesno \\ \hline
+
+Durée adéquate par rapport aux énoncés 
+& \yesno \\ \hline
+
+Tous les enseignants ont validé l’examen 
+& \yesno \\ \hline
+
+\end{longtable}
+% =========================
+% 3. CONTENU DE L'EXAMEN
+% =========================
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Contenu de l' Examen}}}
+
+\subsection*{Répartition et barème des questions}
+
+\begin{longtable}{|p{5cm}|p{2.5cm}|p{2.5cm}|p{3cm}|p{2cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Type de question} & \textbf{Présence} & \textbf{Points totaux} & \textbf{Barème par question} & \textbf{Note} \\ \hline
+
+QCM 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& /20 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& \\ \hline
+
+Questions rédactionnelles 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& /20 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& \\ \hline
+
+Questions pratiques 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& /20 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& \\ \hline
+
+Étude de cas 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& /20 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& \\ \hline
+
+Exercices d’application 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& /20 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& \\ \hline
+
+Projet / Production 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& /20 
+& \cbox\ Oui \hspace{0.3cm} \cbox\ Non 
+& \\ \hline
+
+%\rowcolor{EcoleGris}
+%\textbf{Total Types de questions} & & \textbf{/70} & & \\ \hline
+
+\end{longtable}
+
+\subsection*{Couverture des acquis d' apprentissage (AA)}
+\begin{longtable}{|p{10cm}|p{5cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Critère} & \textbf{Choix} \\ \hline
+L'examen couvre tous les acquis d'apprentissage (AA) & \yesno \\ \hline
+Les questions sont cohérentes avec les objectifs du cours & \yesno \\ \hline
+Le niveau de difficulté est adapté à la classe & \yesno \\ \hline
+Les consignes sont claires et non ambiguës & \yesno \\ \hline
+Le barème est explicite et équilibré & \yesno \\ \hline
+\end{longtable}
+
+% =========================
+% INDICATEURS QUALITE
+% =========================
+
+% =========================
+% 4. GRILLE D'EVALUATION DETAILLEE
+% =========================
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Grille d' Évaluation Détaillée}}}
+
+\begin{longtable}{|p{7cm}|p{2cm}|p{2cm}|p{4cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Critère évalué} & \textbf{Score max} & \textbf{Score obtenu} & \textbf{Observations} \\ \hline
+Conformité de l'en-tête & 5 & & \\ \hline
+Clarté de la mise en forme & 5 & & \\ \hline
+Pertinence du type de questions & 5 & & \\ \hline
+Couverture des acquis d’apprentissage (AA) & 10 & & \\ \hline
+Adéquation durée / charge de travail & 5 & & \\ \hline
+Clarté des consignes & 5 & & \\ \hline
+Équilibre du niveau de difficulté & 5 & & \\ \hline
+Respect des modalités d'évaluation & 5 & & \\ \hline
+Validation par l’équipe enseignante & 5 & & \\ \hline
+Qualité globale de l’examen & 10 & & \\ \hline
+\rowcolor{EcoleGris}
+\textbf{Total} & \textbf{60} & & \\ \hline
+\end{longtable}
+
+% =========================
+% 5. APPRECIATION GLOBALE
+% =========================
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Appréciation Globale}}}
+
+\begin{longtable}{|p{10cm}|p{5cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Niveau d'évaluation} & \textbf{Case à cocher} \\ \hline
+Très satisfaisant & \checkbox \\ \hline
+Satisfaisant & \checkbox \\ \hline
+À améliorer & \checkbox \\ \hline
+Non conforme & \checkbox \\ \hline
+\end{longtable}
+
+\vspace{0.3cm}
+\noindent\textbf{Commentaires généraux :}
+
+\vspace{4cm}
+
+% =========================
+% 6. RECOMMANDATIONS
+% =========================
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Recommandations}}}
+
+\vspace{4cm}
+
+% =========================
+% 7. VALIDATION
+% =========================
+\section*{\colorbox{EcoleBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering Validation}}}
+
+\begin{longtable}{|p{6cm}|p{4cm}|p{4cm}|}
+\hline
+\rowcolor{EcoleGris}
+\textbf{Nom de l'enseignant} & \textbf{Signature} & \textbf{Date} \\ \hline
+ & & \\ \hline
+ & & \\ \hline
+ & & \\ \hline
+\end{longtable}
+
+
+
+
+\end{document}

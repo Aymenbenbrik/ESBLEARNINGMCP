@@ -1,0 +1,881 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{colortbl}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{pifont}
+\usepackage{longtable}
+\usepackage{colortbl}
+\usepackage{xcolor}
+\usepackage{ltablex}
+\keepXColumns
+
+
+\geometry{margin=2.2cm}
+
+% =========================
+% CHARTE
+% =========================
+\definecolor{EspritBleu}{RGB}{0,102,153}
+\definecolor{GrisClair}{RGB}{240,240,240}
+\definecolor{GrisCode}{RGB}{245,245,245}
+
+\newcommand{\NomEcole}{ESPRIT School of Business}
+\newcommand{\Departement}{Département Informatique et Mathématiques Appliquées}
+\newcommand{\cbox}{\ding{110}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\NomEcole}}
+\fancyhead[R]{\textbf{Architecture Multi-Agents IA}}
+\fancyfoot[C]{\Departement}
+\fancyfoot[R]{\thepage}
+
+\titleformat{\section}
+{\color{white}\normalfont\Large\bfseries}
+{}{0em}
+{}
+[\color{EspritBleu}\titlerule]
+
+\titleformat{\subsection}
+{\normalfont\large\bfseries\color{EspritBleu}}
+{\thesubsection}{1em}{}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{GrisCode},
+    frame=single,
+    breaklines=true,
+    columns=fullflexible,
+    showstringspaces=false
+}
+
+\begin{document}
+
+\begin{center}
+    {\LARGE \textbf{\NomEcole}}\\[0.2cm]
+    {\large \Departement}\\[0.5cm]
+    {\LARGE \textcolor{EspritBleu}{\textbf{Architecture Multi-Agents IA pour l’Analyse et la Refonte Automatique d’un Examen}}}\\[0.3cm]
+    {\large Génération d’un rapport final et d’un examen restructuré à partir de fichiers \texttt{.tex}}
+\end{center}
+
+\vspace{0.5cm}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}1. Objectif du Système}}}
+
+Ce document décrit une architecture multi-agents permettant :
+\begin{itemize}[leftmargin=1cm]
+    \item d’analyser un examen réel au format PDF, DOCX, image ou texte,
+    \item d’extraire les informations académiques, pédagogiques et techniques,
+    \item de classifier les questions selon leur type et leur niveau cognitif,
+    \item de réaliser le mapping entre les questions et les acquis d’apprentissage (AA),
+    \item d’estimer la durée de traitement de chaque question,
+    \item de proposer automatiquement des améliorations,
+    \item de générer de nouvelles questions, de nouveaux exercices et de nouvelles activités pratiques,
+    \item de réorganiser une nouvelle proposition d’examen en supprimant, remplaçant ou insérant des éléments,
+    \item de générer le rapport officiel d’évaluation d’examen à partir d’un fichier \texttt{rapport examen officiel.tex},
+    \item de générer la version finale de l’examen sur une plateforme cible,
+    \item de notifier tous les enseignants du cours après génération ou mise à jour.
+\end{itemize}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}2. Vue d’Ensemble de l’Architecture}}}
+
+L’architecture repose sur un \textbf{orchestrateur central} qui pilote une chaîne d’agents spécialisés.  
+Chaque agent reçoit une entrée structurée, effectue une tâche précise, puis renvoie une sortie normalisée en JSON.  
+Les agents d’analyse produisent une représentation détaillée de l’examen existant.  
+Les agents de refonte produisent une proposition révisée.  
+Les agents de rendu produisent le rapport officiel, le fichier final de l’examen et les exports vers la plateforme.
+
+\subsection*{Chaîne de traitement globale}
+
+\begin{enumerate}[leftmargin=1cm]
+    \item Ingestion du document d’examen
+    \item OCR / reconstruction si nécessaire
+    \item Extraction des métadonnées
+    \item Analyse de la forme de l’examen
+    \item Segmentation des questions
+    \item Classification automatique des questions
+    \item Extraction du barème
+    \item Mapping AA
+    \item Analyse selon la taxonomie de Bloom
+    \item Estimation de la durée par question
+    \item Calcul des indicateurs qualité
+    \item Analyse de difficulté et adéquation durée / charge
+    \item Génération de propositions d’amélioration
+    \item Génération de nouvelles questions, exercices et pratiques
+    \item Réorganisation de la nouvelle proposition d’examen
+    \item Vérification de conformité institutionnelle
+    \item Consolidation des résultats
+    \item Génération du rapport d’évaluation d’examen via \texttt{rapport examen officiel.tex}
+    \item Génération LaTeX de sortie
+    \item Validation et compilation LaTeX
+    \item Génération de l’examen sur la plateforme cible
+    \item Notification à tous les enseignants du cours
+\end{enumerate}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}3. Description Détaillée des Agents}}}
+
+\subsection*{Agent 1 : Orchestrateur Central}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item piloter l’ensemble du workflow,
+    \item appeler les agents dans l’ordre logique,
+    \item gérer les relances, erreurs et validations intermédiaires,
+    \item consolider les sorties finales.
+\end{itemize}
+
+\textbf{Entrées :}
+\begin{itemize}[leftmargin=1cm]
+    \item fichier de l’examen,
+    \item fichier \texttt{template.tex},
+    \item fichier \texttt{rapport examen officiel.tex},
+    \item référentiel des acquis d’apprentissage,
+    \item règles institutionnelles,
+    \item métadonnées du cours,
+    \item paramètres de plateforme cible.
+\end{itemize}
+
+\textbf{Sorties :}
+\begin{itemize}[leftmargin=1cm]
+    \item JSON consolidé,
+    \item fichier \texttt{report\_final.tex},
+    \item fichier \texttt{rapport\_evaluation\_final.tex},
+    \item PDF compilé,
+    \item structure finale de la nouvelle proposition d’examen,
+    \item journal d’exécution.
+\end{itemize}
+
+\subsection*{Agent 2 : Agent d’Ingestion Documentaire}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item détecter le type de document,
+    \item extraire le texte brut page par page,
+    \item repérer tableaux, images, annexes et structures visibles.
+\end{itemize}
+
+\textbf{Formats pris en charge :}
+\begin{itemize}[leftmargin=1cm]
+    \item PDF natif,
+    \item PDF scanné,
+    \item image,
+    \item DOCX,
+    \item texte brut.
+\end{itemize}
+
+\subsection*{Agent 3 : Agent OCR / Reconstruction}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item reconstruire la structure si le document est scanné,
+    \item détecter les blocs : entête, consignes, questions, sous-questions, tableaux, annexes.
+\end{itemize}
+
+\textbf{Sortie attendue :}
+\begin{itemize}[leftmargin=1cm]
+    \item structure logique des blocs du document,
+    \item texte nettoyé et segmenté.
+\end{itemize}
+
+\subsection*{Agent 4 : Agent d’Extraction de Métadonnées}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item extraire le nom de l’épreuve,
+    \item identifier la classe,
+    \item détecter la langue,
+    \item repérer la durée,
+    \item repérer la date,
+    \item identifier l’enseignant ou les enseignants,
+    \item compter le nombre de pages.
+\end{itemize}
+
+\subsection*{Agent 5 : Agent d’Analyse de la Forme de l’Examen}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item détecter si l’étudiant répond sur la feuille,
+    \item détecter si les documents sont autorisés,
+    \item détecter si la calculatrice est autorisée,
+    \item détecter si le PC est autorisé,
+    \item détecter si Internet est autorisé,
+    \item évaluer si la durée globale est adéquate,
+    \item vérifier si tous les enseignants ont validé l’examen.
+\end{itemize}
+
+\subsection*{Agent 6 : Agent de Segmentation des Questions}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item identifier les exercices,
+    \item séparer les questions principales et les sous-questions,
+    \item donner un identifiant unique à chaque question ou exercice.
+\end{itemize}
+
+\subsection*{Agent 7 : Agent de Classification Automatique des Questions}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item attribuer un type à chaque élément évaluatif.
+\end{itemize}
+
+\textbf{Catégories possibles :}
+\begin{itemize}[leftmargin=1cm]
+    \item QCM,
+    \item rédaction,
+    \item pratique,
+    \item étude de cas,
+    \item exercice d’application,
+    \item problème,
+    \item projet,
+    \item démonstration,
+    \item calcul.
+\end{itemize}
+
+\subsection*{Agent 8 : Agent d’Extraction du Barème}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item détecter le nombre de points par question,
+    \item détecter le nombre de points par sous-question,
+    \item détecter le total global,
+    \item vérifier si le barème détaillé est mentionné.
+\end{itemize}
+
+\subsection*{Agent 9 : Agent de Mapping AA}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item associer chaque question ou exercice aux acquis d’apprentissage concernés,
+    \item vérifier la couverture globale des AA.
+\end{itemize}
+
+\subsection*{Agent 10 : Agent Bloom Taxonomy}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item classifier chaque question selon le niveau cognitif de Bloom.
+\end{itemize}
+
+\subsection*{Agent 11 : Agent d’Estimation de la Durée par Question}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item estimer le temps nécessaire pour traiter chaque question, exercice ou activité pratique,
+    \item calculer une durée totale estimée de l’examen,
+    \item signaler les questions trop longues ou trop courtes,
+    \item alimenter l’analyse de l’adéquation entre durée annoncée et charge réelle.
+\end{itemize}
+
+\subsection*{Agent 12 : Agent d’Indicateurs Qualité}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item calculer les indicateurs qualité de l’examen.
+\end{itemize}
+
+\subsection*{Agent 13 : Agent d’Analyse de Difficulté}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item estimer la difficulté de chaque question,
+    \item produire un niveau global de difficulté,
+    \item croiser difficulté et durée estimée.
+\end{itemize}
+
+\subsection*{Agent 14 : Agent de Génération des Propositions d’Amélioration}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item proposer des améliorations ciblées sur l’examen existant,
+    \item identifier les questions ambiguës, redondantes ou mal calibrées,
+    \item suggérer des reformulations, suppressions, simplifications ou renforcements,
+    \item produire une liste priorisée d’actions correctives.
+\end{itemize}
+
+\subsection*{Agent 15 : Agent de Génération de Questions, d’Exercices et de Pratiques}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item générer de nouveaux éléments évaluatifs adaptés aux besoins identifiés,
+    \item produire des questions, des exercices complets, des études de cas et des activités pratiques,
+    \item respecter les AA, le niveau Bloom visé, le barème et la durée cible.
+\end{itemize}
+
+\subsection*{Agent 16 : Agent de Réorganisation de la Nouvelle Proposition}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item construire une nouvelle version cohérente de l’examen,
+    \item supprimer une ancienne question si nécessaire,
+    \item insérer une nouvelle question, un nouvel exercice ou une nouvelle activité pratique,
+    \item réordonner les éléments,
+    \item préserver l’équilibre global en durée, difficulté et couverture pédagogique.
+\end{itemize}
+
+\subsection*{Agent 17 : Agent de Conformité Institutionnelle}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item vérifier la conformité à la charte de l’établissement,
+    \item détecter les éléments manquants dans l’épreuve ou dans le rapport.
+\end{itemize}
+
+\subsection*{Agent 18 : Agent de Consolidation des Résultats}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item fusionner les résultats de tous les agents,
+    \item produire un JSON final unique,
+    \item résoudre les conflits éventuels entre agents.
+\end{itemize}
+
+\subsection*{Agent 19 : Agent Générateur du Rapport d’Évaluation d’Examen}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item générer le rapport officiel d’évaluation d’examen à partir du fichier \texttt{rapport examen officiel.tex},
+    \item injecter les résultats consolidés dans ce modèle officiel,
+    \item produire un fichier LaTeX dédié au rapport d’évaluation,
+    \item séparer le rapport institutionnel d’évaluation de la génération technique de l’examen.
+\end{itemize}
+
+\textbf{Entrées :}
+\begin{itemize}[leftmargin=1cm]
+    \item fichier \texttt{rapport examen officiel.tex},
+    \item JSON consolidé,
+    \item indicateurs qualité,
+    \item mapping AA,
+    \item analyse Bloom,
+    \item barème,
+    \item plan de réorganisation.
+\end{itemize}
+
+\textbf{Sorties :}
+\begin{itemize}[leftmargin=1cm]
+    \item \texttt{rapport\_evaluation\_final.tex},
+    \item \texttt{rapport\_evaluation\_final.pdf}.
+\end{itemize}
+
+\textbf{Variables injectées typiques :}
+\begin{lstlisting}
+{{ exam_header.exam_name }}
+{{ exam_header.class }}
+{{ exam_format.documents_allowed }}
+{{ quality_indicators }}
+{{ aa_mapping }}
+{{ bloom_mapping }}
+{{ improvement_proposals }}
+\end{lstlisting}
+
+\subsection*{Agent 20 : Agent de Génération LaTeX}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item injecter les données consolidées dans le fichier \texttt{template.tex},
+    \item remplacer les marqueurs ou placeholders,
+    \item générer un fichier \texttt{report\_final.tex}.
+\end{itemize}
+
+\subsection*{Agent 21 : Agent de Validation LaTeX}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item vérifier que les fichiers \texttt{.tex} générés compilent correctement,
+    \item corriger les caractères spéciaux,
+    \item sécuriser les champs sensibles : \_, \%, \&, \#,
+    \item détecter les tableaux cassés ou les environnements manquants.
+\end{itemize}
+
+\subsection*{Agent 22 : Agent de Génération de l’Examen sur la Plateforme}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item transformer la structure finale de l’examen en format compatible avec la plateforme cible,
+    \item créer les sections, questions, exercices et activités pratiques dans la plateforme,
+    \item injecter les consignes, le barème, les durées et les métadonnées,
+    \item préparer un export ou un déploiement automatisé.
+\end{itemize}
+
+\subsection*{Agent 23 : Agent de Notification aux Enseignants du Cours}
+
+\textbf{Rôle :}
+\begin{itemize}[leftmargin=1cm]
+    \item notifier tous les enseignants rattachés au cours,
+    \item transmettre l’état du traitement : analyse terminée, rapport généré, examen mis à jour, publication plateforme,
+    \item envoyer les liens ou pièces jointes utiles,
+    \item journaliser les notifications envoyées et leur statut.
+\end{itemize}
+
+\textbf{Entrées :}
+\begin{itemize}[leftmargin=1cm]
+    \item liste des enseignants du cours,
+    \item métadonnées du cours,
+    \item lien ou chemin du rapport d’évaluation,
+    \item lien ou chemin de la nouvelle version de l’examen,
+    \item statut de publication sur la plateforme.
+\end{itemize}
+
+\textbf{Sorties :}
+\begin{itemize}[leftmargin=1cm]
+    \item messages de notification,
+    \item historique d’envoi,
+    \item états : envoyé, en attente, erreur.
+\end{itemize}
+
+\textbf{Canaux possibles :}
+\begin{itemize}[leftmargin=1cm]
+    \item courrier électronique,
+    \item notification plateforme,
+    \item messagerie interne,
+    \item tableau de bord enseignant.
+\end{itemize}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}4. Structure des Données Entre Agents}}}
+
+Chaque agent doit renvoyer une structure standardisée.
+
+\begin{lstlisting}
+{
+  "status": "ok",
+  "confidence": 0.91,
+  "data": {},
+  "warnings": [],
+  "errors": []
+}
+\end{lstlisting}
+
+\subsection*{Exemple pour une question}
+
+\begin{lstlisting}
+{
+  "status": "ok",
+  "confidence": 0.88,
+  "data": {
+    "question_id": "Q2",
+    "type": "Etude de cas",
+    "points": 10,
+    "bloom_level": "Analyze",
+    "aa_ids": ["AA2", "AA3"],
+    "estimated_time_minutes": 18
+  },
+  "warnings": ["Bareme detaille non explicite"],
+  "errors": []
+}
+\end{lstlisting}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}5. Exemple de JSON Consolidé}}}
+
+\begin{lstlisting}
+{
+  "report_data": {
+    "exam_header": {
+      "exam_name": "Examen Final - Analyse",
+      "class": "2INFO-B",
+      "language": "Francais",
+      "duration": "120 min",
+      "date": "2026-01-18",
+      "teachers": ["Dr X", "Mme Y"],
+      "page_count": 5
+    },
+    "exam_format": {
+      "answer_on_exam_sheet": true,
+      "documents_allowed": false,
+      "calculator_allowed": true,
+      "pc_allowed": false,
+      "internet_allowed": false,
+      "duration_adequate": true
+    },
+    "questions": [
+      {"id": "Q1", "type": "QCM", "points": 5, "estimated_time_minutes": 8},
+      {"id": "Q2", "type": "Exercice d'application", "points": 10, "estimated_time_minutes": 20}
+    ],
+    "aa_mapping": [
+      {"question_id": "Q1", "aa_ids": ["AA1"]},
+      {"question_id": "Q2", "aa_ids": ["AA2"]}
+    ],
+    "bloom_mapping": [
+      {"question_id": "Q1", "level": "Remember"},
+      {"question_id": "Q2", "level": "Apply"}
+    ],
+    "duration_estimation": {
+      "total_minutes": 95,
+      "overload_flag": false
+    },
+    "quality_indicators": {
+      "aa_coverage": true,
+      "instruction_clarity": true,
+      "marking_transparency": false
+    },
+    "improvement_proposals": [
+      "Clarifier la consigne de Q2",
+      "Ajouter une activite pratique couvrant AA3"
+    ],
+    "generated_items": [
+      {"id": "NEW_EX1", "type": "Exercice", "points": 8},
+      {"id": "NEW_PR1", "type": "Pratique", "points": 12}
+    ],
+    "reorganization_plan": {
+      "remove": ["Q3"],
+      "insert": ["NEW_EX1", "NEW_PR1"],
+      "renumber": true
+    },
+    "official_report": {
+      "template_name": "rapport examen officiel.tex",
+      "output_tex": "rapport_evaluation_final.tex",
+      "output_pdf": "rapport_evaluation_final.pdf"
+    },
+    "notifications": {
+      "recipients": ["teacher1@esprit.tn", "teacher2@esprit.tn"],
+      "status": "ready_to_send"
+    }
+  }
+}
+\end{lstlisting}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}6. Structure des Dossiers Recommandée}}}
+
+\begin{lstlisting}
+exam-ai-pipeline/
+├── inputs/
+│   ├── exam.pdf
+│   ├── template.tex
+│   ├── rapport examen officiel.tex
+│   ├── syllabus.json
+│   ├── learning_outcomes.json
+│   └── institution_rules.json
+├── outputs/
+│   ├── extracted_text.json
+│   ├── questions.json
+│   ├── classification.json
+│   ├── marking_scheme.json
+│   ├── aa_mapping.json
+│   ├── bloom.json
+│   ├── duration_estimation.json
+│   ├── quality.json
+│   ├── improvement_proposals.json
+│   ├── generated_items.json
+│   ├── reorganization_plan.json
+│   ├── official_report.json
+│   ├── notification_log.json
+│   ├── platform_export.json
+│   ├── consolidated_report.json
+│   ├── report_final.tex
+│   ├── rapport_evaluation_final.tex
+│   ├── report_final.pdf
+│   └── rapport_evaluation_final.pdf
+├── agents/
+│   ├── orchestrator.py
+│   ├── ingestion_agent.py
+│   ├── ocr_agent.py
+│   ├── metadata_agent.py
+│   ├── format_agent.py
+│   ├── segmentation_agent.py
+│   ├── classification_agent.py
+│   ├── marking_agent.py
+│   ├── aa_mapping_agent.py
+│   ├── bloom_agent.py
+│   ├── question_duration_agent.py
+│   ├── quality_agent.py
+│   ├── difficulty_agent.py
+│   ├── improvement_agent.py
+│   ├── generation_agent.py
+│   ├── reorganization_agent.py
+│   ├── compliance_agent.py
+│   ├── consolidation_agent.py
+│   ├── official_report_agent.py
+│   ├── latex_agent.py
+│   ├── validator_agent.py
+│   ├── platform_exam_agent.py
+│   └── teacher_notification_agent.py
+└── prompts/
+    ├── classification_prompt.txt
+    ├── aa_mapping_prompt.txt
+    ├── bloom_prompt.txt
+    ├── quality_prompt.txt
+    ├── improvement_prompt.txt
+    ├── generation_prompt.txt
+    ├── reorganization_prompt.txt
+    ├── official_report_prompt.txt
+    └── notification_prompt.txt
+\end{lstlisting}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}7. Workflow Opérationnel}}}
+
+\begin{longtable}{|p{1.2cm}|p{5cm}|p{8cm}|}
+\hline
+\rowcolor{GrisClair}
+\textbf{\#} & \textbf{Étape} & \textbf{Description} \\ \hline
+1 & Ingestion & Chargement du fichier examen et des modèles \texttt{.tex} \\ \hline
+2 & OCR / Reconstruction & Extraction ou reconstruction du texte \\ \hline
+3 & Métadonnées & Extraction des informations générales \\ \hline
+4 & Forme & Analyse des consignes pratiques de passation \\ \hline
+5 & Segmentation & Découpage en questions, exercices et sous-parties \\ \hline
+6 & Classification & Détermination du type de chaque élément \\ \hline
+7 & Barème & Détection des points et du barème détaillé \\ \hline
+8 & Mapping AA & Association questions / acquis d’apprentissage \\ \hline
+9 & Bloom & Classification cognitive des questions \\ \hline
+10 & Durée par question & Estimation du temps de traitement par élément \\ \hline
+11 & Qualité & Calcul des indicateurs qualité \\ \hline
+12 & Difficulté & Estimation de la difficulté \\ \hline
+13 & Améliorations & Génération des propositions d’amélioration \\ \hline
+14 & Génération & Création de nouvelles questions, exercices et pratiques \\ \hline
+15 & Réorganisation & Suppression, insertion, remplacement, renumérotation \\ \hline
+16 & Conformité & Vérification institutionnelle \\ \hline
+17 & Consolidation & Fusion des résultats en JSON unique \\ \hline
+18 & Rapport officiel & Génération via \texttt{rapport examen officiel.tex} \\ \hline
+19 & Génération LaTeX & Injection dans \texttt{template.tex} \\ \hline
+20 & Validation & Contrôle et correction des fichiers \texttt{.tex} \\ \hline
+21 & Plateforme & Génération de l’examen sur la plateforme cible \\ \hline
+22 & Notification & Envoi à tous les enseignants du cours \\ \hline
+\end{longtable}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}8. Exemple de Variables Injectées dans les Modèles .tex}}}
+
+\subsection*{Pour le template de l’examen}
+
+\begin{lstlisting}
+\textbf{Nom de l'epreuve :} {{ exam_header.exam_name }}
+\textbf{Classe :} {{ exam_header.class }}
+\textbf{Date :} {{ exam_header.date }}
+\textbf{Duree annoncee :} {{ exam_header.duration }}
+\textbf{Duree estimee :} {{ duration_estimation.total_minutes }}
+\end{lstlisting}
+
+\subsection*{Pour le fichier \texttt{rapport examen officiel.tex}}
+
+\begin{lstlisting}
+\textbf{Nom de l'epreuve :} {{ exam_header.exam_name }}
+\textbf{Enseignants :} {{ exam_header.teachers }}
+\textbf{Qualite :} {{ quality_indicators }}
+\textbf{Mapping AA :} {{ aa_mapping }}
+\textbf{Bloom :} {{ bloom_mapping }}
+\textbf{Ameliorations :} {{ improvement_proposals }}
+\end{lstlisting}
+
+\subsection*{Exemple de boucle pour les questions}
+
+\begin{lstlisting}
+{% for q in questions %}
+{{ q.id }} & {{ q.type }} & {{ q.points }} & {{ q.bloom_level }} & {{ q.estimated_time_minutes }} \\
+{% endfor %}
+\end{lstlisting}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}9. Recommandations de Mise en Production}}}
+
+\begin{itemize}[leftmargin=1cm]
+    \item Utiliser un pipeline en cinq couches :
+    \begin{enumerate}
+        \item extraction documentaire,
+        \item analyse IA,
+        \item amélioration et génération,
+        \item consolidation JSON,
+        \item génération LaTeX, publication et notification.
+    \end{enumerate}
+    \item Séparer les agents d’analyse, de rendu et de communication.
+    \item Rendre chaque agent testable indépendamment.
+    \item Journaliser toutes les décisions critiques.
+    \item Prévoir un niveau de confiance par agent.
+    \item Autoriser une validation humaine avant compilation finale, publication ou notification.
+\end{itemize}
+
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}10. Conclusion}}}
+
+L’architecture proposée permet de transformer un examen réel en :
+\begin{itemize}[leftmargin=1cm]
+    \item un rapport officiel d’évaluation,
+    \item une nouvelle proposition d’examen enrichie et réorganisée,
+    \item un export exploitable sur une plateforme cible,
+    \item une notification automatisée vers tous les enseignants concernés.
+\end{itemize}
+
+Elle sépare clairement :
+\begin{itemize}[leftmargin=1cm]
+    \item l’analyse de l’existant,
+    \item l’évaluation pédagogique,
+    \item la génération d’améliorations,
+    \item la production de contenus nouveaux,
+    \item la génération du rapport officiel,
+    \item la publication et la communication.
+\end{itemize}
+
+\vspace{0.8cm}
+
+\begin{center}
+
+
+% =========================
+% TABLEAU RECAPITULATIF DES AGENTS
+% =========================
+\section*{\colorbox{EspritBleu}{\parbox{\dimexpr\linewidth-2\fboxsep}{\centering \color{white}Tableau Récapitulatif des Agents IA}}}
+
+\renewcommand{\arraystretch}{1.4}
+\small
+
+\begin{longtable}{|p{3.2cm}|p{3.2cm}|p{3.2cm}|p{4.8cm}|p{2.8cm}|}
+\hline
+\rowcolor{GrisClair}
+\textbf{Agent} & \textbf{Entrées} & \textbf{Sorties} & \textbf{Rôle} & \textbf{Dépendances} \\ \hline
+\endfirsthead
+
+\hline
+\rowcolor{GrisClair}
+\textbf{Agent} & \textbf{Entrées} & \textbf{Sorties} & \textbf{Rôle} & \textbf{Dépendances} \\ \hline
+\endhead
+
+Orchestrateur Central
+& Examen, \texttt{template.tex}, \texttt{rapport examen officiel.tex}, AA, règles, métadonnées cours
+& JSON consolidé, fichiers finaux, journal
+& Pilote l’ensemble du workflow, ordonne les appels, gère erreurs et validations
+& Tous les agents \\ \hline
+
+Agent d’Ingestion Documentaire
+& PDF, DOCX, image, texte
+& Texte brut, pages, blocs détectés
+& Détecte le format et extrait le contenu initial
+& Aucun \\ \hline
+
+Agent OCR / Reconstruction
+& Document scanné, images, texte brut
+& Texte reconstruit, structure logique
+& Reconstruit les blocs du document si extraction directe insuffisante
+& Ingestion \\ \hline
+
+Agent d’Extraction de Métadonnées
+& Texte reconstruit, en-têtes, consignes
+& Nom épreuve, classe, langue, durée, date, enseignants, pages
+& Extrait les informations générales de l’épreuve
+& Ingestion, OCR \\ \hline
+
+Agent d’Analyse de la Forme de l’Examen
+& Consignes, règles institutionnelles
+& Réponse sur feuille, documents autorisés, calculatrice, PC, Internet, validation
+& Analyse les modalités pratiques de passation
+& Métadonnées, OCR \\ \hline
+
+Agent de Segmentation des Questions
+& Texte structuré de l’examen
+& Questions, sous-questions, exercices, identifiants
+& Découpe l’examen en unités évaluatives
+& OCR \\ \hline
+
+Agent de Classification Automatique des Questions
+& Questions segmentées
+& Type de chaque question
+& Classe les éléments en QCM, rédaction, pratique, étude de cas, etc.
+& Segmentation \\ \hline
+
+Agent d’Extraction du Barème
+& Questions, texte de l’examen
+& Points par question, total, barème détaillé ou non
+& Détecte la répartition des points
+& Segmentation \\ \hline
+
+Agent de Mapping AA
+& Questions, syllabus, acquis d’apprentissage
+& Matrice Question $\rightarrow$ AA
+& Associe chaque question aux acquis d’apprentissage
+& Segmentation, Classification \\ \hline
+
+Agent Bloom Taxonomy
+& Questions, objectifs, verbes d’action
+& Niveau Bloom par question, distribution globale
+& Attribue un niveau cognitif à chaque question
+& Segmentation, Classification \\ \hline
+
+Agent d’Estimation de la Durée par Question
+& Questions, difficulté, barème, niveau étudiants
+& Temps estimé par question, temps total
+& Estime la durée de traitement de chaque élément
+& Segmentation, Classification, Barème \\ \hline
+
+Agent d’Indicateurs Qualité
+& AA, Bloom, barème, durée, types de questions
+& Indicateurs qualité
+& Calcule les indicateurs pédagogiques et qualitatifs
+& Mapping AA, Bloom, Barème, Durée \\ \hline
+
+Agent d’Analyse de Difficulté
+& Questions, durée estimée, barème
+& Difficulté par question, difficulté globale
+& Évalue la complexité et le niveau global de l’examen
+& Classification, Durée, Barème \\ \hline
+
+Agent de Génération des Propositions d’Amélioration
+& Indicateurs qualité, difficulté, durée, AA
+& Liste des améliorations proposées
+& Suggère corrections, reformulations, suppressions ou ajouts
+& Qualité, Difficulté, Durée, Mapping AA \\ \hline
+
+Agent de Génération de Questions, d’Exercices et de Pratiques
+& Objectifs pédagogiques, AA, contraintes, améliorations
+& Nouvelles questions, exercices, pratiques
+& Génère de nouveaux contenus d’évaluation adaptés
+& Améliorations, Mapping AA, Bloom \\ \hline
+
+Agent de Réorganisation de la Nouvelle Proposition
+& Ancien examen, nouveaux contenus, plan d’amélioration
+& Nouvelle structure d’examen
+& Supprime, remplace, insère et renumérote les éléments
+& Génération, Segmentation, Améliorations \\ \hline
+
+Agent de Conformité Institutionnelle
+& Examen, rapport, règles institutionnelles
+& Rapport de conformité, éléments manquants
+& Vérifie la conformité académique et documentaire
+& Forme, Métadonnées, Réorganisation \\ \hline
+
+Agent de Consolidation des Résultats
+& Sorties de tous les agents
+& JSON unique consolidé
+& Fusionne toutes les analyses dans une structure unique
+& Tous les agents précédents \\ \hline
+
+Agent Générateur du Rapport d’Évaluation d’Examen
+& \texttt{rapport examen officiel.tex}, JSON consolidé
+& \texttt{rapport\_evaluation\_final.tex}, PDF
+& Produit le rapport officiel d’évaluation d’examen
+& Consolidation \\ \hline
+
+Agent de Génération LaTeX
+& \texttt{template.tex}, JSON consolidé
+& \texttt{report\_final.tex}
+& Injecte les données dans le modèle LaTeX de sortie
+& Consolidation \\ \hline
+
+Agent de Validation LaTeX
+& Fichiers \texttt{.tex} générés
+& Fichiers corrigés, logs de validation
+& Vérifie et corrige les erreurs de compilation LaTeX
+& Générateur rapport, Génération LaTeX \\ \hline
+
+Agent de Génération de l’Examen sur la Plateforme
+& Nouvelle structure d’examen, métadonnées, barème
+& Export plateforme, payload JSON/XML
+& Génère l’examen dans le format attendu par la plateforme cible
+& Réorganisation, Consolidation \\ \hline
+
+Agent de Notification aux Enseignants du Cours
+& Liste enseignants, liens, statuts, rapports
+& Notifications envoyées, historique
+& Informe tous les enseignants du cours des mises à jour et livrables
+& Rapport officiel, Plateforme, Orchestrateur \\ \hline
+
+\end{longtable}
+\normalsize
+\textbf{Fin du document}
+\end{center}
+
+\end{document}

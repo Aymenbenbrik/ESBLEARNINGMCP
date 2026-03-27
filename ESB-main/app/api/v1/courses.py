@@ -893,6 +893,11 @@ def get_course_dashboard(course_id):
         aaa_dist = _compute_aaa_distribution(course_id)
         chapter_stats = _compute_chapter_stats(course_id)
 
+        # Compute exam stats for this course
+        from app.models import CourseExam
+        from app.api.v1.dashboards import _compute_exam_stats
+        exam_stats = _compute_exam_stats([course_id])
+
         return jsonify({
             'course': {
                 'id': course.id,
@@ -904,7 +909,8 @@ def get_course_dashboard(course_id):
             'bloom_distribution': bloom_dist,
             'difficulty_distribution': difficulty_dist,
             'aaa_distribution': aaa_dist,
-            'question_bank_by_chapter': chapter_stats
+            'question_bank_by_chapter': chapter_stats,
+            'exam_stats': exam_stats,
         }), 200
 
     except Exception as e:

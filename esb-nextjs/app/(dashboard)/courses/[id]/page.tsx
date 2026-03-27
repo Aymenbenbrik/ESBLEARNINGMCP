@@ -258,7 +258,7 @@ export default function CourseDetailPage() {
 
         {/* Tab 6: Examen (teachers only) */}
         {activeTab === 'examen' && course.can_edit && (
-          <ExamTab courseId={courseId} canEdit={course.can_edit} />
+          <ExamTab courseId={courseId} canEdit={course.can_edit} courseAAs={(data as any).tn_aa_distribution ?? []} />
         )}
       </div>
 

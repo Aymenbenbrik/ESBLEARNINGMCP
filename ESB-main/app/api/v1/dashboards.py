@@ -36,6 +36,7 @@ from app.models import (
     QuizQuestion,
     ClassCourseAssignment,
     TeacherStudent,
+    CourseExam,
 )
 from app.api.v1.utils import get_current_user, superuser_required
 import logging
@@ -275,6 +276,86 @@ def _user_can_access_student(user: User, student_id: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Exam stats helper
+# ---------------------------------------------------------------------------
+
+
+def _compute_exam_stats(course_ids: List[int]) -> dict:
+    """Aggregate exam/épreuve KPIs across a list of course IDs."""
+    if not course_ids:
+        return _empty_exam_stats()
+
+    exams = CourseExam.query.filter(CourseExam.course_id.in_(course_ids)).all()
+    if not exams:
+        return _empty_exam_stats()
+
+    total = len(exams)
+    analyzed = [e for e in exams if e.status == 'done' and e.ai_evaluation]
+
+    by_type: dict = {}
+    for e in exams:
+        t = e.exam_type or 'examen'
+        by_type[t] = by_type.get(t, 0) + 1
+
+    scores, aa_coverages, practical_count = [], [], 0
+    for e in analyzed:
+        ev = e.ai_evaluation or {}
+        s = ev.get('overall_score')
+        if s is not None:
+            try:
+                scores.append(float(s))
+            except (TypeError, ValueError):
+                pass
+
+        aa_list = ev.get('aa_alignment') or []
+        if aa_list:
+            covered = sum(1 for a in aa_list if a.get('covered'))
+            aa_coverages.append(round(covered / len(aa_list) * 100, 1))
+
+        if ev.get('has_practical_questions'):
+            practical_count += 1
+
+    return {
+        'total_exams': total,
+        'exams_analyzed': len(analyzed),
+        'by_type': by_type,
+        'avg_overall_score': round(sum(scores) / len(scores), 2) if scores else None,
+        'avg_aa_coverage': round(sum(aa_coverages) / len(aa_coverages), 1) if aa_coverages else None,
+        'practical_exams_count': practical_count,
+        'exams': [_exam_summary(e) for e in exams],
+    }
+
+
+def _empty_exam_stats() -> dict:
+    return {
+        'total_exams': 0, 'exams_analyzed': 0, 'by_type': {},
+        'avg_overall_score': None, 'avg_aa_coverage': None,
+        'practical_exams_count': 0, 'exams': [],
+    }
+
+
+def _exam_summary(e: 'CourseExam') -> dict:
+    ev = e.ai_evaluation or {}
+    aa_list = ev.get('aa_alignment') or []
+    covered = sum(1 for a in aa_list if a.get('covered'))
+    aa_coverage = round(covered / len(aa_list) * 100, 1) if aa_list else None
+    return {
+        'id': e.id,
+        'course_id': e.course_id,
+        'original_name': e.original_name,
+        'exam_type': e.exam_type,
+        'weight': e.weight,
+        'status': e.status,
+        'overall_score': ev.get('overall_score'),
+        'questions_count': ev.get('questions_count'),
+        'has_practical_questions': ev.get('has_practical_questions', False),
+        'aa_coverage': aa_coverage,
+        'bloom_distribution': ev.get('bloom_distribution'),
+        'created_at': e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -311,17 +392,20 @@ def get_my_dashboard():
         ) or 0
 
     payload = _compute_common_dashboard(course_ids=course_ids, total_students=int(total_students))
+    exam_stats = _compute_exam_stats(course_ids)
 
     # Per-course quick cards (small subset)
     courses_data = []
     for c in Course.query.filter(Course.id.in_(course_ids)).order_by(Course.title).all():
         c_students = Enrollment.query.filter_by(course_id=c.id).count()
         c_payload = _compute_common_dashboard(course_ids=[c.id], total_students=int(c_students))
+        c_exam_stats = _compute_exam_stats([c.id])
         courses_data.append({
             'id': c.id,
             'title': c.title,
             'description': c.description,
             'stats': c_payload['stats'],
+            'exam_stats': c_exam_stats,
         })
 
     return jsonify({
@@ -333,6 +417,7 @@ def get_my_dashboard():
             'is_superuser': user.is_superuser,
         },
         **payload,
+        'exam_stats': exam_stats,
         'courses': courses_data,
     }), 200
 

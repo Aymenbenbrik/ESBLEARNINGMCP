@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { useCourse, useCourseDashboard } from '@/lib/hooks/useCourses';
 import { DashboardStats } from '@/components/courses/DashboardStats';
 import { DashboardCharts } from '@/components/courses/DashboardCharts';
+import { ExamDashboardSection } from '@/components/courses/ExamDashboardSection';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,7 +27,6 @@ export default function CourseDashboardPage() {
     error: dashboardError,
   } = useCourseDashboard(courseId);
 
-  // Loading state
   if (authLoading || courseLoading || dashboardLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -42,37 +42,30 @@ export default function CourseDashboardPage() {
     );
   }
 
-  // Check if user is a teacher
   const isTeacher = user?.is_teacher || user?.is_superuser;
   if (!isTeacher) {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Access Denied"
-          description="Only teachers can view course dashboards. Students can view their own progress from the course page."
+          title="Accès refusé"
+          description="Seuls les enseignants peuvent consulter ce dashboard."
           icon={<Lock className="h-12 w-12" />}
-          action={
-            <Button onClick={() => router.push(`/courses/${courseId}`)}>
-              Back to Course
-            </Button>
-          }
+          action={<Button onClick={() => router.push(`/courses/${courseId}`)}>Retour au cours</Button>}
         />
       </div>
     );
   }
 
-  // Error state
   if (dashboardError || !dashboardData || !courseData) {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Dashboard Not Available"
-          description="Unable to load dashboard data. This could be because there are no quizzes or student activity yet."
+          title="Dashboard non disponible"
+          description="Aucune donnée disponible pour l'instant. Les statistiques apparaîtront dès que les étudiants commenceront les quiz."
           icon={<BarChart3 className="h-12 w-12" />}
           action={
             <Button onClick={() => router.push(`/courses/${courseId}`)}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Course
+              <ArrowLeft className="h-4 w-4 mr-2" />Retour au cours
             </Button>
           }
         />
@@ -81,61 +74,77 @@ export default function CourseDashboardPage() {
   }
 
   const { course } = courseData;
-  const { stats, bloom_distribution, difficulty_distribution, aaa_distribution, recent_quizzes } =
+  const { stats, bloom_distribution, difficulty_distribution, aaa_distribution, recent_quizzes, exam_stats } =
     dashboardData;
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 space-y-8">
       {/* Breadcrumbs */}
       <Breadcrumbs
         items={[
-          { label: 'Courses', href: '/courses' },
+          { label: 'Cours', href: '/courses' },
           { label: course.title, href: `/courses/${courseId}` },
           { label: 'Dashboard' },
         ]}
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-8 w-8" />
-            Course Analytics
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <BarChart3 className="h-7 w-7" />
+            Analytiques du cours
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Performance insights and statistics for {course.title}
-          </p>
+          <p className="text-muted-foreground mt-1 text-sm">{course.title}</p>
         </div>
-        <Button variant="outline" asChild>
+        <Button variant="outline" size="sm" asChild>
           <Link href={`/courses/${courseId}`}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Course
+            <ArrowLeft className="h-4 w-4 mr-2" />Retour au cours
           </Link>
         </Button>
       </div>
 
-      {/* Stats Section */}
-      <div className="mb-8">
+      {/* Quiz KPIs */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-1 w-6 rounded-full bg-bolt-accent" />
+          <h2 className="text-base font-semibold">Statistiques Quiz</h2>
+        </div>
         <DashboardStats stats={stats} />
-      </div>
+      </section>
 
-      {/* Charts Section */}
-      <div className="mb-8">
+      {/* Exam section — per-course */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-1 w-6 rounded-full bg-violet-500" />
+          <h2 className="text-base font-semibold">Épreuves & Examens</h2>
+        </div>
+        {exam_stats ? (
+          <ExamDashboardSection examStats={exam_stats} courseId={courseId} />
+        ) : (
+          <p className="text-sm text-muted-foreground">Aucune donnée d&apos;épreuve.</p>
+        )}
+      </section>
+
+      {/* Bloom / Difficulty / AA charts */}
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-1 w-6 rounded-full bg-bolt-accent" />
+          <h2 className="text-base font-semibold">Distributions cognitives</h2>
+        </div>
         <DashboardCharts
           bloom_distribution={bloom_distribution}
           difficulty_distribution={difficulty_distribution}
           aaa_distribution={aaa_distribution}
         />
-      </div>
+      </section>
 
-      {/* Recent Quizzes Section */}
+      {/* Recent quiz activity */}
       {recent_quizzes && recent_quizzes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recent Quiz Activity</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Latest quiz completions by students
-            </p>
+            <CardTitle className="text-base">Activité récente — Quiz</CardTitle>
+            <p className="text-sm text-muted-foreground">Dernières soumissions des étudiants</p>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -147,7 +156,7 @@ export default function CourseDashboardPage() {
                   <div className="flex-1">
                     <p className="font-medium">{quiz.student_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      Completed on {new Date(quiz.completed_at).toLocaleDateString()}
+                      {new Date(quiz.completed_at).toLocaleDateString('fr-FR')}
                     </p>
                   </div>
                   <div className="text-right">
@@ -161,23 +170,22 @@ export default function CourseDashboardPage() {
         </Card>
       )}
 
-      {/* Empty State for No Data */}
+      {/* Empty state */}
       {(!recent_quizzes || recent_quizzes.length === 0) &&
         bloom_distribution.length === 0 &&
-        difficulty_distribution.length === 0 && (
+        difficulty_distribution.length === 0 &&
+        (!exam_stats || exam_stats.total_exams === 0) && (
           <Card>
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium mb-2">No Analytics Data Yet</p>
+                <p className="text-lg font-medium mb-2">Pas encore de données</p>
                 <p className="text-muted-foreground max-w-md">
-                  Dashboard analytics will appear once students start completing quizzes.
-                  Create quizzes and encourage students to participate!
+                  Les statistiques apparaîtront dès que les étudiants commenceront les quiz ou après ajout d&apos;épreuves.
                 </p>
                 <Button className="mt-6" asChild>
                   <Link href={`/courses/${courseId}`}>
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Course
+                    <ArrowLeft className="h-4 w-4 mr-2" />Retour au cours
                   </Link>
                 </Button>
               </div>
@@ -187,3 +195,4 @@ export default function CourseDashboardPage() {
     </div>
   );
 }
+

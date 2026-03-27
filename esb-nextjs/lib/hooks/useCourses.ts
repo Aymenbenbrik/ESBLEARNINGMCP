@@ -14,6 +14,7 @@ import {
   CourseActivity,
   CourseExam,
   TnExamDocument,
+  GeneratedQuestion,
 } from '../types/course';
 import { toast } from 'sonner';
 
@@ -335,13 +336,26 @@ export function useCourseExam(courseId: number) {
   });
 }
 
+export function useCourseExams(courseId: number) {
+  return useQuery<CourseExam[]>({
+    queryKey: ['course-exams', courseId],
+    queryFn: async () => {
+      const r = await examApi.list(courseId);
+      return r.data.exams;
+    },
+    enabled: !!courseId,
+  });
+}
+
 export function useUploadExam(courseId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => examApi.upload(courseId, file),
+    mutationFn: ({ file, config }: { file: File; config?: import('../api/courses').ExamUploadConfig }) =>
+      examApi.upload(courseId, file, config),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['course-exams', courseId] });
       qc.invalidateQueries({ queryKey: ['course-exam', courseId] });
-      toast.success('Examen uploadé avec succès');
+      toast.success('Évaluation uploadée avec succès');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || "Erreur lors de l'upload");
@@ -353,11 +367,18 @@ export function useAnalyzeExam(courseId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (examId: number) => examApi.analyze(courseId, examId),
-    onSuccess: () => {
+    onSettled: () => {
+      // Always refetch regardless of success or error
+      qc.invalidateQueries({ queryKey: ['course-exams', courseId] });
       qc.invalidateQueries({ queryKey: ['course-exam', courseId] });
-      toast.success('Analyse lancée');
+    },
+    onSuccess: (data) => {
+      const exam = (data as any)?.data?.exam;
+      if (exam?.status === 'done') toast.success('Analyse terminée avec succès');
+      else if (exam?.status === 'error') toast.error('Analyse échouée - vérifiez les logs');
     },
     onError: (error: any) => {
+      qc.invalidateQueries({ queryKey: ['course-exams', courseId] });
       toast.error(error.response?.data?.error || "Erreur lors de l'analyse");
     },
   });
@@ -368,11 +389,28 @@ export function useDeleteExam(courseId: number) {
   return useMutation({
     mutationFn: (examId: number) => examApi.remove(courseId, examId),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['course-exams', courseId] });
       qc.invalidateQueries({ queryKey: ['course-exam', courseId] });
-      toast.success('Examen supprimé');
+      toast.success('Évaluation supprimée');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
+    },
+  });
+}
+
+export function useGenerateExamQuestions(courseId: number) {
+  return useMutation<
+    GeneratedQuestion[],
+    Error,
+    { examId: number; count: number; focus: 'bloom' | 'aa' | 'difficulty' | 'practical' }
+  >({
+    mutationFn: async ({ examId, count, focus }) => {
+      const r = await examApi.generate(courseId, examId, count, focus);
+      return r.data.questions;
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la génération');
     },
   });
 }
@@ -385,5 +423,29 @@ export function useTnExams(courseId: number) {
       return r.data.exams;
     },
     enabled: !!courseId,
+  });
+}
+
+export function useGenerateExamLatex(courseId: number) {
+  return useMutation<string, Error, { examId: number; includeProposals: boolean }>({
+    mutationFn: async ({ examId, includeProposals }) => {
+      const r = await examApi.generateLatex(courseId, examId, includeProposals);
+      return r.data.latex;
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur de génération LaTeX');
+    },
+  });
+}
+
+export function useCompileExamLatex(courseId: number) {
+  return useMutation<Blob, Error, { examId: number; latex: string }>({
+    mutationFn: async ({ examId, latex }) => {
+      const r = await examApi.compileLatex(courseId, examId, latex);
+      return r.data as unknown as Blob;
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur de compilation LaTeX');
+    },
   });
 }

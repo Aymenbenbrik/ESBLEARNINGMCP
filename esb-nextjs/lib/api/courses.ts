@@ -15,6 +15,8 @@ import {
   StudentGrade,
   CourseExam,
   TnExamDocument,
+  ExamType,
+  GeneratedQuestion,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -129,20 +131,49 @@ export const gradesApi = {
     apiClient.get<StudentGrade & { weights: GradeWeight }>(`/api/v1/courses/${courseId}/grades/me`),
 };
 
+export interface ExamUploadConfig {
+  examType: ExamType;
+  weight: number;
+  targetAaIds: number[];
+  hasPracticalTarget: boolean;
+}
+
 export const examApi = {
   get: (courseId: number) =>
     apiClient.get<{ exam: CourseExam | null }>(`/api/v1/courses/${courseId}/exam`),
-  upload: (courseId: number, file: File) => {
+  list: (courseId: number) =>
+    apiClient.get<{ exams: CourseExam[] }>(`/api/v1/courses/${courseId}/exams`),
+  upload: (courseId: number, file: File, config?: ExamUploadConfig) => {
     const fd = new FormData();
     fd.append('file', file);
+    if (config) {
+      fd.append('exam_type', config.examType);
+      fd.append('weight', String(config.weight));
+      fd.append('has_practical_target', String(config.hasPracticalTarget));
+      fd.append('target_aa_ids', JSON.stringify(config.targetAaIds));
+    }
     return apiClient.post<{ exam: CourseExam }>(`/api/v1/courses/${courseId}/exam/upload`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
   analyze: (courseId: number, examId: number) =>
     apiClient.post<{ exam: CourseExam }>(`/api/v1/courses/${courseId}/exam/analyze`, { exam_id: examId }),
+  updateConfig: (courseId: number, examId: number, config: Partial<{
+    exam_type: ExamType; weight: number; target_aa_ids: number[]; has_practical_target: boolean;
+  }>) =>
+    apiClient.patch<{ exam: CourseExam }>(`/api/v1/courses/${courseId}/exam/${examId}/config`, config),
   remove: (courseId: number, examId: number) =>
     apiClient.delete(`/api/v1/courses/${courseId}/exam/${examId}`),
+  generate: (courseId: number, examId: number, count: number, focus: 'bloom' | 'aa' | 'difficulty' | 'practical') =>
+    apiClient.post<{ questions: GeneratedQuestion[] }>(`/api/v1/courses/${courseId}/exam/${examId}/generate`, { count, focus }),
+  generateLatex: (courseId: number, examId: number, includeProposals?: boolean) =>
+    apiClient.post<{ latex: string }>(`/api/v1/courses/${courseId}/exam/${examId}/generate-latex`, { include_proposals: includeProposals ?? true }),
+  compileLatex: (courseId: number, examId: number, latex: string) =>
+    apiClient.post(
+      `/api/v1/courses/${courseId}/exam/${examId}/compile-latex`,
+      { latex },
+      { responseType: 'blob' }
+    ),
 };
 
 export const tnExamsApi = {

@@ -1,0 +1,183 @@
+\documentclass[11pt,a4paper]{article}
+
+%=================================
+% ENCODAGE ET LANGUE
+%=================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+
+%=================================
+% PACKAGES
+%=================================
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{graphicx}
+\usepackage[table]{xcolor}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{tikzpagenodes}
+\usepackage{eso-pic}
+\usepackage{helvet}
+\usepackage{pifont}
+\renewcommand{\familydefault}{\sfdefault}
+
+%=================================
+% MISE EN PAGE
+%=================================
+\geometry{top=2cm,bottom=2cm,left=2cm,right=2cm}
+\renewcommand{\arraystretch}{1.5}
+\setlength{\arrayrulewidth}{0.6pt}
+\setlength{\parindent}{0pt}
+
+%=================================
+% COULEURS CHARTE
+%=================================
+\definecolor{schoolgray}{RGB}{80,80,80}
+\definecolor{schoollightgray}{RGB}{245,245,245}
+\definecolor{schoolred}{RGB}{128,24,40}
+\definecolor{schoolborder}{RGB}{180,180,180}
+
+%=================================
+% MACROS
+%=================================
+\newcommand{\yesbox}{\ding{113}~Oui \quad \ding{113}~Non}
+\newcommand{\institutionname}{\textbf{ESPRIT SCHOOL OF BUSINESS}}
+\newcommand{\facultyname}{\textit{Examination Department}}
+
+%=================================
+% HEADER GRAPHICS
+%=================================
+\AddToShipoutPictureBG*{%
+  \AtPageUpperLeft{%
+    \begin{tikzpicture}[remember picture,overlay]
+      \fill[schoolred] (0,0) rectangle (\paperwidth,-0.5cm);
+      \fill[schoolgray] (0,-0.5cm) rectangle (\paperwidth,-0.9cm);
+    \end{tikzpicture}%
+  }%
+}
+
+%=================================
+% FOOTER
+%=================================
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textcolor{schoolgray}{\small Page \thepage\,/\pageref{LastPage}}}
+\renewcommand{\headrulewidth}{0pt}
+
+\begin{document}
+
+%=================================
+% HEADER
+%=================================
+
+\vspace*{-0.7cm}
+
+\noindent
+\begin{minipage}[c]{0.18\textwidth}
+    \includegraphics[width=\linewidth]{Logo.png}
+\end{minipage}
+\hfill
+\begin{minipage}[c]{0.78\textwidth}
+    {\color{schoolred}\fontsize{18}{20}\selectfont\bfseries \institutionname}\\[0.3em]
+    {\color{schoolgray}\large \facultyname}\\[0.4em]
+    {\color{schoolgray}Semester \underline{\hspace{1.5cm}} \quad Session \underline{\hspace{1.5cm}} \quad Year \underline{\hspace{1.5cm}}}
+\end{minipage}
+
+\vspace{0.4em}
+
+{\color{schoolred}\rule{\textwidth}{1.2pt}}
+\vspace{0.4em}
+{\color{schoolborder}\rule{\textwidth}{0.5pt}}
+
+\vspace{1em}
+
+\begin{center}
+    {\Large\bfseries\color{schoolgray}EXAM / EXAMEN}
+\end{center}
+
+\vspace{1em}
+
+%=================================
+% TABLE 1
+%=================================
+
+{\rowcolors{2}{schoollightgray}{white}
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{schoolgray}}p{0.4\textwidth}|X|}
+\hline
+Course / Cours & \\ \hline
+Class / Classe & \\ \hline
+Language / Langue & \\ \hline
+Duration / Dur\'ee & \\ \hline
+Date & \\ \hline
+Instructor(s) & \\ \hline
+\end{tabularx}}
+
+\vspace{0.4em}
+
+%=================================
+% TABLE 2
+%=================================
+
+{\rowcolors{2}{schoollightgray}{white}
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{schoolgray}}p{0.4\textwidth}|X|}
+\hline
+Answer on exam sheet & \yesbox \\ \hline
+Documents allowed & \yesbox \\ \hline
+Calculator allowed & \yesbox \\ \hline
+Computer allowed & \yesbox \\ \hline
+Internet allowed & \yesbox \\ \hline
+Validated by all instructors & \yesbox \\ \hline
+\end{tabularx}}
+
+\vspace{1em}
+
+%=================================
+% STUDENT INFO
+%=================================
+
+{\rowcolors{2}{schoollightgray}{white}
+\begin{tabularx}{\textwidth}{|>{\bfseries\color{schoolgray}}p{0.3\textwidth}|X|}
+\hline
+Name / Nom & \\ \hline
+Student ID / Matricule & \\ \hline
+Group / Groupe & \\ \hline
+Room / Salle & \\ \hline
+Signature & \\ \hline
+\end{tabularx}}
+
+\vspace{0.6em}
+
+%=================================
+% INSTRUCTIONS
+%=================================
+
+{\color{schoolred}\large\bfseries Instructions / Consignes}
+
+\vspace{0.4em}
+\color{schoolgray}
+\begin{itemize}
+    \item Read all questions carefully.
+    \item No documents unless authorized.
+    \item Any fraud leads to immediate exclusion.
+\end{itemize}
+\color{black}
+
+\vspace{1em}
+
+%=================================
+% EXERCISES
+%=================================
+
+\section*{Exercise 1 / Exercice 1}
+\vspace{4cm}
+
+\section*{Exercise 2 / Exercice 2}
+\vspace{4cm}
+
+\section*{Exercise 3 / Exercice 3}
+\vspace{4cm}
+
+\end{document}

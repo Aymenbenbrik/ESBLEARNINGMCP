@@ -1510,6 +1510,10 @@ class CourseExam(db.Model):
     ai_evaluation = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    exam_type = db.Column(db.String(20), default='examen')   # 'examen' | 'ds' | 'pratique'
+    weight = db.Column(db.Float, default=30.0)                # pondération %
+    target_aa_ids = db.Column(db.JSON)                        # [1, 2, 3] — AA numbers chosen by teacher
+    has_practical_target = db.Column(db.Boolean, default=False)  # teacher says exam should have practical questions
 
     course = db.relationship('Course', backref=db.backref('exams', cascade='all, delete-orphan', lazy='dynamic'))
 
@@ -1523,6 +1527,10 @@ class CourseExam(db.Model):
             'ai_evaluation': self.ai_evaluation,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'exam_type': self.exam_type or 'examen',
+            'weight': self.weight or 30.0,
+            'target_aa_ids': self.target_aa_ids or [],
+            'has_practical_target': self.has_practical_target or False,
         }
 
 
