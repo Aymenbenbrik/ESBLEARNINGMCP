@@ -147,19 +147,27 @@ def _get_course_context(course_id: int, max_chars: int = 12000) -> str:
     from app.models import Document
     from app.services.tn_exam_evaluation_service import extract_text_from_file
 
+    upload_dir = current_app.config.get('UPLOAD_FOLDER') or os.path.join(current_app.root_path, 'uploads')
+
     docs = Document.query.filter_by(course_id=course_id).filter(
         Document.document_type.notin_(['tn_exam'])
     ).all()
     parts: List[str] = []
     total = 0
     for doc in docs:
-        if doc.file_path and os.path.exists(doc.file_path) and total < max_chars:
-            try:
-                txt = extract_text_from_file(doc.file_path)[:3000]
-                parts.append(f"=== {doc.title} ===\n{txt}")
+        if not doc.file_path or total >= max_chars:
+            continue
+        # Resolve to absolute path (stored as relative to UPLOAD_FOLDER)
+        abs_path = os.path.join(upload_dir, doc.file_path)
+        if not os.path.exists(abs_path):
+            continue
+        try:
+            txt = extract_text_from_file(abs_path)
+            if txt:
+                parts.append(f"=== {doc.title} ===\n{txt[:3000]}")
                 total += len(txt)
-            except Exception:
-                pass
+        except Exception:
+            pass
     return "\n\n".join(parts) or "Aucun document de cours disponible."
 
 

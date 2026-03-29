@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import json
 import random
@@ -59,49 +59,116 @@ def extract_text_from_file(filepath):
         return None
 
 def _extract_json_array(text):
-    matches = re.findall(r"\[\s*{.*?}\s*\]", text, re.DOTALL)
+    matches = re.findall(r"\[\s*\{.*?\}\s*\]", text, re.DOTALL)
     if not matches:
-        raise ValueError("No JSON array found in text")
+        return []
     candidate = matches[0]
     candidate = candidate.replace("{{", "{").replace("}}", "}")
-    candidate = re.sub(r",\s*]", "]", candidate)  # Remove trailing commas
-    return json.loads(candidate)
+    candidate = re.sub(r",\s*\]", "]", candidate)
+    candidate = re.sub(r",\s*}", "}", candidate)
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        return []
 
-def extract_questions_from_text(exam_text: str) -> list:
-    prompt = f"""
-Voici le texte d'un examen :
-{exam_text}
+# Type normalization map (English/mixed -> French)
+_QTYPE_NORMALIZE = {
+    'mcq': 'QCM',
+    'multiple choice': 'QCM',
+    'multiple_choice': 'QCM',
+    'qcm': 'QCM',
+    'true/false': 'Vrai/Faux',
+    'true_false': 'Vrai/Faux',
+    'vrai/faux': 'Vrai/Faux',
+    'vrai_faux': 'Vrai/Faux',
+    'short answer': 'Ouvert',
+    'short_answer': 'Ouvert',
+    'open': 'Ouvert',
+    'ouvert': 'Ouvert',
+    'essay': 'Rédactionnel',
+    'redactionnel': 'Rédactionnel',
+    'rédactionnel': 'Rédactionnel',
+    'calculation': 'Calcul',
+    'numerical': 'Calcul',
+    'calcul': 'Calcul',
+    'practical': 'Pratique',
+    'pratique': 'Pratique',
+    'case study': 'Étude de cas',
+    'case_study': 'Étude de cas',
+    'étude de cas': 'Étude de cas',
+    'etude de cas': 'Étude de cas',
+}
 
-Extract all exam questions from the following text.
-Return a JSON array with each question as an object, formatted exactly like this:
 
+def _normalize_question_type(raw_type: str) -> str:
+    """Normalize question type to standard French label."""
+    if not raw_type:
+        return ''
+    lower = raw_type.strip().lower()
+    return _QTYPE_NORMALIZE.get(lower, raw_type.strip())
+
+
+def extract_questions_from_text(exam_text: str, latex_source: str = '') -> list:
+    latex_hint = ""
+    if latex_source and latex_source.strip():
+        latex_hint = f"""
+Utilise également le source LaTeX suivant pour améliorer l'extraction (numérotation, formules exactes):
+--- SOURCE LATEX ---
+{latex_source[:5000]}
+--- FIN SOURCE LATEX ---
+"""
+    prompt = f"""Tu es un expert en extraction de questions d'examen universitaire en français.
+
+Extrais TOUTES les questions du texte d'examen ci-dessous.
+{latex_hint}
+
+RÈGLES OBLIGATOIRES:
+1. Préserve les formules mathématiques EXACTEMENT (ex: $x^2$, $\\alpha + \\beta$, $$\\int_0^1 f(x)\\,dx$$)
+2. Si une figure/tableau est mentionné(e), inclus une référence explicite [Figure N] ou [Tableau N] dans le texte
+3. Pour les QCM, inclus les choix (A, B, C, D) dans le texte de la question
+4. Détermine le type: QCM, Ouvert, Calcul, Vrai/Faux, Pratique, Étude de cas, Rédactionnel
+5. Préserve la numérotation originale des questions
+
+Retourne UNIQUEMENT un JSON array valide (pas d'autre texte):
 [
   {{
     "question_number": 1,
-    "question_text": "Texte de la question ici",
-    "type": "MCQ"  // ou "Short Answer" ou "Essay"
+    "question_text": "Texte COMPLET de la question avec formules LaTeX préservées",
+    "type": "Calcul"
+  }},
+  {{
+    "question_number": 2,
+    "question_text": "Question avec choix:\\nA) option 1\\nB) option 2\\nC) option 3\\nD) option 4",
+    "type": "QCM"
   }}
 ]
+
+Texte de l'examen:
+{exam_text}
 """
     llm = _get_gemini_model()
     messages = [
-        SystemMessage(content="You are an exam question extractor."),
+        SystemMessage(content="Tu es un expert en extraction de questions d'examen. Préserve exactement les formules mathématiques LaTeX."),
         HumanMessage(content=prompt)
     ]
-    completion = llm.invoke(messages)
-    output_text = completion.content
-    data = _extract_json_array(output_text)
+    try:
+        completion = llm.invoke(messages)
+        output_text = completion.content
+        data = _extract_json_array(output_text)
+    except Exception as e:
+        logger.error(f"Error extracting questions: {e}")
+        data = []
     questions = []
     seen = set()
     idx = 1
     for q in data:
-        qtext = q.get("question_text", "").strip()
-        qtype = q.get("type", "").strip()
+        qtext = (q.get("question_text") or q.get("text") or "").strip()
+        qtype = _normalize_question_type(q.get("type") or q.get("question_type") or "")
         if qtext and qtext not in seen:
             questions.append({
                 "Question#": idx,
                 "Text": qtext,
-                "Type": qtype
+                "Type": qtype,
             })
             seen.add(qtext)
             idx += 1
@@ -196,43 +263,64 @@ Retourne uniquement un JSON array valide, sans autre texte.
 
 
 def classify_questions_bloom(questions: list) -> list:
+    """Classify all questions' Bloom level in a SINGLE LLM call (batch mode for speed)."""
     bloom_levels = ["Mémoriser", "Comprendre", "Appliquer", "Analyser", "Évaluer", "Créer"]
     bloom_descriptions = {
         "Mémoriser": "Se souvenir ou rappeler des faits et concepts.",
         "Comprendre": "Expliquer, reformuler ou interpréter des idées.",
         "Appliquer": "Utiliser des connaissances dans des contextes pratiques.",
-        "Analyser": "Identifier des relations ou différencier des parties d’un problème.",
-        "Évaluer": "Jugement critique ou justification d’un choix.",
+        "Analyser": "Identifier des relations ou différencier des parties d'un problème.",
+        "Évaluer": "Jugement critique ou justification d'un choix.",
         "Créer": "Produire ou combiner des idées pour générer quelque chose de nouveau."
     }
 
+    if not questions:
+        return questions
+
     llm = _get_gemini_model()
-    llm.temperature = 0
+
+    questions_text = "\n".join([
+        f"Q{q.get('Question#', i+1)}: {(q.get('Text') or '')[:200]}"
+        for i, q in enumerate(questions)
+    ])
+
+    prompt = f"""
+[INST]
+Classe chaque question d'examen selon la taxonomie de Bloom révisée.
+
+Niveaux disponibles (retourne EXACTEMENT l'un d'eux):
+1. Mémoriser   — rappel de faits, définitions, formules
+2. Comprendre  — expliquer, reformuler, interpréter
+3. Appliquer   — utiliser une méthode dans un nouveau contexte
+4. Analyser    — décomposer, comparer, identifier des relations
+5. Évaluer     — juger, justifier, critiquer
+6. Créer       — concevoir, produire, combiner pour créer quelque chose de nouveau
+
+Questions à classifier:
+{questions_text}
+
+Retourne UNIQUEMENT un JSON array:
+[
+  {{"Question#": 1, "Bloom_Level": "Appliquer"}},
+  {{"Question#": 2, "Bloom_Level": "Mémoriser"}}
+]
+[/INST]
+"""
+    try:
+        response = llm.invoke([HumanMessage(content=prompt)]).content
+        arr = _extract_json_array(response) or []
+        by_q = {int(item.get("Question#", 0)): item.get("Bloom_Level", "Comprendre") for item in arr}
+    except Exception as e:
+        logger.error(f"Error batch-classifying Bloom: {e}")
+        by_q = {}
 
     classified_questions = []
     for q in questions:
-        prompt_bloom = f"""
-IMPORTANT: Pour chaque question, analyse en profondeur le sens global et le contexte, pas seulement les mots-clés. Essaie d’extraire la signification implicite de la question, y compris les concepts sous-jacents et les réponses possibles attendues. Utilise cette compréhension pour déterminer les CLOs les plus pertinents. Cela permettra une classification plus précise et cohérente.
-
-Classe cette question d'examen selon la taxonomie de Bloom (en français) :
-1. Mémoriser
-2. Comprendre
-3. Appliquer
-4. Analyser
-5. Évaluer
-6. Créer
-
-Question : "{q['Text']}"
-
-Réponds uniquement par le nom du niveau correspondant : Mémoriser, Comprendre, Appliquer, Analyser, Évaluer ou Créer.
-"""
-        try:
-            bloom_level = llm.invoke([HumanMessage(content=prompt_bloom)]).content.strip()
-        except Exception as e:
-             logger.error(f"Error classifying Bloom: {e}")
-             bloom_level = "Comprendre" # Default fallback
+        qnum = int(q.get("Question#", 0))
+        raw_level = by_q.get(qnum, "Comprendre")
+        bloom_level = "Comprendre"
         for level in bloom_levels:
-            if level.lower() in bloom_level.lower():
+            if level.lower() in (raw_level or "").lower():
                 bloom_level = level
                 break
         q["Bloom_Level"] = bloom_level
@@ -252,7 +340,7 @@ def normalize_question_keys(q):
     """
     text = q.get("Text") or q.get("question_text") or q.get("QuestionText") or ""
     qnum = q.get("Question#") or q.get("question_number") or None
-    qtype = q.get("Type") or q.get("type") or ""
+    qtype = _normalize_question_type(q.get("Type") or q.get("type") or "")
     clo = q.get("CLO#") or q.get("clo#") or None
     clo_desc = q.get("CLODescription") or q.get("clo_description") or None
     bloom_level = q.get("Bloom_Level") or q.get("bloom_level") or None

@@ -1,394 +1,951 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Évaluation examen{% endblock %}
-{% block heading %}Évaluation d'examen — {{ exam.title }}{% endblock %}
+{% block title %}{{ exam.title }} — Évaluation{% endblock %}
 
-{% block content %}
-  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-    <p class="text-muted mb-0">{{ course.title }} • {{ exam.title }}</p>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-secondary" href="{{ url_for('evaluate.tn_exams', course_id=course.id) }}">Tous les examens</a>
-      {% if exam.analysis_report_path %}
-        <a class="btn btn-outline-success" href="{{ url_for('evaluate.tn_exam_download_report', course_id=course.id, document_id=exam.id) }}">Télécharger PDF</a>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="row g-3 mt-3">
-    <div class="col-12 col-lg-4">
-      <div class="card">
-        <div class="card-body">
-          <h5 class="card-title mb-2">Fichier</h5>
-          <div class="small text-muted">{{ exam.file_path }}</div>
-          <div class="mt-3 d-grid gap-2">
-            <a class="btn btn-outline-primary" href="{{ url_for('chapters.serve_uploads', filename=exam.file_path) }}" target="_blank">Ouvrir</a>
-            <form method="POST">
-              <button class="btn btn-danger w-100" type="submit">Lancer / relancer l'évaluation</button>
-            </form>
-          </div>
-          <p class="text-muted small mt-3 mb-0">
-            L'évaluation utilise les documents du module + chapitres (PDF, PPTX, vidéo transcrite, etc.) pour citer la source de chaque question.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-lg-8">
-      {% set a = exam.analysis_results or {} %}
-      <div class="card">
-        <div class="card-body">
-          <h5 class="card-title">Résumé</h5>
-          {% if a and a.get('total_questions') %}
-            <div class="row g-3">
-              <div class="col-12 col-md-4">
-                <div class="border rounded p-3">
-                  <div class="small text-muted">Questions</div>
-                  <div class="fs-4 fw-bold">{{ a.get('total_questions') }}</div>
-                </div>
-              </div>
-              <div class="col-12 col-md-4">
-                <div class="border rounded p-3">
-                  <div class="small text-muted">Bloom (top)</div>
-                  {% set bloom = (a.get('bloom_percentages') or {}) %}
-                  {% set topb = (bloom.items()|list)|sort(attribute=1, reverse=True) %}
-                  <div class="fw-semibold">{{ topb[0][0] if topb and topb|length else '—' }}</div>
-                </div>
-              </div>
-              <div class="col-12 col-md-4">
-                <div class="border rounded p-3">
-                  <div class="small text-muted">Difficulté (top)</div>
-                  {% set diff = (a.get('difficulty_percentages') or {}) %}
-                  {% set topd = (diff.items()|list)|sort(attribute=1, reverse=True) %}
-                  <div class="fw-semibold">{{ topd[0][0] if topd and topd|length else '—' }}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row g-3 mt-1">
-              <div class="col-12">
-                <div class="border rounded p-3">
-                  <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                      <div class="small text-muted">Alignement aux supports (questions avec source)</div>
-                      <div class="fw-semibold">{{ a.get('source_coverage_rate', 0) }}%</div>
-                    </div>
-                    <div class="text-muted small">objectif ≥ 70%</div>
-                  </div>
-                  <div class="progress mt-2" style="height: 10px;">
-                    <div class="progress-bar" role="progressbar" style="width: {{ a.get('source_coverage_rate', 0) }}%"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <hr/>
-
-            {% if a.get('overall_interpretation') %}
-              <div class="alert alert-light border" style="border-radius:14px;">
-                <div class="fw-semibold mb-1" style="color:#d4181f;">Interprétation générale</div>
-                <div class="small text-muted">{{ a.get('overall_interpretation') }}</div>
-              </div>
-            {% endif %}
-
-            <div class="row g-3">
-              <div class="col-12 col-md-6">
-                <h6 class="mb-2">Répartition Bloom</h6>
-                <div class="border rounded p-3">
-                  <canvas id="bloomChart" height="180"></canvas>
-                </div>
-              </div>
-              <div class="col-12 col-md-6">
-                <h6 class="mb-2">Répartition Difficulté</h6>
-                <div class="border rounded p-3">
-                  <canvas id="diffChart" height="180"></canvas>
-                </div>
-              </div>
-            </div>
-
-            {% if a.get('expected_bloom_percentages') or a.get('expected_difficulty_percentages') %}
-              <hr/>
-              <h5 class="card-title mb-3">Attendus vs Observé</h5>
-
-              <div class="border rounded p-3 mb-3">
-                <div class="fw-semibold mb-2">Bloom (Observé vs Attendu)</div>
-                <canvas id="bloomExpectedChart" height="120"></canvas>
-                <div class="text-muted small mt-2">Attendus par défaut : distribution égale.</div>
-              </div>
-
-              <div class="border rounded p-3 mb-3">
-                <div class="fw-semibold mb-2">Difficulté (Observé vs Attendu)</div>
-                <canvas id="diffExpectedChart" height="120"></canvas>
-              </div>
-
-              <div class="row g-3">
-                <div class="col-12 col-lg-6">
-                  <div class="border rounded p-3">
-                    <div class="fw-semibold mb-2">Bloom (Taxonomie)</div>
-                    <div class="table-responsive">
-                      <table class="table table-sm align-middle mb-0">
-                        <thead>
-                          <tr>
-                            <th>Niveau</th>
-                            <th class="text-end">Observé</th>
-                            <th class="text-end">Attendu</th>
-                            <th class="text-end">Δ</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {% set obs = a.get('bloom_percentages') or {} %}
-                          {% set exp = a.get('expected_bloom_percentages') or {} %}
-                          {% set deltas = a.get('bloom_delta') or {} %}
-                          {% for lvl in ['Mémoriser','Comprendre','Appliquer','Analyser','Évaluer','Créer'] %}
-                            {% set d = deltas.get(lvl, 0) %}
-                            <tr>
-                              <td>{{ lvl }}</td>
-                              <td class="text-end fw-semibold">{{ obs.get(lvl, 0) }}%</td>
-                              <td class="text-end text-muted">{{ exp.get(lvl, 0) }}%</td>
-                              <td class="text-end">
-                                {% if d > 0 %}
-                                  <span class="badge bg-success">+{{ d }}%</span>
-                                {% elif d < 0 %}
-                                  <span class="badge bg-danger">{{ d }}%</span>
-                                {% else %}
-                                  <span class="badge bg-secondary">0%</span>
-                                {% endif %}
-                              </td>
-                            </tr>
-                          {% endfor %}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div class="text-muted small mt-2">Attendus = heuristique (modifiable plus tard par paramétrage du module).</div>
-                  </div>
-                </div>
-                <div class="col-12 col-lg-6">
-                  <div class="border rounded p-3">
-                    <div class="fw-semibold mb-2">Difficulté</div>
-                    <div class="table-responsive">
-                      <table class="table table-sm align-middle mb-0">
-                        <thead>
-                          <tr>
-                            <th>Niveau</th>
-                            <th class="text-end">Observé</th>
-                            <th class="text-end">Attendu</th>
-                            <th class="text-end">Δ</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {% set obs2 = a.get('difficulty_percentages') or {} %}
-                          {% set exp2 = a.get('expected_difficulty_percentages') or {} %}
-                          {% set deltas2 = a.get('difficulty_delta') or {} %}
-                          {% for lvl in ['Très facile','Facile','Moyen','Difficile','Très difficile'] %}
-                            {% set d = deltas2.get(lvl, 0) %}
-                            <tr>
-                              <td>{{ lvl }}</td>
-                              <td class="text-end fw-semibold">{{ obs2.get(lvl, 0) }}%</td>
-                              <td class="text-end text-muted">{{ exp2.get(lvl, 0) }}%</td>
-                              <td class="text-end">
-                                {% if d > 0 %}
-                                  <span class="badge bg-success">+{{ d }}%</span>
-                                {% elif d < 0 %}
-                                  <span class="badge bg-danger">{{ d }}%</span>
-                                {% else %}
-                                  <span class="badge bg-secondary">0%</span>
-                                {% endif %}
-                              </td>
-                            </tr>
-                          {% endfor %}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {% if a.get('expected_aa_percentages') %}
-                <div class="border rounded p-3 mt-3">
-                  <div class="d-flex justify-content-between align-items-center">
-                    <div class="fw-semibold">AA (Acquis d'apprentissage) — Couverture</div>
-                    {% if a.get('aa_missing') %}
-                      <span class="badge bg-warning text-dark">AA manquants: {{ a.get('aa_missing')|length }}</span>
-                    {% else %}
-                      <span class="badge bg-success">Tous couverts</span>
-                    {% endif %}
-                  </div>
-                  <div class="table-responsive mt-2">
-                    <table class="table table-sm align-middle mb-0">
-                      <thead>
-                        <tr>
-                          <th>AA#</th>
-                          <th class="text-end">Observé</th>
-                          <th class="text-end">Attendu</th>
-                          <th class="text-end">Δ</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% set oaa = a.get('aa_percentages') or {} %}
-                        {% set eaa = a.get('expected_aa_percentages') or {} %}
-                        {% set daa = a.get('aa_delta') or {} %}
-                        {% for k,v in (eaa.items()|list)|sort(attribute=0) %}
-                          {% set d = daa.get(k, 0) %}
-                          <tr>
-                            <td>AA#{{ k }}</td>
-                            <td class="text-end fw-semibold">{{ oaa.get(k, 0) }}%</td>
-                            <td class="text-end text-muted">{{ v }}%</td>
-                            <td class="text-end">
-                              {% if d > 0 %}
-                                <span class="badge bg-success">+{{ d }}%</span>
-                              {% elif d < 0 %}
-                                <span class="badge bg-danger">{{ d }}%</span>
-                              {% else %}
-                                <span class="badge bg-secondary">0%</span>
-                              {% endif %}
-                            </td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              {% endif %}
-
-              {% if a.get('recommendations') %}
-                <div class="border rounded p-3 mt-3 bg-light">
-                  <div class="fw-semibold mb-2"><i class="fas fa-lightbulb me-1"></i>Recommandations</div>
-                  <ul class="mb-0">
-                    {% for r in a.get('recommendations') %}
-                      <li class="small">{{ r }}</li>
-                    {% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
-            {% endif %}
-          {% else %}
-            <p class="text-muted mb-0">Pas encore évalué. Cliquez sur <b>Lancer</b>.</p>
-          {% endif %}
-        </div>
-      </div>
-
-      {% if a and a.get('questions') %}
-        <div class="card shadow-sm mt-3">
-          <div class="card-body">
-            <h5 class="card-title">Détail des questions</h5>
-            <div class="accordion" id="qAcc">
-              {% for q in a.get('questions') %}
-                {% set qid = 'q' ~ loop.index %}
-                <div class="accordion-item">
-                  <h2 class="accordion-header" id="h{{ qid }}">
-                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c{{ qid }}">
-                      Q{{ q.get('Question#') }} • Bloom: {{ q.get('Bloom_Level','—') }} • Diff: {{ q.get('Difficulty','—') }} • AA: {{ (q.get('AA#') or [])|join(', ') if q.get('AA#') else '—' }}
-                    </button>
-                  </h2>
-                  <div id="c{{ qid }}" class="accordion-collapse collapse" data-bs-parent="#qAcc">
-                    <div class="accordion-body">
-                      <p class="mb-2">{{ q.get('Text') or q.get('QuestionText') }}</p>
-
-                      {% if q.get('sources') %}
-                        <div class="border rounded p-2 bg-light">
-                          <div class="fw-semibold mb-1">Source(s)</div>
-                          {% for s in q.get('sources') %}
-                            <div class="small">
-                              {% if s.chapter %}<span class="badge bg-secondary me-1">{{ s.chapter }}</span>{% endif %}
-                              <span class="fw-semibold">{{ s.file }}</span> — page {{ s.page }}
-                              {% if s.document_id %}
-                                <a class="ms-2" href="{{ url_for('documents.view_extraction', document_id=s.document_id) }}">Voir extraction</a>
-                              {% endif %}
-                            </div>
-                            {% if s.excerpt %}<pre class="mt-1 mb-2"><code>{{ s.excerpt }}</code></pre>{% endif %}
-                          {% endfor %}
-                        </div>
-                      {% endif %}
-
-                      {% if q.get('related_sections') %}
-                        <div class="mt-2">
-                          <div class="fw-semibold">Chapitre/Sections liés (par AA)</div>
-                          <ul class="mb-0">
-                            {% for sec in q.get('related_sections')[:6] %}
-                              <li class="small">Chapitre {{ sec.chapter_index }} — {{ sec.index }}: {{ sec.title }}</li>
-                            {% endfor %}
-                          </ul>
-                        </div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-      {% endif %}
-    </div>
-  </div>
+{% block styles %}
+<style>
+  .tab-pane { animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  .editable-row select, .editable-row input { font-size:.8rem; padding:2px 6px; border-radius:4px; border:1px solid #ced4da; }
+  .editable-row select:focus, .editable-row input:focus { outline:none; border-color:#0d6efd; box-shadow:0 0 0 2px rgba(13,110,253,.2); }
+  .badge-verdict { font-size:1.1rem; padding:.6rem 2rem; border-radius:50px; }
+  .criterion-row td { vertical-align:middle; padding:.55rem .75rem; }
+  #toastBox { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; min-width:280px; }
+  .q-pts { width:60px; }
+  .q-aa  { width:80px; }
+  .sticky-actions { position:sticky; top:64px; z-index:100; background:#fff; border-bottom:1px solid #e5e7eb; padding:.75rem 0; margin-bottom:1rem; }
+</style>
 {% endblock %}
 
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="mt-2">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('evaluate.tn_exams_home') }}">Examens TN</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('evaluate.tn_exams', course_id=course.id) }}">{{ course.title }}</a></li>
+    <li class="breadcrumb-item active">{{ exam.title }}</li>
+  </ol>
+</nav>
+{% endblock %}
+
+{% block heading %}{{ exam.title }}{% endblock %}
+{% block subheading %}{{ course.title }}{% endblock %}
+
+{% set ar        = exam.analysis_results or {} %}
+{% set meta      = ar.get('exam_metadata') or {} %}
+{% set questions = ar.get('questions') or [] %}
+{% set time_a    = ar.get('time_analysis') or {} %}
+{% set has_ar    = ar and ar.get('total_questions') %}
+
+{% block content %}
+
+{# ── Tab Navigation ── #}
+<ul class="nav nav-tabs mb-0" id="examTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active fw-semibold" id="tab-analyse-btn"
+            data-bs-toggle="tab" data-bs-target="#tab-analyse"
+            type="button" role="tab">
+      <i class="fas fa-brain me-2"></i>Analyse AI
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="tab-reporting-btn"
+            data-bs-toggle="tab" data-bs-target="#tab-reporting"
+            type="button" role="tab">
+      <i class="fas fa-file-certificate me-2"></i>Reporting Examen
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom bg-white p-0" id="examTabsContent">
+
+{# ══════════════════════════════════════════════════════════════════════════
+   TAB 1 — ANALYSE AI
+   ══════════════════════════════════════════════════════════════════════════ #}
+<div class="tab-pane fade show active p-3 p-md-4" id="tab-analyse" role="tabpanel">
+
+  {# ── Sticky action bar ── #}
+  <div class="sticky-actions px-1">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {% if exam.file_path %}
+      <a href="{{ url_for('chapters.serve_uploads', filename=exam.file_path) }}" target="_blank"
+         class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-eye me-1"></i>Voir fichier
+      </a>
+      {% endif %}
+
+      <form method="POST" class="d-inline" id="relaunchForm">
+        <button type="submit" class="btn btn-danger btn-sm" id="btnRelaunch"
+                onclick="return confirm('Relancer l\'analyse IA ? Les modifications manuelles non sauvegardées seront écrasées.')">
+          <i class="fas fa-sync-alt me-1"></i>
+          {{ 'Relancer l\'analyse' if has_ar else 'Lancer l\'analyse' }}
+        </button>
+      </form>
+
+      {% if has_ar %}
+      <button class="btn btn-warning btn-sm" id="btnSave" onclick="saveAnalysis()">
+        <i class="fas fa-save me-1"></i>Sauvegarder modifications
+      </button>
+      {% endif %}
+
+      {% if exam.analysis_report_path %}
+      <a href="{{ url_for('evaluate.tn_exam_download_report', course_id=course.id, document_id=exam.id) }}"
+         class="btn btn-outline-success btn-sm">
+        <i class="fas fa-file-pdf me-1"></i>Rapport PDF interne
+      </a>
+      {% endif %}
+
+      <span class="ms-auto text-muted small" id="saveStatus"></span>
+    </div>
+  </div>
+
+  {# ── Section: Informations générales (éditable) ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="fas fa-info-circle text-primary"></i>
+      <span class="fw-semibold">Informations générales</span>
+      {% if not has_ar %}
+        <span class="badge bg-warning text-dark ms-auto">Lancez l'analyse pour extraire</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <label class="form-label fw-semibold small">Nom de l'épreuve</label>
+          <input id="m-name" type="text" class="form-control form-control-sm"
+                 value="{{ meta.get('exam_name','') }}" placeholder="Ex. DS1 Intelligence Artificielle">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label fw-semibold small">Classe / Groupe</label>
+          <input id="m-class" type="text" class="form-control form-control-sm"
+                 value="{{ meta.get('class_name','') }}" placeholder="L3 IA">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label fw-semibold small">Langue</label>
+          <select id="m-lang" class="form-select form-select-sm">
+            {% for lng in ['Français','Arabe','Anglais'] %}
+            <option value="{{ lng }}" {{ 'selected' if meta.get('language') == lng }}>{{ lng }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold small">Durée (min)</label>
+          <input id="m-dur" type="number" class="form-control form-control-sm" min="15" step="5"
+                 value="{{ meta.get('declared_duration_min','') }}" placeholder="90">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label fw-semibold small">Date</label>
+          <input id="m-date" type="text" class="form-control form-control-sm"
+                 value="{{ meta.get('exam_date','') }}" placeholder="15/04/2026">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label fw-semibold small">Département</label>
+          <input id="m-dept" type="text" class="form-control form-control-sm"
+                 value="{{ meta.get('department','') }}" placeholder="IMA">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fw-semibold small">Pages</label>
+          <input id="m-pages" type="number" class="form-control form-control-sm" min="1"
+                 value="{{ meta.get('num_pages','') }}" placeholder="4">
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label fw-semibold small">Enseignant(s) <span class="text-muted">(séparés par virgule)</span></label>
+          <input id="m-inst" type="text" class="form-control form-control-sm"
+                 value="{{ (meta.get('instructors') or [])|join(', ') }}"
+                 placeholder="M. Dupont, Mme Martin">
+        </div>
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Règles de l'épreuve</label>
+          <div class="d-flex flex-wrap gap-3">
+            {% for fid, flag, label in [
+              ('m-sheet','answer_on_sheet','Réponses sur feuille'),
+              ('m-calc','calculator_allowed','Calculatrice autorisée'),
+              ('m-pc','computer_allowed','Ordinateur autorisé'),
+              ('m-net','internet_allowed','Internet autorisé'),
+              ('m-docs','documents_allowed','Documents autorisés'),
+            ] %}
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="{{ fid }}"
+                     {{ 'checked' if meta.get(flag) }}>
+              <label class="form-check-label small" for="{{ fid }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if not has_ar %}
+  <div class="card shadow-sm mb-4 border-warning">
+    <div class="card-body text-center py-5">
+      <i class="fas fa-flask fa-3x text-warning mb-3 d-block"></i>
+      <h5 class="text-muted">Aucune analyse disponible</h5>
+      <p class="text-muted mb-4">
+        Cliquez sur <strong>Lancer l'analyse</strong> pour extraire automatiquement les questions,
+        le barème, l'alignement AA et estimer la durée via l'IA.
+      </p>
+      <form method="POST" class="d-inline">
+        <button type="submit" class="btn btn-danger btn-lg px-5">
+          <i class="fas fa-sync-alt me-2"></i>Lancer l'analyse IA
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% else %}
+
+  {# ── Section: Tableau récapitulatif (éditable) ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <i class="fas fa-table text-primary"></i>
+        <span class="fw-semibold">Tableau récapitulatif des questions</span>
+        <span class="badge bg-secondary" style="font-size:.72rem;">Éditable</span>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <span class="badge bg-primary rounded-pill">{{ ar.get('total_questions',0) }} question(s)</span>
+        {% if ar.get('total_max_points') is not none %}
+          <span class="badge bg-success rounded-pill" id="badgeTotal">{{ ar.total_max_points }}/20 pts</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle mb-0" id="qEditTable">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3 text-center" style="width:3rem;">#</th>
+              <th style="min-width:180px;">Texte (extrait)</th>
+              <th class="text-center" style="width:110px;">Type</th>
+              <th class="text-center" style="width:120px;">Bloom</th>
+              <th class="text-center" style="width:120px;">Difficulté</th>
+              <th class="text-center" style="width:68px;">Barème</th>
+              <th class="text-center text-nowrap" style="width:76px;">Tps est.</th>
+              <th class="text-center pe-3" style="width:80px;">AA(s)</th>
+              <th class="text-center" style="width:56px;">Src</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for q in questions %}
+            {% set bloom = q.get('Bloom_Level','') %}
+            {% set diff  = q.get('Difficulty','') %}
+            {% set qtype = q.get('Type','') %}
+            {% set aas   = q.get('AA#') or [] %}
+            {% set srcs  = q.get('sources') or [] %}
+            {% set pts   = q.get('points') if q.get('points') is not none else q.get('max_points') %}
+            {% set tmin  = q.get('estimated_time_min') %}
+            <tr class="editable-row" data-qidx="{{ loop.index0 }}">
+              <td class="text-center ps-3 fw-bold">{{ q.get('Question#', loop.index) }}</td>
+              <td>
+                <span class="small" title="{{ q.get('Text','') }}">
+                  {{ (q.get('Text') or '')|truncate(70) }}
+                </span>
+              </td>
+              <td class="text-center">
+                <select class="q-type">
+                  {% for t in ['MCQ','QCM','Rédactionnel','Pratique','Étude de cas'] %}
+                  <option value="{{ t }}" {{ 'selected' if qtype == t }}>{{ t }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td class="text-center">
+                <select class="q-bloom">
+                  {% for b in ['Mémoriser','Comprendre','Appliquer','Analyser','Évaluer','Créer'] %}
+                  <option value="{{ b }}" {{ 'selected' if bloom == b }}>{{ b }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td class="text-center">
+                <select class="q-diff">
+                  {% for d in ['Très facile','Facile','Moyen','Difficile','Très difficile'] %}
+                  <option value="{{ d }}" {{ 'selected' if diff == d }}>{{ d }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td class="text-center">
+                <input type="number" class="q-pts" min="0" step="0.5"
+                       value="{{ pts if pts is not none else '' }}" placeholder="—">
+              </td>
+              <td class="text-center text-muted small">{{ tmin ~ ' min' if tmin else '—' }}</td>
+              <td class="text-center pe-3">
+                <input type="text" class="q-aa"
+                       value="{{ aas|join(', ') }}" placeholder="1,2">
+              </td>
+              <td class="text-center">
+                {% if srcs %}
+                  <span class="badge bg-success" title="{{ srcs|length }} source(s)">
+                    <i class="fas fa-check"></i>{{ srcs|length }}
+                  </span>
+                {% else %}
+                  <span class="badge bg-secondary"><i class="fas fa-times"></i></span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-light fw-semibold border-top">
+            <tr>
+              <td colspan="5" class="text-end pe-3">Total</td>
+              <td class="text-center" id="footerTotal">
+                {% if ar.get('total_max_points') is not none %}{{ ar.total_max_points }}/20{% else %}—{% endif %}
+              </td>
+              <td class="text-center">
+                {% if time_a.get('total_estimated_min') %}{{ time_a.total_estimated_min }} min{% else %}—{% endif %}
+              </td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Section: Analyse de la durée ── #}
+  {% if time_a %}
+  {% set verdict   = time_a.get('verdict','') %}
+  {% set v_cls  = {'OK':'success','TROP_LONG':'danger','TROP_COURT':'warning'}.get(verdict,'secondary') %}
+  {% set v_icon = {'OK':'check-circle','TROP_LONG':'exclamation-triangle','TROP_COURT':'exclamation-circle'}.get(verdict,'info-circle') %}
+  <div class="card shadow-sm mb-4 border-{{ v_cls }}">
+    <div class="card-header bg-{{ v_cls }} bg-opacity-10 d-flex align-items-center gap-2">
+      <i class="fas fa-{{ v_icon }} text-{{ v_cls }}"></i>
+      <span class="fw-semibold">Analyse de la durée</span>
+      <span class="badge bg-{{ v_cls }} ms-auto">{{ time_a.get('verdict_label', verdict) }}</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 text-center">
+        {% for label, val in [
+          ('Durée déclarée', time_a.get('declared_duration_min','—')|string + ' min'),
+          ('Temps estimé (questions)', time_a.get('total_estimated_min','—')|string + ' min'),
+          ('Avec lecture', time_a.get('total_with_buffer_min','—')|string + ' min'),
+        ] %}
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-3">
+            <div class="text-muted small">{{ label }}</div>
+            <div class="fs-5 fw-bold">{{ val }}</div>
+          </div>
+        </div>
+        {% endfor %}
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-3">
+            <div class="text-muted small">Écart</div>
+            {% set delta = time_a.get('delta_min', 0) %}
+            <div class="fs-5 fw-bold text-{{ 'success' if delta >= 0 else 'danger' }}">
+              {{ '+' if delta > 0 else '' }}{{ delta|round(1) }} min
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Section: Répartition & Interprétation ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="fas fa-chart-pie text-primary"></i>
+      <span class="fw-semibold">Répartition & Interprétation générale</span>
+    </div>
+    <div class="card-body">
+      {% if ar.get('overall_interpretation') %}
+      <div class="alert alert-light border mb-3" style="border-left:4px solid #d4181f;">
+        <div class="fw-semibold mb-1" style="color:#d4181f;">
+          <i class="fas fa-comment-dots me-1"></i>Interprétation générale
+        </div>
+        <div class="small">{{ ar.get('overall_interpretation') }}</div>
+      </div>
+      {% endif %}
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="border rounded p-3">
+            <h6 class="mb-3">Répartition Bloom</h6>
+            <canvas id="bloomChart" height="190"></canvas>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="border rounded p-3">
+            <h6 class="mb-3">Répartition Difficulté</h6>
+            <canvas id="diffChart" height="190"></canvas>
+          </div>
+        </div>
+      </div>
+
+      {% if ar.get('expected_bloom_percentages') %}
+      <div class="row g-3 mt-1">
+        <div class="col-12 col-lg-6">
+          <div class="border rounded p-3">
+            <h6 class="mb-2">Bloom — Observé vs Attendu</h6>
+            <canvas id="bloomExpectedChart" height="120"></canvas>
+            <div class="table-responsive mt-2">
+              <table class="table table-sm mb-0">
+                <thead><tr><th>Niveau</th><th class="text-end">Obs.</th><th class="text-end">Att.</th><th class="text-end">Δ</th></tr></thead>
+                <tbody>
+                  {% set obs = ar.get('bloom_percentages') or {} %}
+                  {% set exp = ar.get('expected_bloom_percentages') or {} %}
+                  {% set dlt = ar.get('bloom_delta') or {} %}
+                  {% for lvl in ['Mémoriser','Comprendre','Appliquer','Analyser','Évaluer','Créer'] %}
+                  {% set d = dlt.get(lvl,0) %}
+                  <tr>
+                    <td>{{ lvl }}</td>
+                    <td class="text-end fw-semibold">{{ obs.get(lvl,0) }}%</td>
+                    <td class="text-end text-muted">{{ exp.get(lvl,0) }}%</td>
+                    <td class="text-end">
+                      <span class="badge {{ 'bg-success' if d>0 else ('bg-danger' if d<0 else 'bg-secondary') }}">
+                        {{ '+' if d>0 else '' }}{{ d }}%
+                      </span>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="border rounded p-3">
+            <h6 class="mb-2">Difficulté — Observé vs Attendu</h6>
+            <canvas id="diffExpectedChart" height="120"></canvas>
+            <div class="table-responsive mt-2">
+              <table class="table table-sm mb-0">
+                <thead><tr><th>Niveau</th><th class="text-end">Obs.</th><th class="text-end">Att.</th><th class="text-end">Δ</th></tr></thead>
+                <tbody>
+                  {% set obs2 = ar.get('difficulty_percentages') or {} %}
+                  {% set exp2 = ar.get('expected_difficulty_percentages') or {} %}
+                  {% set dlt2 = ar.get('difficulty_delta') or {} %}
+                  {% for lvl in ['Très facile','Facile','Moyen','Difficile','Très difficile'] %}
+                  {% set d = dlt2.get(lvl,0) %}
+                  <tr>
+                    <td>{{ lvl }}</td>
+                    <td class="text-end fw-semibold">{{ obs2.get(lvl,0) }}%</td>
+                    <td class="text-end text-muted">{{ exp2.get(lvl,0) }}%</td>
+                    <td class="text-end">
+                      <span class="badge {{ 'bg-success' if d>0 else ('bg-danger' if d<0 else 'bg-secondary') }}">
+                        {{ '+' if d>0 else '' }}{{ d }}%
+                      </span>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if ar.get('expected_aa_percentages') %}
+      <div class="border rounded p-3 mt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Couverture AA</h6>
+          {% if ar.get('aa_missing') %}
+            <span class="badge bg-warning text-dark">{{ ar.aa_missing|length }} AA manquant(s)</span>
+          {% else %}
+            <span class="badge bg-success">Tous couverts</span>
+          {% endif %}
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>AA#</th><th class="text-end">Obs.</th><th class="text-end">Att.</th><th class="text-end">Δ</th></tr></thead>
+            <tbody>
+              {% set oaa = ar.get('aa_percentages') or {} %}
+              {% set eaa = ar.get('expected_aa_percentages') or {} %}
+              {% set daa = ar.get('aa_delta') or {} %}
+              {% for k,v in (eaa.items()|list)|sort(attribute=0) %}
+              {% set d = daa.get(k,0) %}
+              <tr>
+                <td>AA#{{ k }}</td>
+                <td class="text-end fw-semibold">{{ oaa.get(k,0) }}%</td>
+                <td class="text-end text-muted">{{ v }}%</td>
+                <td class="text-end">
+                  <span class="badge {{ 'bg-success' if d>0 else ('bg-danger' if d<0 else 'bg-secondary') }}">
+                    {{ '+' if d>0 else '' }}{{ d }}%
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Recommandations ── #}
+  {% if ar.get('recommendations') %}
+  <div class="card shadow-sm mb-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10 d-flex align-items-center gap-2">
+      <i class="fas fa-lightbulb text-warning"></i>
+      <span class="fw-semibold">Recommandations</span>
+      <span class="badge bg-warning text-dark ms-auto">{{ ar.recommendations|length }}</span>
+    </div>
+    <div class="card-body">
+      <ul class="mb-0">
+        {% for r in ar.get('recommendations') %}
+        <li class="mb-1">{{ r }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Détail des questions ── #}
+  {% if questions %}
+  <div class="card shadow-sm mb-2">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="fas fa-list-ol text-primary"></i>
+      <span class="fw-semibold">Détail des questions</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="accordion accordion-flush" id="qAcc">
+        {% for q in questions %}
+        {% set qid   = 'qd' ~ loop.index %}
+        {% set bloom = q.get('Bloom_Level','') %}
+        {% set bloom_cls = {'Mémoriser':'bg-secondary','Comprendre':'bg-info text-dark',
+          'Appliquer':'bg-primary','Analyser':'bg-warning text-dark',
+          'Évaluer':'bg-danger','Créer':'bg-dark'}.get(bloom,'bg-secondary') %}
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button collapsed py-2" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#{{ qid }}">
+              <span class="fw-bold me-3" style="min-width:2rem;">Q{{ q.get('Question#', loop.index) }}</span>
+              <span class="badge {{ bloom_cls }} me-1" style="font-size:.67rem;">{{ bloom or '?' }}</span>
+              <span class="badge bg-secondary me-1" style="font-size:.67rem;">{{ q.get('Difficulty','—') }}</span>
+              {% for aa in (q.get('AA#') or []) %}
+                <span class="badge bg-light text-dark border me-1" style="font-size:.67rem;">AA{{ aa }}</span>
+              {% endfor %}
+              {% if q.get('points') is not none %}
+                <span class="ms-2 text-muted small">· {{ q.get('points') }} pt(s)</span>
+              {% endif %}
+              <span class="ms-3 text-muted small text-truncate" style="max-width:260px;">
+                {{ (q.get('Text') or '')|truncate(60) }}
+              </span>
+            </button>
+          </h2>
+          <div id="{{ qid }}" class="accordion-collapse collapse">
+            <div class="accordion-body pt-2">
+              <p class="mb-3">{{ q.get('Text') or q.get('QuestionText','') }}</p>
+              {% if q.get('sources') %}
+              <div class="border rounded p-3 bg-light mb-2">
+                <div class="fw-semibold mb-2 small"><i class="fas fa-book-open me-1"></i>Source(s)</div>
+                {% for s in q.get('sources') %}
+                <div class="small mb-2">
+                  {% if s.get('chapter') %}<span class="badge bg-secondary me-1">{{ s.chapter }}</span>{% endif %}
+                  <span class="fw-semibold">{{ s.get('file','') }}</span>
+                  {% if s.get('page') %} — page {{ s.page }}{% endif %}
+                  {% if s.get('document_id') %}
+                    <a class="ms-2" href="{{ url_for('documents.view_extraction', document_id=s.document_id) }}">Voir extraction</a>
+                  {% endif %}
+                  {% if s.get('excerpt') %}
+                    <pre class="mt-1 mb-0" style="white-space:pre-wrap;font-size:.78rem;"><code>{{ s.excerpt }}</code></pre>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}{# end if has_ar #}
+</div>{# end tab-analyse #}
+
+
+{# ══════════════════════════════════════════════════════════════════════════
+   TAB 2 — REPORTING EXAMEN
+   ══════════════════════════════════════════════════════════════════════════ #}
+<div class="tab-pane fade p-3 p-md-4" id="tab-reporting" role="tabpanel">
+
+  {% if not has_ar %}
+  <div class="text-center py-5">
+    <i class="fas fa-chart-bar fa-3x text-muted mb-3 d-block"></i>
+    <p class="text-muted">Lancez d'abord l'analyse IA (onglet Analyse AI) pour accéder au reporting.</p>
+  </div>
+
+  {% else %}
+
+  {# ── Verdict Final ── #}
+  <div class="card shadow-sm mb-4 {{ 'border-success' if verdict_ok else 'border-danger' }}">
+    <div class="card-body text-center py-4">
+      {% if verdict_ok %}
+        <div class="badge badge-verdict bg-success d-inline-block mb-2">
+          <i class="fas fa-check-circle me-2 fa-lg"></i>EXAMEN VALIDÉ
+        </div>
+        <p class="text-muted mb-0 mt-2">Tous les critères de qualité sont satisfaits.</p>
+      {% else %}
+        <div class="badge badge-verdict bg-danger d-inline-block mb-2">
+          <i class="fas fa-times-circle me-2 fa-lg"></i>EXAMEN NON VALIDÉ
+        </div>
+        {% set n_fail = validation|selectattr('status','eq','FAIL')|list|length %}
+        {% set n_warn = validation|selectattr('status','eq','WARNING')|list|length %}
+        <p class="text-muted mb-0 mt-2">
+          {{ n_fail }} critère(s) non respecté(s){% if n_warn %}, {{ n_warn }} avertissement(s){% endif %}.
+          Consultez le tableau ci-dessous pour les détails.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Validation 8 critères ── #}
+  <div class="card shadow-sm mb-4" id="validationCard">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <i class="fas fa-clipboard-check text-primary"></i>
+        <span class="fw-semibold">Critères de validation (8)</span>
+      </div>
+      {% if validation %}
+      <div class="d-flex gap-2">
+        <span class="badge bg-success">{{ validation|selectattr('status','eq','PASS')|list|length }} OK</span>
+        <span class="badge bg-warning text-dark">{{ validation|selectattr('status','eq','WARNING')|list|length }} Att.</span>
+        <span class="badge bg-danger">{{ validation|selectattr('status','eq','FAIL')|list|length }} ✗</span>
+      </div>
+      {% endif %}
+    </div>
+    <div class="card-body p-0" id="validationBody">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3" style="width:2.5rem;">#</th>
+              <th>Critère</th>
+              <th class="text-center" style="width:120px;">Statut</th>
+              <th>Détail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if validation %}
+            {% for v in validation %}
+            <tr class="criterion-row">
+              <td class="ps-3 text-muted">{{ loop.index }}</td>
+              <td class="fw-semibold">{{ v.label }}</td>
+              <td class="text-center">
+                {% if v.status == 'PASS' %}
+                  <span class="badge bg-success px-3"><i class="fas fa-check me-1"></i>OK</span>
+                {% elif v.status == 'WARNING' %}
+                  <span class="badge bg-warning text-dark px-3"><i class="fas fa-exclamation me-1"></i>Attention</span>
+                {% else %}
+                  <span class="badge bg-danger px-3"><i class="fas fa-times me-1"></i>Échec</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ v.detail }}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-3">Données de validation non disponibles.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Générer le rapport officiel ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="fas fa-file-pdf text-primary"></i>
+      <span class="fw-semibold">Rapport officiel d'examen</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Génère un rapport PDF complet selon le modèle officiel ESPRIT : informations générales,
+        tableau des questions, radar Bloom, scores, critères de validation et verdict signé.
+      </p>
+      <div class="d-flex gap-3 flex-wrap align-items-center">
+        <a href="{{ url_for('evaluate.tn_exam_latex_report', course_id=course.id, document_id=exam.id) }}"
+           class="btn btn-primary" id="btnGenReport" target="_blank">
+          <i class="fas fa-file-pdf me-2"></i>Générer le rapport officiel PDF
+        </a>
+        {% if exam.analysis_report_path %}
+        <a href="{{ url_for('evaluate.tn_exam_download_report', course_id=course.id, document_id=exam.id) }}"
+           class="btn btn-outline-success">
+          <i class="fas fa-download me-2"></i>Télécharger rapport interne PDF
+        </a>
+        {% endif %}
+      </div>
+      <div class="alert alert-info mt-3 mb-0 small">
+        <i class="fas fa-info-circle me-1"></i>
+        Le rapport sera généré à partir de la <strong>dernière version sauvegardée</strong> de l'épreuve.
+        Sauvegardez vos modifications (onglet Analyse AI) avant de générer.
+      </div>
+    </div>
+  </div>
+
+  {# ── Résumé des scores ── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center gap-2">
+      <i class="fas fa-tachometer-alt text-primary"></i>
+      <span class="fw-semibold">Résumé de l'épreuve</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 text-center">
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-3">
+            <div class="text-muted small">Questions</div>
+            <div class="fs-4 fw-bold">{{ ar.get('total_questions',0) }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-3">
+            <div class="text-muted small">Barème total</div>
+            <div class="fs-4 fw-bold">
+              {% if ar.get('total_max_points') is not none %}{{ ar.total_max_points }}/20{% else %}—{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-3">
+            <div class="text-muted small">Couverture sources</div>
+            {% set cov = ar.get('source_coverage_rate',0)|float %}
+            <div class="fs-4 fw-bold {{ 'text-success' if cov>=70 else ('text-warning' if cov>=50 else 'text-danger') }}">{{ cov }}%</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-3">
+            <div class="text-muted small">Durée estimée</div>
+            <div class="fs-4 fw-bold">
+              {{ time_a.get('total_with_buffer_min','—') }} min
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}{# end has_ar #}
+</div>{# end tab-reporting #}
+
+</div>{# end tab-content #}
+
+{# ── Toast notification ── #}
+<div id="toastBox"></div>
+
+{% endblock %}
+
+
 {% block scripts %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script>
-    (function(){
-      const a = {{ (exam.analysis_results or {}) | tojson }};
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  /* ─── URLs & tokens ─── */
+  const SAVE_URL  = "{{ url_for('evaluate.tn_exam_save_analysis', course_id=course.id, document_id=exam.id) }}";
+  const VAL_URL   = "{{ url_for('evaluate.tn_exam_validation_json', course_id=course.id, document_id=exam.id) }}";
+  const CSRF      = "{{ csrf_token() }}";
 
-      function doughnut(elId, labels, values){
-        const el = document.getElementById(elId);
-        if(!el) return;
-        new Chart(el, {
-          type: 'doughnut',
-          data: {
-            labels,
-            datasets: [{
-              data: values,
-              borderWidth: 1,
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { position: 'bottom' },
-              tooltip: { callbacks: { label: (ctx)=> `${ctx.label}: ${ctx.raw}%` } }
-            }
-          }
-        });
+  /* ─── Original data (for merging) ─── */
+  const _origQ    = {{ (ar.get('questions') or []) | tojson }};
+  const _a        = {{ (exam.analysis_results or {}) | tojson }};
+
+  /* ─── Hash-based tab activation ─── */
+  const hash = window.location.hash;
+  if (hash) {
+    const btn = document.querySelector(`[data-bs-target="${hash}"]`);
+    if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+  }
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(t =>
+    t.addEventListener('shown.bs.tab', e =>
+      history.replaceState(null, null, e.target.dataset.bsTarget)
+    )
+  );
+
+  /* ─── Toast ─── */
+  function showToast(msg, type='success'){
+    const id = 'toast_' + Date.now();
+    const bg = type === 'success' ? 'bg-success' : (type === 'warning' ? 'bg-warning text-dark' : 'bg-danger');
+    document.getElementById('toastBox').insertAdjacentHTML('beforeend', `
+      <div id="${id}" class="toast align-items-center text-white border-0 mb-2 ${bg} show" role="alert">
+        <div class="d-flex">
+          <div class="toast-body">${msg}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="document.getElementById('${id}').remove()"></button>
+        </div>
+      </div>`);
+    setTimeout(() => { const el = document.getElementById(id); if(el) el.remove(); }, 5000);
+  }
+
+  /* ─── Collect form values ─── */
+  function collectMeta(){
+    const g = id => document.getElementById(id);
+    return {
+      exam_name:             g('m-name').value.trim(),
+      class_name:            g('m-class').value.trim(),
+      language:              g('m-lang').value,
+      declared_duration_min: parseFloat(g('m-dur').value)   || null,
+      exam_date:             g('m-date').value.trim(),
+      department:            g('m-dept').value.trim(),
+      instructors:           g('m-inst').value.split(',').map(s=>s.trim()).filter(Boolean),
+      num_pages:             parseInt(g('m-pages').value)    || null,
+      answer_on_sheet:       g('m-sheet').checked,
+      calculator_allowed:    g('m-calc').checked,
+      computer_allowed:      g('m-pc').checked,
+      internet_allowed:      g('m-net').checked,
+      documents_allowed:     g('m-docs').checked,
+    };
+  }
+
+  function collectQuestions(){
+    const rows = document.querySelectorAll('#qEditTable tbody tr[data-qidx]');
+    return Array.from(rows).map(row => {
+      const idx = parseInt(row.dataset.qidx);
+      const orig = _origQ[idx] || {};
+      const aaVal = row.querySelector('.q-aa').value;
+      const aaList = aaVal.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>0);
+      const ptsVal = parseFloat(row.querySelector('.q-pts').value);
+      return Object.assign({}, orig, {
+        'Type':       row.querySelector('.q-type').value,
+        'Bloom_Level':row.querySelector('.q-bloom').value,
+        'Difficulty': row.querySelector('.q-diff').value,
+        'points':     isNaN(ptsVal) ? null : ptsVal,
+        'AA#':        aaList,
+      });
+    });
+  }
+
+  /* ─── Save ─── */
+  window.saveAnalysis = async function(){
+    const btn = document.getElementById('btnSave');
+    if(!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Sauvegarde...';
+    document.getElementById('saveStatus').textContent = '';
+    try {
+      const res = await fetch(SAVE_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-CSRFToken': CSRF},
+        body: JSON.stringify({ exam_metadata: collectMeta(), questions: collectQuestions() }),
+      });
+      const data = await res.json();
+      if(data.ok){
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>Sauvegardé';
+        btn.classList.remove('btn-warning'); btn.classList.add('btn-success');
+        document.getElementById('saveStatus').textContent = '✓ Sauvegardé';
+        showToast('Modifications sauvegardées avec succès.', 'success');
+        await refreshValidation();
+        setTimeout(()=>{
+          btn.innerHTML='<i class="fas fa-save me-1"></i>Sauvegarder modifications';
+          btn.classList.remove('btn-success'); btn.classList.add('btn-warning');
+          btn.disabled = false;
+        }, 3000);
+      } else {
+        showToast('Erreur : ' + (data.message || 'Échec'), 'danger');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save me-1"></i>Sauvegarder modifications';
+      }
+    } catch(e){
+      showToast('Erreur réseau : ' + e.message, 'danger');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save me-1"></i>Sauvegarder modifications';
+    }
+  };
+
+  /* ─── Refresh validation tab after save ─── */
+  async function refreshValidation(){
+    try {
+      const res  = await fetch(VAL_URL);
+      const data = await res.json();
+      if(!data.validation) return;
+
+      const v = data.validation;
+      const s = data.summary;
+
+      // Rebuild verdict badge
+      const verdictOk = s.fail === 0;
+      const vCard = document.querySelector('#tab-reporting .card.shadow-sm');
+      if(vCard){
+        const inner = vCard.querySelector('.card-body');
+        if(inner){
+          inner.innerHTML = verdictOk
+            ? `<div class="text-center py-3">
+                <div class="badge badge-verdict bg-success d-inline-block mb-2">
+                  <i class="fas fa-check-circle me-2 fa-lg"></i>EXAMEN VALIDÉ
+                </div>
+                <p class="text-muted mb-0 mt-2">Tous les critères de qualité sont satisfaits.</p>
+               </div>`
+            : `<div class="text-center py-3">
+                <div class="badge badge-verdict bg-danger d-inline-block mb-2">
+                  <i class="fas fa-times-circle me-2 fa-lg"></i>EXAMEN NON VALIDÉ
+                </div>
+                <p class="text-muted mb-0 mt-2">${s.fail} critère(s) non respecté(s)${s.warning?' , '+s.warning+' avertissement(s)':''}</p>
+               </div>`;
+        }
       }
 
-      function groupedBars(elId, labels, obs, exp){
-        const el = document.getElementById(elId);
-        if(!el) return;
-        new Chart(el, {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [
-              { label: 'Observé', data: obs, borderWidth: 1 },
-              { label: 'Attendu', data: exp, borderWidth: 1 },
-            ]
-          },
-          options: {
-            responsive: true,
-            scales: {
-              y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } }
-            },
-            plugins: { legend: { position: 'bottom' } }
-          }
-        });
-      }
+      // Rebuild criterion table body
+      const tbody = document.querySelector('#validationBody table tbody');
+      if(tbody){
+        tbody.innerHTML = v.map((c,i)=>{
+          const badge = c.status==='PASS'
+            ? '<span class="badge bg-success px-3"><i class="fas fa-check me-1"></i>OK</span>'
+            : c.status==='WARNING'
+              ? '<span class="badge bg-warning text-dark px-3"><i class="fas fa-exclamation me-1"></i>Attention</span>'
+              : '<span class="badge bg-danger px-3"><i class="fas fa-times me-1"></i>Échec</span>';
+          return `<tr class="criterion-row">
+            <td class="ps-3 text-muted">${i+1}</td>
+            <td class="fw-semibold">${c.label}</td>
+            <td class="text-center">${badge}</td>
+            <td class="small text-muted">${c.detail}</td>
+          </tr>`;
+        }).join('');
 
-      // Bloom
-      const bloomOrder = ['Mémoriser','Comprendre','Appliquer','Analyser','Évaluer','Créer'];
-      const bloomObs = bloomOrder.map(k => Number((a.bloom_percentages||{})[k] || 0));
-      doughnut('bloomChart', bloomOrder, bloomObs);
-
-      // Difficulty
-      const diffOrder = ['Très facile','Facile','Moyen','Difficile','Très difficile'];
-      const diffObs = diffOrder.map(k => Number((a.difficulty_percentages||{})[k] || 0));
-      doughnut('diffChart', diffOrder, diffObs);
-
-      // Expected vs observed
-      if(a.expected_bloom_percentages){
-        const bloomExp = bloomOrder.map(k => Number((a.expected_bloom_percentages||{})[k] || 0));
-        groupedBars('bloomExpectedChart', bloomOrder, bloomObs, bloomExp);
+        // Update summary badges in header
+        const hdr = document.querySelector('#validationCard .card-header .d-flex.gap-2');
+        if(hdr){
+          hdr.innerHTML = `
+            <span class="badge bg-success">${s.pass} OK</span>
+            <span class="badge bg-warning text-dark">${s.warning} Att.</span>
+            <span class="badge bg-danger">${s.fail} ✗</span>`;
+        }
       }
-      if(a.expected_difficulty_percentages){
-        const diffExp = diffOrder.map(k => Number((a.expected_difficulty_percentages||{})[k] || 0));
-        groupedBars('diffExpectedChart', diffOrder, diffObs, diffExp);
+    } catch(e){ /* silent */ }
+  }
+
+  /* ─── Charts ─── */
+  function doughnut(id, labels, values){
+    const el = document.getElementById(id); if(!el) return;
+    new Chart(el, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: values, borderWidth:1 }] },
+      options: { responsive:true, plugins:{
+        legend: { position:'bottom', labels:{font:{size:11}} },
+        tooltip: { callbacks: { label: c => `${c.label}: ${c.raw}%` } }
+      }}
+    });
+  }
+  function groupedBars(id, labels, obs, exp){
+    const el = document.getElementById(id); if(!el) return;
+    new Chart(el, {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label:'Observé', data:obs, borderWidth:1 },
+        { label:'Attendu', data:exp, borderWidth:1 },
+      ]},
+      options: {
+        responsive:true,
+        scales: { y:{ beginAtZero:true, max:100, ticks:{ callback: v=>v+'%' } } },
+        plugins: { legend:{ position:'bottom' } }
       }
-    })();
-  </script>
+    });
+  }
+
+  const bloomOrder = ['Mémoriser','Comprendre','Appliquer','Analyser','Évaluer','Créer'];
+  const diffOrder  = ['Très facile','Facile','Moyen','Difficile','Très difficile'];
+  const bloomObs   = bloomOrder.map(k => +(((_a.bloom_percentages)||{})[k]||0));
+  const diffObs    = diffOrder.map(k  => +(((_a.difficulty_percentages)||{})[k]||0));
+  doughnut('bloomChart', bloomOrder, bloomObs);
+  doughnut('diffChart',  diffOrder,  diffObs);
+  if(_a.expected_bloom_percentages){
+    const bloomExp = bloomOrder.map(k => +(((_a.expected_bloom_percentages)||{})[k]||0));
+    groupedBars('bloomExpectedChart', bloomOrder, bloomObs, bloomExp);
+  }
+  if(_a.expected_difficulty_percentages){
+    const diffExp = diffOrder.map(k => +(((_a.expected_difficulty_percentages)||{})[k]||0));
+    groupedBars('diffExpectedChart', diffOrder, diffObs, diffExp);
+  }
+
+})();
+</script>
 {% endblock %}

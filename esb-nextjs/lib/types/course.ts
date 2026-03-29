@@ -499,9 +499,84 @@ export interface TnExamDocument {
   has_analysis: boolean;
   has_report: boolean;
   analysis_report_path: string | null;
-  analysis_results: Record<string, unknown> | null;
+  analysis_results: TnExamAnalysisResults | null;
   total_questions: number | null;
   source_coverage_rate: number | null;
   difficulty_index: number | null;
   bloom_index: number | null;
+}
+
+// ─── TN Exam Analysis Types ───────────────────────────────────────────────────
+
+export interface TnExamQuestion {
+  id: number;
+  text?: string;
+  question_text?: string;
+  points?: number;
+  Bloom_Level?: string;
+  Difficulty?: string;
+  'AA#'?: string[];
+  Type?: string;
+  estimated_time_min?: number;
+  source_docs?: string[];
+}
+
+export interface TnExamMetadata {
+  declared_duration_min?: number;
+  exam_type?: string;
+  date?: string;
+  module?: string;
+  enseignant?: string;
+  semestre?: string;
+  niveau?: string;
+  specialite?: string;
+  nb_questions?: number;
+}
+
+export interface TnExamTimeAnalysis {
+  total_estimated_min: number;
+  total_with_buffer_min: number;
+  declared_duration_min: number | null;
+  verdict: 'OK' | 'TROP_LONG' | 'TROP_COURT';
+  per_question: { id: number; estimated_min: number }[];
+}
+
+export interface TnExamAnalysisResults {
+  exam_metadata?: TnExamMetadata;
+  questions?: TnExamQuestion[];
+  total_questions?: number;
+  total_max_points?: number;
+  declared_duration_min?: number;
+  bloom_percentages?: Record<string, number>;
+  difficulty_percentages?: Record<string, number>;
+  aa_percentages?: Record<string, number>;
+  source_coverage_rate?: number;
+  difficulty_index?: number;
+  bloom_index?: number;
+  time_analysis?: TnExamTimeAnalysis;
+  recommendations?: string[];
+  strengths?: string[];
+  [key: string]: unknown;
+}
+
+export interface ValidationCriterion {
+  criterion: string;
+  status: 'PASS' | 'WARNING' | 'FAIL';
+  comment: string;
+}
+
+export interface TnExamValidationResponse {
+  validation: ValidationCriterion[];
+  summary: { total: number; pass: number; warning: number; fail: number };
+  verdict_ok: boolean;
+}
+
+export interface TnExamListResponse {
+  course: { id: number; title: string; description: string | null };
+  exams: TnExamDocument[];
+}
+
+export interface TnExamDetailResponse {
+  course: { id: number; title: string; description: string | null };
+  exam: TnExamDocument;
 }

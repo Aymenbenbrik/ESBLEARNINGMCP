@@ -15,7 +15,7 @@ import { DeleteCourseDialog } from '@/components/courses/DeleteCourseDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { BarChart3, BookOpen, Database } from 'lucide-react';
+import { BarChart3, BookOpen, Database, FileText } from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { safeNumber, safePercent } from '@/lib/format';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -23,7 +23,7 @@ import { AttendanceTab } from '@/components/courses/AttendanceTab';
 import { GradesTab } from '@/components/courses/GradesTab';
 import { ExamTab } from '@/components/courses/ExamTab';
 
-type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'examen';
+type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'examen' | 'epreuves';
 
 export default function CourseDetailPage() {
   const params = useParams();
@@ -86,7 +86,8 @@ export default function CourseDetailPage() {
     { id: 'dashboard',   label: isStudent ? 'Mon tableau de bord' : 'Dashboard classe' },
     { id: 'presence',    label: '📋 Présence' },
     { id: 'notes',       label: '📊 Notes' },
-    ...(course.can_edit ? [{ id: 'examen' as TabId, label: '📝 Examen' }] : []),
+    ...(course.can_edit && isTN ? [{ id: 'epreuves' as TabId, label: '📝 Épreuves' }] : []),
+    ...(course.can_edit && !isTN ? [{ id: 'examen' as TabId, label: '📝 Examen' }] : []),
   ];
 
   return (
@@ -256,9 +257,31 @@ export default function CourseDetailPage() {
           <GradesTab courseId={courseId} canEdit={course.can_edit} />
         )}
 
-        {/* Tab 6: Examen (teachers only) */}
+        {/* Tab 6: Examen (teachers only, non-TN) */}
         {activeTab === 'examen' && course.can_edit && (
           <ExamTab courseId={courseId} canEdit={course.can_edit} courseAAs={(data as any).tn_aa_distribution ?? []} />
+        )}
+
+        {/* Tab: Épreuves TN (teachers only, TN syllabus) */}
+        {activeTab === 'epreuves' && course.can_edit && isTN && (
+          <div className="space-y-4">
+            <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-8 flex flex-col items-center text-center gap-4">
+              <FileText className="h-14 w-14 text-primary" />
+              <div>
+                <h2 className="text-xl font-semibold mb-1">Gestion des épreuves</h2>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Ajoutez, analysez et validez les épreuves de ce module.
+                  L&apos;analyse IA extrait les questions, barèmes, niveaux Bloom et les aligne avec les Acquis d&apos;Apprentissage.
+                </p>
+              </div>
+              <Button asChild size="lg" className="rounded-full px-8">
+                <Link href={`/courses/${courseId}/exams`}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Ouvrir les épreuves
+                </Link>
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 

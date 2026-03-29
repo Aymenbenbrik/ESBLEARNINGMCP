@@ -1,82 +1,148 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Examens{% endblock %}
-{% block heading %}Examens — {{ course.title }}{% endblock %}
+{% block title %}Épreuves — {{ course.title }}{% endblock %}
+{% block heading %}Épreuves{% endblock %}
+{% block subheading %}{{ course.title }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="mt-2">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('evaluate.tn_exams_home') }}">Examens TN</a></li>
+    <li class="breadcrumb-item active">{{ course.title }}</li>
+  </ol>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddExam">
+  <i class="fas fa-plus me-1"></i>Ajouter une épreuve
+</button>
+{% endblock %}
 
 {% block content %}
-  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-    <p class="text-muted mb-0">Ajoutez un examen (DS/Test/Examen) puis lancez l'évaluation (Bloom + difficulté + AA + sources).</p>
-    <a class="btn btn-outline-secondary" href="{{ url_for('courses.view', course_id=course.id) }}">Retour au cours</a>
-  </div>
-
-  <div class="row g-3 mt-3">
-    <div class="col-12 col-lg-4">
-      <div class="card">
-        <div class="card-body">
-          <h5 class="card-title">Ajouter un examen</h5>
-          <form method="POST" enctype="multipart/form-data">
-            {{ form.hidden_tag() }}
-            <div class="mb-2">
-              {{ form.title.label(class_="form-label") }}
-              {{ form.title(class_="form-control") }}
-            </div>
-            <div class="mb-2">
-              {{ form.exam_type.label(class_="form-label") }}
-              {{ form.exam_type(class_="form-select") }}
-            </div>
-            <div class="mb-3">
-              {{ form.file.label(class_="form-label") }}
-              {{ form.file(class_="form-control") }}
-              <div class="form-text">Formats: PDF/DOC/DOCX</div>
-            </div>
-            {{ form.submit(class_="btn btn-danger w-100") }}
-          </form>
-        </div>
-      </div>
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    {% if exams and exams|length %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:28%">Titre</th>
+            <th>Type</th>
+            <th>Durée</th>
+            <th>Date</th>
+            <th class="text-center">Barème</th>
+            <th class="text-center">Questions</th>
+            <th class="text-center">Statut</th>
+            <th class="text-end pe-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ex in exams %}
+          {% set ar   = ex.analysis_results or {} %}
+          {% set meta = ar.get('exam_metadata') or {} %}
+          {% set ok   = ar and ar.get('total_questions') %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ ex.title or '—' }}</div>
+              <div class="text-muted small">{{ (ex.file_path or '').split('/')[-1] }}</div>
+            </td>
+            <td>
+              {% set etype = (ex.content_metadata or {}).get('exam_type', meta.get('exam_type','—')) %}
+              <span class="badge bg-secondary text-uppercase" style="font-size:.7rem;">{{ etype }}</span>
+            </td>
+            <td class="text-nowrap">
+              {% if meta.get('declared_duration_min') %}
+                <i class="fas fa-clock text-muted me-1" style="font-size:.8rem;"></i>{{ meta.declared_duration_min }} min
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-nowrap">
+              {{ meta.get('exam_date', ex.created_at.strftime('%d/%m/%Y') if ex.created_at else '—') }}
+            </td>
+            <td class="text-center">
+              {% if ar.get('total_max_points') is not none %}
+                <span class="fw-semibold">{{ ar.total_max_points }}/20</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if ar.get('total_questions') %}
+                <span class="badge bg-primary rounded-pill">{{ ar.total_questions }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if ok %}
+                <span class="badge bg-success"><i class="fas fa-check me-1"></i>Analysé</span>
+              {% else %}
+                <span class="badge bg-warning text-dark"><i class="fas fa-hourglass-half me-1"></i>Non analysé</span>
+              {% endif %}
+            </td>
+            <td class="text-end pe-3">
+              <a href="{{ url_for('evaluate.tn_exam_view', course_id=course.id, document_id=ex.id) }}"
+                 class="btn btn-sm btn-primary">
+                <i class="fas fa-arrow-right me-1"></i>Ouvrir
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="fas fa-file-alt fa-3x text-muted mb-3 d-block"></i>
+      <p class="text-muted mb-3">Aucune épreuve pour ce module.</p>
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddExam">
+        <i class="fas fa-plus me-1"></i>Ajouter la première épreuve
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>
 
-    <div class="col-12 col-lg-8">
-      <div class="card">
-        <div class="card-body">
-          <h5 class="card-title">Liste des examens</h5>
-          {% if exams and exams|length %}
-            <div class="table-responsive">
-              <table class="table align-middle">
-                <thead>
-                  <tr>
-                    <th>Titre</th>
-                    <th class="text-nowrap">Type</th>
-                    <th class="text-nowrap">Ajouté le</th>
-                    <th class="text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for ex in exams %}
-                    <tr>
-                      <td>
-                        <div class="fw-semibold">{{ ex.title }}</div>
-                        <div class="small text-muted">{{ ex.file_path }}</div>
-                      </td>
-                      <td class="text-nowrap">
-                        {{ (ex.content_metadata or {}).get('exam_type', '—') }}
-                      </td>
-                      <td class="text-nowrap">{{ ex.created_at.strftime('%d/%m/%Y %H:%M') if ex.created_at else '—' }}</td>
-                      <td class="text-end">
-                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('evaluate.tn_exam_view', course_id=course.id, document_id=ex.id) }}">Ouvrir</a>
-                        {% if ex.analysis_report_path %}
-                          <a class="btn btn-sm btn-outline-success" href="{{ url_for('evaluate.tn_exam_download_report', course_id=course.id, document_id=ex.id) }}">PDF</a>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">Aucun examen pour le moment.</p>
-          {% endif %}
+{# ===== Modal Ajouter une épreuve ===== #}
+<div class="modal fade" id="modalAddExam" tabindex="-1" aria-labelledby="modalAddExamLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalAddExamLabel">
+            <i class="fas fa-plus-circle text-primary me-2"></i>Ajouter une épreuve
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            {{ form.title.label(class_="form-label fw-semibold") }}
+            {{ form.title(class_="form-control", placeholder="Ex. DS1 — Intelligence Artificielle") }}
+            {% if form.title.errors %}<div class="text-danger small">{{ form.title.errors[0] }}</div>{% endif %}
+          </div>
+          <div class="mb-3">
+            {{ form.exam_type.label(class_="form-label fw-semibold") }}
+            {{ form.exam_type(class_="form-select") }}
+          </div>
+          <div class="mb-3">
+            {{ form.file.label(class_="form-label fw-semibold") }}
+            {{ form.file(class_="form-control") }}
+            <div class="form-text">Formats acceptés : PDF, DOC, DOCX</div>
+            {% if form.file.errors %}<div class="text-danger small">{{ form.file.errors[0] }}</div>{% endif %}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          {{ form.submit(class_="btn btn-primary") }}
+        </div>
+      </form>
     </div>
   </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if form.errors %}
+  const _m = document.getElementById('modalAddExam');
+  if(_m) new bootstrap.Modal(_m).show();
+{% endif %}
+</script>
 {% endblock %}

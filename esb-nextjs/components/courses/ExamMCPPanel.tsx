@@ -127,17 +127,21 @@ export function ExamMCPPanel({
   const [showLatex, setShowLatex] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const getAuthHeader = (): Record<string, string> => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : '';
-    return { Authorization: `Bearer ${token ?? ''}`, 'Content-Type': 'application/json' };
-  };
+  // App uses cookie-based JWT — always send cookies, no localStorage token
+  const fetchOpts = (extra?: RequestInit): RequestInit => ({
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    ...extra,
+  });
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
 
   const launchAnalysis = async () => {
     setIsLaunching(true);
     try {
-      const res = await fetch(`${apiBase}/courses/${courseId}/tn-exams/${documentId}/analyze-mcp`, {
+      const res = await fetch(`${API_URL}${apiBase}/courses/${courseId}/tn-exams/${documentId}/analyze-mcp`, {
         method: 'POST',
-        headers: getAuthHeader(),
+        ...fetchOpts(),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -159,8 +163,8 @@ export function ExamMCPPanel({
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`${apiBase}/courses/${courseId}/tn-exams/mcp-session/${sid}`, {
-          headers: getAuthHeader(),
+        const res = await fetch(`${API_URL}${apiBase}/courses/${courseId}/tn-exams/mcp-session/${sid}`, {
+          ...fetchOpts(),
         });
         if (!res.ok) return;
         const data: SessionData & { id: number } = await res.json();
@@ -191,11 +195,14 @@ export function ExamMCPPanel({
 
   const downloadPdf = () => {
     if (!sessionId) return;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : '';
-    window.open(
-      `/api/v1/courses/${courseId}/tn-exams/mcp-session/${sessionId}/pdf?token=${token ?? ''}`,
-      '_blank',
-    );
+    // Use form-submit to carry cookies for the file download
+    const form = document.createElement('form');
+    form.method = 'GET';
+    form.action = `${API_URL}${apiBase}/courses/${courseId}/tn-exams/mcp-session/${sessionId}/pdf`;
+    form.target = '_blank';
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
   };
 
   const toggleSection = (key: string) =>

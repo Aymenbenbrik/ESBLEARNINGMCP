@@ -1,5 +1,6 @@
 import os
 import re
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app
@@ -14,6 +15,7 @@ from app.services.evaluate_service import (
     extract_questions_from_text,
     normalize_question_keys,
     classify_questions_bloom,
+    _extract_json_array,
 )
 from app.services.vector_store import VectorStore
 
@@ -27,6 +29,341 @@ def _get_gemini_model_instance():
 def _extract_json_array(text: str):
     from app.services.evaluate_service import _extract_json_array as _eja  # type: ignore
     return _eja(text)
+
+
+# ---------------------------------------------------------------------------
+# Exam metadata extraction
+# ---------------------------------------------------------------------------
+
+def _extract_exam_metadata(exam_text: str) -> Dict[str, Any]:
+    """Use LLM to extract structured exam metadata from the raw PDF text (header focus)."""
+    import json as _json
+    # Use first 6000 chars (header is usually in first 2 pages)
+    header_text = exam_text[:6000]
+    prompt = f"""
+[INST]
+Tu es un assistant expert en lecture d'en-têtes de documents d'examen universitaires en Algérie/Tunisie.
+
+L'en-tête d'un examen contient typiquement (dans n'importe quel ordre):
+- Le nom de l'établissement / département / filière
+- Le nom du module / matière
+- La classe, le niveau, le semestre
+- La durée (ex: "Durée: 1h30", "2 heures", "90 minutes")
+- La date
+- Les noms des enseignants / concepteurs
+- Le type d'examen (examen final, contrôle continu, TP, etc.)
+- Les autorisations (documents, calculatrice, ordinateur, internet)
+- Si réponses sur feuille d'examen ou sur copie séparée
+
+Analyse le texte suivant (début de l'examen) et extrais TOUS les champs disponibles.
+Si un champ est absent, retourne null.
+
+Champs à extraire:
+- exam_name: titre exact de l'épreuve/module (ex: "Algèbre 1", "Analyse Mathématique", "Examen Final de Programmation")
+- class_name: classe/niveau/promotion (ex: "L1 Info", "1ère année", "Groupe A")
+- language: langue de l'épreuve (Français/Arabe/Anglais/Mixte)
+- declared_duration_min: durée EN MINUTES (entier). Convertis: 1h=60, 1h30=90, 2h=120, etc.
+- exam_date: date (tel que mentionné dans le document)
+- instructors: liste des noms des enseignants/concepteurs
+- num_pages: nombre de pages mentionné
+- exam_type: QCM / Rédactionnel / Pratique / Mixte / Étude de cas / Autre
+- answer_on_sheet: true si réponses sur la feuille d'examen, false si sur copie séparée, null si non mentionné
+- calculator_allowed: true/false/null
+- computer_allowed: true/false/null
+- internet_allowed: true/false/null
+- documents_allowed: true/false/null (cherche: "sans documents", "documents autorisés", "cours autorisé")
+- department: département ou filière
+
+IMPORTANT: Cherche aussi les patterns courants:
+- "Durée:" ou "Durée de l'épreuve:" ou "Temps:" pour la durée
+- "Enseignant:" ou "Préparé par:" ou "Examinateur:" pour les noms
+- "Promotion:" ou "Niveau:" ou "Classe:" pour la classe
+- "Documents autorisés" ou "Tous les documents" ou "Sans documents" pour documents_allowed
+- "Module:" ou "Matière:" ou "Unité d'Enseignement:" pour le nom
+
+Retourne UNIQUEMENT un objet JSON valide:
+{{
+  "exam_name": "...",
+  "class_name": "...",
+  "language": "Français",
+  "declared_duration_min": 90,
+  "exam_date": "...",
+  "instructors": ["..."],
+  "num_pages": null,
+  "exam_type": "Mixte",
+  "answer_on_sheet": null,
+  "calculator_allowed": false,
+  "computer_allowed": null,
+  "internet_allowed": false,
+  "documents_allowed": false,
+  "department": "..."
+}}
+
+Texte du début de l'examen (en-tête):
+{header_text}
+[/INST]
+"""
+    # Use gemini-2.5-pro for superior metadata extraction accuracy
+    from flask import current_app
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    _api_key = current_app.config.get("GOOGLE_API_KEY", "")
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", google_api_key=_api_key, temperature=0)
+    try:
+        resp = llm.invoke([HumanMessage(content=prompt)]).content
+        # Try extracting JSON object (use most complete one)
+        m = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', resp, re.DOTALL)
+        if m:
+            result = _json.loads(m.group(0))
+            # Post-process: normalize duration (ensure it's int or None)
+            dur = result.get('declared_duration_min')
+            if isinstance(dur, str):
+                # Try to extract number
+                nums = re.findall(r'\d+', dur)
+                result['declared_duration_min'] = int(nums[0]) if nums else None
+            # Normalize instructors to list
+            instr = result.get('instructors')
+            if isinstance(instr, str):
+                result['instructors'] = [instr] if instr else []
+            elif not isinstance(instr, list):
+                result['instructors'] = []
+            return result
+    except Exception as e:
+        pass
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Exercise/Part detection
+# ---------------------------------------------------------------------------
+
+def _detect_exercises(exam_text: str, questions: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    """Detect exercise/part groupings for questions using LLM."""
+    if not questions:
+        return {}
+
+    q_list = "\n".join([
+        f"Q{q.get('Question#')}: {(q.get('Text') or '')[:120]}"
+        for q in questions
+    ])
+
+    prompt = f"""[INST]
+Tu analyses un examen pour détecter la structure en exercices/parties.
+
+Questions extraites de l'examen:
+{q_list}
+
+Début du texte de l'examen:
+{exam_text[:4000]}
+
+Pour chaque question, indique à quel exercice ou partie elle appartient.
+Si l'examen n'est pas divisé en exercices explicites, mets exercise_number=1 pour toutes.
+
+Retourne UNIQUEMENT un JSON array:
+[
+  {{"Question#": 1, "exercise_number": 1, "exercise_title": "Exercice 1 — Titre"}},
+  {{"Question#": 2, "exercise_number": 1, "exercise_title": "Exercice 1 — Titre"}},
+  {{"Question#": 3, "exercise_number": 2, "exercise_title": "Exercice 2 — Titre"}}
+]
+[/INST]"""
+
+    llm = _get_gemini_model_instance()
+    try:
+        resp = llm.invoke([HumanMessage(content=prompt)]).content
+        arr = _extract_json_array(resp) or []
+        mapping: Dict[int, Dict[str, Any]] = {}
+        for item in arr:
+            qnum = item.get('Question#')
+            if qnum is not None:
+                ex_num = int(item.get('exercise_number', 1))
+                mapping[int(qnum)] = {
+                    'exercise_number': ex_num,
+                    'exercise_title': item.get('exercise_title') or f'Exercice {ex_num}',
+                }
+        return mapping
+    except Exception:
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Barème extraction per question
+# ---------------------------------------------------------------------------
+
+def _extract_bareme_from_text(exam_text: str, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Use LLM to extract the points/barème for each question.
+    Returns list of dicts [{Question#, points, points_total}, ...].
+    """
+    if not questions:
+        return []
+
+    q_list = "\n".join([
+        f"Q{q.get('Question#')}: {(q.get('Text') or q.get('QuestionText') or '')[:120]}"
+        for q in questions
+    ])
+
+    prompt = f"""
+[INST]
+Tu es un assistant qui extrait le barème (les points) de chaque question d'examen.
+
+Analyse le texte suivant et identifie les points attribués à chaque question.
+Cherche des patterns comme: "/5", "(3 pts)", "3 points", "note: 4", "(sur 10)", etc.
+
+Si une question n'a pas de barème explicite, retourne null pour ses points.
+Retourne aussi le total général de l'examen (sur combien de points) si mentionné.
+
+Format de sortie (JSON array):
+[
+  {{"Question#": 1, "points": 5, "max_points": 20}},
+  {{"Question#": 2, "points": null, "max_points": null}},
+  ...
+]
+Avec un dernier objet spécial pour le total:
+  {{"Question#": 0, "points": null, "max_points": 20}}
+
+Questions à chercher:
+{q_list}
+
+Texte de l'examen:
+{exam_text[:5000]}
+[/INST]
+"""
+    llm = _get_gemini_model_instance()
+    try:
+        resp = llm.invoke([HumanMessage(content=prompt)]).content
+        arr = _extract_json_array(resp) or []
+        return arr
+    except Exception:
+        return []
+
+
+def _merge_bareme_into_questions(
+    questions: List[Dict[str, Any]],
+    bareme_list: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], Optional[float]]:
+    """Merge barème data into question dicts. Returns (enriched_questions, total_max_points)."""
+    by_q: Dict[int, Dict] = {}
+    total_max: Optional[float] = None
+    for item in bareme_list:
+        qn = item.get("Question#")
+        if qn == 0:
+            total_max = item.get("max_points")
+            continue
+        if qn is not None:
+            by_q[int(qn)] = item
+
+    enriched = []
+    for q in questions:
+        qn = int(q.get("Question#", 0))
+        q2 = dict(q)
+        bdata = by_q.get(qn, {})
+        q2["points"] = bdata.get("points")          # points for this question
+        q2["max_points"] = bdata.get("max_points")  # out of (e.g. 20)
+        enriched.append(q2)
+    return enriched, total_max
+
+
+# ---------------------------------------------------------------------------
+# Time estimation per question
+# ---------------------------------------------------------------------------
+
+# Base time (minutes) by question type
+_BASE_TIME_BY_TYPE: Dict[str, float] = {
+    "MCQ": 1.5,
+    "QCM": 1.5,
+    "Short Answer": 4.0,
+    "Rédactionnel": 5.0,
+    "Essay": 10.0,
+    "Practical": 8.0,
+    "Pratique": 8.0,
+    "Case Study": 12.0,
+    "Étude de cas": 12.0,
+    "Exercise": 6.0,
+    "Exercice": 6.0,
+    "Problem": 7.0,
+    "Problème": 7.0,
+}
+
+_BLOOM_MULTIPLIER: Dict[str, float] = {
+    "Mémoriser": 1.0,
+    "Comprendre": 1.1,
+    "Appliquer": 1.25,
+    "Analyser": 1.45,
+    "Évaluer": 1.65,
+    "Créer": 1.85,
+}
+
+_DIFF_MULTIPLIER: Dict[str, float] = {
+    "Très facile": 0.7,
+    "Facile": 0.9,
+    "Moyen": 1.0,
+    "Difficile": 1.35,
+    "Très difficile": 1.65,
+}
+
+
+def _estimate_question_time(q: Dict[str, Any]) -> float:
+    """Estimate time in minutes for a single question.
+
+    Formula: base_time × bloom_multiplier × difficulty_multiplier
+    Rounds to 1 decimal. Minimum 0.5 min.
+    """
+    qtype = (q.get("Type") or q.get("type") or "").strip()
+    bloom = (q.get("Bloom_Level") or "").strip()
+    diff = (q.get("Difficulty") or "Moyen").strip()
+
+    # Normalize type key lookup (case-insensitive prefix)
+    base = 4.0  # default: short answer
+    for key, val in _BASE_TIME_BY_TYPE.items():
+        if qtype.lower().startswith(key.lower()) or key.lower().startswith(qtype.lower()):
+            base = val
+            break
+
+    bloom_mult = _BLOOM_MULTIPLIER.get(bloom, 1.2)
+    diff_mult = _DIFF_MULTIPLIER.get(diff, 1.0)
+
+    estimated = base * bloom_mult * diff_mult
+    return max(0.5, round(estimated, 1))
+
+
+def _build_time_analysis(
+    questions: List[Dict[str, Any]],
+    declared_duration_min: Optional[float],
+) -> Dict[str, Any]:
+    """Compute time estimates, total, and comparison with declared duration."""
+    total_estimated = 0.0
+    for q in questions:
+        t = _estimate_question_time(q)
+        q["estimated_time_min"] = t
+        total_estimated += t
+
+    total_estimated = round(total_estimated, 1)
+    reading_buffer_min = round(total_estimated * 0.10, 1)  # 10% reading/transfer buffer
+    total_with_buffer = round(total_estimated + reading_buffer_min, 1)
+
+    comparison: Dict[str, Any] = {
+        "total_estimated_min": total_estimated,
+        "reading_buffer_min": reading_buffer_min,
+        "total_with_buffer_min": total_with_buffer,
+        "declared_duration_min": declared_duration_min,
+    }
+
+    if declared_duration_min:
+        delta = round(total_with_buffer - float(declared_duration_min), 1)
+        comparison["delta_min"] = delta
+        if delta > 10:
+            comparison["verdict"] = "TROP_LONG"
+            comparison["verdict_label"] = f"Examen potentiellement trop long (+{delta} min)"
+        elif delta < -15:
+            comparison["verdict"] = "TROP_COURT"
+            comparison["verdict_label"] = f"Examen potentiellement trop court ({delta} min)"
+        else:
+            comparison["verdict"] = "OK"
+            comparison["verdict_label"] = "Durée estimée cohérente avec la durée déclarée"
+    else:
+        comparison["delta_min"] = None
+        comparison["verdict"] = "UNKNOWN"
+        comparison["verdict_label"] = "Durée déclarée non trouvée dans l'examen"
+
+    return comparison
 
 
 def _course_learning_targets(course_id: int) -> List[Dict[str, Any]]:
@@ -297,8 +634,23 @@ def analyze_tn_exam(course: Course, exam_document: Document) -> Dict[str, Any]:
     if not extracted_text:
         raise ValueError("Failed to extract text from exam")
 
-    # Extract + normalize questions
-    questions_raw = extract_questions_from_text(extracted_text)
+    # ── Optional: LaTeX source for improved extraction ─────────────────────
+    latex_source = ''
+    latex_source_path = (exam_document.content_metadata or {}).get('latex_source_path', '')
+    if latex_source_path:
+        latex_abs = os.path.join(upload_dir, latex_source_path)
+        if os.path.exists(latex_abs):
+            try:
+                with open(latex_abs, 'r', encoding='utf-8', errors='ignore') as f:
+                    latex_source = f.read()
+            except Exception:
+                latex_source = ''
+
+    # ── Exam metadata (title, class, declared duration, date, …) ──────────
+    exam_metadata = _extract_exam_metadata(extracted_text)
+
+    # Extract + normalize questions (with LaTeX source if available)
+    questions_raw = extract_questions_from_text(extracted_text, latex_source=latex_source)
     questions = [normalize_question_keys(q) for q in questions_raw]
 
     # AA
@@ -311,13 +663,17 @@ def analyze_tn_exam(course: Course, exam_document: Document) -> Dict[str, Any]:
     # Difficulty (5)
     q_with_diff = _classify_questions_difficulty_5(q_with_bloom)
 
+    # ── NEW: Barème extraction ────────────────────────────────────────────
+    bareme_raw = _extract_bareme_from_text(extracted_text, q_with_diff)
+    q_with_bareme, total_max_points = _merge_bareme_into_questions(q_with_diff, bareme_raw)
+
     aa_to_chapters, aa_to_sections = _aa_to_chapters_sections(course.id)
 
     # RAG sources per question
     attachments_texts, attachments_meta = _get_course_documents_for_rag(course)
 
     enriched_questions = []
-    for q in q_with_diff:
+    for q in q_with_bareme:
         qtext = q.get('Text') or q.get('QuestionText') or ''
         # Use VectorStore for context retrieval
         ctx = ""
@@ -357,6 +713,14 @@ def analyze_tn_exam(course: Course, exam_document: Document) -> Dict[str, Any]:
         q2['related_chapters'] = chapters[:5]
         q2['related_sections'] = sections[:8]
         enriched_questions.append(q2)
+
+    # ── Exercise/Part grouping ─────────────────────────────────────────────
+    exercise_mapping = _detect_exercises(extracted_text, enriched_questions)
+    for q in enriched_questions:
+        qnum = int(q.get('Question#', 0))
+        ex_info = exercise_mapping.get(qnum, {})
+        q['exercise_number'] = ex_info.get('exercise_number', 1)
+        q['exercise_title'] = ex_info.get('exercise_title', 'Exercice 1')
 
     # -----------------------------
     # Distributions (observed)
@@ -477,6 +841,26 @@ def analyze_tn_exam(course: Course, exam_document: Document) -> Dict[str, Any]:
     if not recs:
         recs.append("L’examen est globalement équilibré et bien aligné avec les AA et les supports du module.")
 
+    # NEW: Time estimation
+    declared_duration_min = exam_metadata.get("declared_duration_min") if exam_metadata else None
+    time_analysis = _build_time_analysis(enriched_questions, declared_duration_min)
+
+    verdict = time_analysis.get("verdict", "UNKNOWN")
+    if verdict == "TROP_LONG":
+        recs.append(
+            "Durée estimée (" + str(time_analysis['total_with_buffer_min']) + " min) dépasse "
+            "la durée déclarée (" + str(declared_duration_min) + " min). "
+            "Réduire le nombre ou simplifier les questions difficiles."
+        )
+    elif verdict == "TROP_COURT":
+        recs.append(
+            "Durée estimée ("
+            + str(time_analysis.get('total_with_buffer_min', '?'))
+            + " min) est nettement inférieure à la durée déclarée ("
+            + str(declared_duration_min)
+            + " min). Envisager d'ajouter des questions ou d'approfondir les exercices existants."
+        )
+
     # -----------------------------
     # Overall interpretation (simple, high-signal)
     # -----------------------------
@@ -553,4 +937,9 @@ def analyze_tn_exam(course: Course, exam_document: Document) -> Dict[str, Any]:
         "difficulty_index": difficulty_index,
         "bloom_index": bloom_index,
         "overall_interpretation": overall_interpretation,
+
+        # ── NEW fields ────────────────────────────────────────────────────
+        "exam_metadata": exam_metadata,
+        "total_max_points": total_max_points,
+        "time_analysis": time_analysis,
     }

@@ -358,11 +358,16 @@ def run_exam_evaluation(
             try:
                 graph = get_exam_graph()
                 final_state = graph.invoke(initial_state)
-                if final_state.get('errors'):
-                    sess = ExamAnalysisSession.query.get(session_id)
-                    if sess and sess.status != 'done':
-                        sess.error_message = '; '.join(final_state['errors'])
-                        db.session.commit()
+                sess = ExamAnalysisSession.query.get(session_id)
+                if sess:
+                    if sess.status != 'done':
+                        # Graph completed but final agent didn't mark done — mark error
+                        sess.status = 'error'
+                        sess.progress = 100
+                    if final_state.get('errors'):
+                        existing = sess.error_message or ''
+                        sess.error_message = (existing + ' | ' if existing else '') + '; '.join(final_state['errors'])
+                    db.session.commit()
             except Exception as e:
                 try:
                     sess = ExamAnalysisSession.query.get(session_id)

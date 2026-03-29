@@ -12,6 +12,7 @@ from app.services.syllabus_service import SyllabusService
 # TN exam evaluation (course-level exams)
 from app.services.tn_exam_evaluation_service import analyze_tn_exam
 from app.services.tn_exam_report_service import generate_tn_exam_report_pdf
+from app.services.tn_latex_report_service import generate_tn_latex_report, validate_exam
 
 
 evaluate_bp = Blueprint('evaluate', __name__, url_prefix='/evaluate')
@@ -422,7 +423,76 @@ def tn_exam_view(course_id, document_id):
             flash(f"Échec de l\'évaluation: {str(e)}", 'danger')
         return redirect(url_for('evaluate.tn_exam_view', course_id=course.id, document_id=doc.id))
 
-    return render_template('evaluate/tn_exam_view.html', course=course, exam=doc)
+    validation = None
+    verdict_ok = None
+    if doc.analysis_results:
+        validation = validate_exam(doc.analysis_results)
+        verdict_ok = all(v['status'] != 'FAIL' for v in validation)
+
+    return render_template(
+        'evaluate/tn_exam_view.html',
+        course=course,
+        exam=doc,
+        validation=validation,
+        verdict_ok=verdict_ok,
+    )
+
+
+# ── Save manual edits to analysis results ─────────────────────────────────────
+@evaluate_bp.post('/<int:course_id>/tn/exams/<int:document_id>/save_analysis')
+@login_required
+def tn_exam_save_analysis(course_id, document_id):
+    """Save teacher-edited metadata and question attributes into analysis_results."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from collections import Counter
+
+    course = Course.query.get_or_404(course_id)
+    if not current_user.is_teacher or course.teacher_id != current_user.id:
+        abort(403)
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.course_id != course.id or doc.document_type != 'tn_exam':
+        abort(404)
+
+    data = request.get_json(silent=True) or {}
+    ar = dict(doc.analysis_results or {})
+
+    if 'exam_metadata' in data:
+        ar['exam_metadata'] = data['exam_metadata']
+
+    if 'questions' in data:
+        ar['questions'] = data['questions']
+        qs = ar['questions']
+        total = len(qs) or 1
+
+        # Recompute derived statistics from updated questions
+        bloom_c = Counter(q.get('Bloom_Level', 'Unknown') for q in qs)
+        diff_c  = Counter(q.get('Difficulty', 'Moyen') for q in qs)
+        aa_c: dict = {}
+        for q in qs:
+            for a in (q.get('AA#') or []):
+                aa_c[str(a)] = aa_c.get(str(a), 0) + 1
+
+        ar['total_questions']         = total
+        ar['bloom_percentages']       = {k: round(v/total*100, 1) for k, v in bloom_c.items()}
+        ar['difficulty_percentages']  = {k: round(v/total*100, 1) for k, v in diff_c.items()}
+        ar['aa_percentages']          = {k: round(v/total*100, 1) for k, v in aa_c.items()}
+
+        pts = [q.get('points') for q in qs if q.get('points') is not None]
+        ar['total_max_points'] = round(sum(pts), 2) if pts else None
+
+        # Recompute time analysis with updated questions
+        if ar.get('exam_metadata', {}).get('declared_duration_min'):
+            from app.services.tn_exam_evaluation_service import _build_time_analysis
+            ar['time_analysis'] = _build_time_analysis(
+                qs, ar['exam_metadata']['declared_duration_min']
+            )
+
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify({'ok': True, 'message': 'Modifications sauvegardées.'})
 
 
 @evaluate_bp.get('/<int:course_id>/tn/exams/<int:document_id>/report')
@@ -442,4 +512,101 @@ def tn_exam_download_report(course_id, document_id):
     directory = os.path.join(uploads_dir, os.path.dirname(rel))
     filename = os.path.basename(rel)
     return send_from_directory(directory, filename, as_attachment=True, download_name=filename)
+
+
+# ======================================================================
+# TN EXAM — LaTeX/PDF validation report (fills rapport examen officiel.tex)
+# ======================================================================
+
+@evaluate_bp.get('/<int:course_id>/tn/exams/<int:document_id>/latex_report')
+@login_required
+def tn_exam_latex_report(course_id, document_id):
+    """Generate a filled LaTeX/PDF evaluation report for a TN exam.
+
+    Requires the exam to have been analysed first (analysis_results must exist).
+    Returns the compiled PDF if pdflatex is available, otherwise the .tex source.
+    Also stores the 8-criterion validation results in the document metadata.
+    """
+    course = Course.query.get_or_404(course_id)
+    if not current_user.is_teacher or course.teacher_id != current_user.id:
+        abort(403)
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.course_id != course.id or doc.document_type != 'tn_exam':
+        abort(404)
+
+    if not doc.analysis_results:
+        flash("Veuillez d'abord lancer l'évaluation de l'examen avant de générer le rapport LaTeX.", "warning")
+        return redirect(url_for('evaluate.tn_exam_view', course_id=course_id, document_id=document_id))
+
+    uploads_dir = current_app.config.get('UPLOAD_FOLDER') or os.path.join(current_app.root_path, 'uploads')
+    report_dir = os.path.join(uploads_dir, 'reports', 'tn_exams', str(course.id), 'latex')
+    os.makedirs(report_dir, exist_ok=True)
+
+    stamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    safe_title = "".join(c if c.isalnum() or c in "-_" else "_" for c in (doc.title or "exam"))[:30]
+    tex_name = f"rapport_{safe_title}_{stamp}.tex"
+    tex_path = os.path.join(report_dir, tex_name)
+
+    try:
+        tex_path, pdf_path, validation_results = generate_tn_latex_report(
+            analysis=doc.analysis_results,
+            course_title=course.title,
+            output_tex_path=tex_path,
+            compile_pdf=True,
+        )
+
+        # Persist validation results and report paths in document metadata
+        meta = doc.content_metadata or {}
+        meta['latex_validation'] = validation_results
+        meta['latex_report_tex'] = os.path.relpath(tex_path, uploads_dir).replace('\\', '/')
+        if pdf_path:
+            meta['latex_report_pdf'] = os.path.relpath(pdf_path, uploads_dir).replace('\\', '/')
+        doc.content_metadata = meta
+        db.session.commit()
+
+        if pdf_path and os.path.exists(pdf_path):
+            return send_from_directory(
+                os.path.dirname(pdf_path),
+                os.path.basename(pdf_path),
+                as_attachment=True,
+                download_name=f"rapport_evaluation_{safe_title}.pdf",
+            )
+        else:
+            # Fallback: send the .tex source
+            return send_from_directory(
+                os.path.dirname(tex_path),
+                os.path.basename(tex_path),
+                as_attachment=True,
+                download_name=f"rapport_evaluation_{safe_title}.tex",
+                mimetype='text/plain; charset=utf-8',
+            )
+
+    except Exception as e:
+        current_app.logger.exception('LaTeX report generation failed')
+        flash(f"Échec de la génération du rapport : {str(e)}", 'danger')
+        return redirect(url_for('evaluate.tn_exam_view', course_id=course_id, document_id=document_id))
+
+
+@evaluate_bp.get('/<int:course_id>/tn/exams/<int:document_id>/validation_json')
+@login_required
+def tn_exam_validation_json(course_id, document_id):
+    """Return the 8-criterion validation results as JSON (for UI consumption)."""
+    course = Course.query.get_or_404(course_id)
+    if not current_user.is_teacher or course.teacher_id != current_user.id:
+        abort(403)
+    doc = Document.query.get_or_404(document_id)
+    if doc.course_id != course.id or doc.document_type != 'tn_exam':
+        abort(404)
+    if not doc.analysis_results:
+        return jsonify({'error': 'Analyse non encore effectuée.'}), 400
+
+    validation = validate_exam(doc.analysis_results)
+    summary = {
+        'total': len(validation),
+        'pass': sum(1 for v in validation if v['status'] == 'PASS'),
+        'warning': sum(1 for v in validation if v['status'] == 'WARNING'),
+        'fail': sum(1 for v in validation if v['status'] == 'FAIL'),
+    }
+    return jsonify({'validation': validation, 'summary': summary})
 

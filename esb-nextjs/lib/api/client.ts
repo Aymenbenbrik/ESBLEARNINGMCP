@@ -5,6 +5,7 @@ import axios from 'axios';
   export const apiClient = axios.create({
     baseURL: API_URL,
     withCredentials: true, // Important: sends cookies with requests
+    timeout: 300000, // 5 minutes — needed for long AI analysis requests
     headers: {
       'Content-Type': 'application/json',
     },

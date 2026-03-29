@@ -17,6 +17,10 @@ import {
   TnExamDocument,
   ExamType,
   GeneratedQuestion,
+  TnExamAnalysisResults,
+  TnExamValidationResponse,
+  TnExamListResponse,
+  TnExamDetailResponse,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -178,5 +182,43 @@ export const examApi = {
 
 export const tnExamsApi = {
   list: (courseId: number) =>
-    apiClient.get<{ exams: TnExamDocument[] }>(`/api/v1/courses/${courseId}/tn-exams`),
+    apiClient.get<TnExamListResponse>(`/api/v1/courses/${courseId}/tn-exams`),
+
+  get: (courseId: number, examId: number) =>
+    apiClient.get<TnExamDetailResponse>(`/api/v1/courses/${courseId}/tn-exams/${examId}`),
+
+  upload: (courseId: number, formData: FormData) =>
+    apiClient.post<{ message: string; exam: TnExamDocument }>(
+      `/api/v1/courses/${courseId}/tn-exams`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
+
+  analyze: (courseId: number, examId: number) =>
+    apiClient.post<{ message: string; exam: TnExamDocument }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/analyze`
+    ),
+
+  saveAnalysis: (
+    courseId: number,
+    examId: number,
+    data: { exam_metadata?: Partial<TnExamAnalysisResults['exam_metadata']>; questions?: unknown[] }
+  ) =>
+    apiClient.post<{ ok: boolean; message: string; exam: TnExamDocument }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/save-analysis`,
+      data
+    ),
+
+  getValidation: (courseId: number, examId: number) =>
+    apiClient.get<TnExamValidationResponse>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/validation`
+    ),
+
+  getLatexReportUrl: (courseId: number, examId: number) =>
+    `/api/v1/courses/${courseId}/tn-exams/${examId}/latex-report`,
+
+  downloadReport: (courseId: number, examId: number) =>
+    apiClient.get(`/api/v1/courses/${courseId}/tn-exams/${examId}/report`, {
+      responseType: 'blob',
+    }),
 };

@@ -15,6 +15,7 @@ import {
   CourseExam,
   TnExamDocument,
   GeneratedQuestion,
+  TnExamValidationResponse,
 } from '../types/course';
 import { toast } from 'sonner';
 
@@ -426,6 +427,73 @@ export function useTnExams(courseId: number) {
   });
 }
 
+export function useTnExam(courseId: number, examId: number) {
+  return useQuery<TnExamDocument>({
+    queryKey: ['tn-exam', courseId, examId],
+    queryFn: async () => {
+      const r = await tnExamsApi.get(courseId, examId);
+      return r.data.exam;
+    },
+    enabled: !!courseId && !!examId,
+  });
+}
+
+export function useUploadTnExam(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (formData: FormData) => tnExamsApi.upload(courseId, formData),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exams', courseId] });
+      toast.success('Épreuve ajoutée avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors de l'ajout");
+    },
+  });
+}
+
+export function useAnalyzeTnExam(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (examId: number) => tnExamsApi.analyze(courseId, examId),
+    onSuccess: (_, examId) => {
+      qc.invalidateQueries({ queryKey: ['tn-exams', courseId] });
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+      toast.success('Analyse terminée avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec de l'analyse");
+    },
+  });
+}
+
+export function useSaveTnExamAnalysis(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { exam_metadata?: Record<string, unknown>; questions?: unknown[] }) =>
+      tnExamsApi.saveAnalysis(courseId, examId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exams', courseId] });
+      toast.success('Modifications sauvegardées');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la sauvegarde');
+    },
+  });
+}
+
+export function useTnExamValidation(courseId: number, examId: number, enabled = true) {
+  return useQuery<TnExamValidationResponse>({
+    queryKey: ['tn-exam-validation', courseId, examId],
+    queryFn: async () => {
+      const r = await tnExamsApi.getValidation(courseId, examId);
+      return r.data;
+    },
+    enabled: enabled && !!courseId && !!examId,
+  });
+}
+
 export function useGenerateExamLatex(courseId: number) {
   return useMutation<string, Error, { examId: number; includeProposals: boolean }>({
     mutationFn: async ({ examId, includeProposals }) => {
@@ -449,3 +517,33 @@ export function useCompileExamLatex(courseId: number) {
     },
   });
 }
+
+export function useGenerateCurativeQuestions(courseId: number, examId: number) {
+  return useMutation<
+    { questions: Array<{ text: string; bloom_level: string; difficulty: string; question_type: string; aa: number | null; rationale: string }> },
+    Error,
+    { bloom_level?: string; difficulty?: string; target_aa?: number | null; question_type?: string; context?: string; count?: number; exercise_mode?: 'new' | 'modify'; exercise_minutes?: number; target_exercise?: number }
+  >({
+    mutationFn: async (params) => {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+      const res = await fetch(
+        `${API_URL}/api/v1/courses/${courseId}/tn-exams/${examId}/generate-questions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(params),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erreur de génération');
+      }
+      return res.json();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Erreur lors de la génération des questions');
+    },
+  });
+}
+

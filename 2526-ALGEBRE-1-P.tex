@@ -1,0 +1,249 @@
+\documentclass[10pt,openbib,a4paper,openright,a4paper]{article}%
+\usepackage{amsfonts}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{eurosym}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage[french]{babel}
+\usepackage[french]{minitoc}
+\usepackage{fancyhdr,amsmath,amsthm,amssymb,fancybox}
+\usepackage{calc}
+\usepackage[a4paper]{geometry}
+\usepackage{mathabx}
+%\usepackage[dvipsnames]{xcolor}
+\textwidth 16.5cm \oddsidemargin 0.0cm \evensidemargin 0.2cm
+\topmargin -2.5cm \textheight 26cm
+
+%
+%\hfill \rule{0.3cm}{0.3cm}
+%-----------------------------------------
+\vfuzz2pt \hfuzz2pt
+% THEOREMS ------------------------------
+\newtheorem{thf}{{Théorème}}
+\newtheorem{corf}{{Corollaire}}
+\newtheorem{propf}{\underline{Proposition}}
+\newtheorem{prodef}{\underline{Proposition-définition}}
+\newtheorem{lemf}{\underline{Lemme}}
+\newtheorem{thm}{\underline{Théorème}}
+\newtheorem{cor}{\underline{Corollaire}}
+\newtheorem{lem}{\underline{Lemme}}
+%\newtheorem{prop}{\underline{Proposition}}
+\newtheorem{defn}{\underline{Définition}}
+\newtheorem{deff}{\underline{Définitions}}
+\newtheorem{remfs}{\underline{Remarques}}
+\newtheorem{remf}{\underline{Remarque}}
+\newtheorem{exercice}{Exercice}
+\newtheorem{exemple}{Exemple}
+\newtheorem{qcm}{{\underline{Q.C.M}}}
+\newtheorem{prob}{{\underline{Problème}}}
+\newtheorem{propri}{{\underline{Propriétés}}}
+\newtheorem{appli}{\underline{Application}}
+
+%\newtheorem{preuve}[Proof]{Preuve}
+%\newenvironnement{preuve}[1][Proof]{Preuve}{\hfill\ \rule{0.5em}{0.5em}}
+% MATH  -----------------------------------
+\newcommand{\norm}[1]{\left\Vert#1\right\Vert}
+%\newcommand{\abs}[1]{\left\vert#1\right\vert}
+\newcommand{\set}[1]{\left\{#1\right\}}
+\newcommand{\ensR}{\mathbb R}
+\newcommand{\ensN}{\mathbb N}
+\newcommand{\ensQ}{\mathbb Q}
+\newcommand{\ensZ}{\mathbb Z}
+\newcommand{\ensC}{\mathbb C}
+%\newcommand{\eps}{\varepsilon}
+\newcommand{\To}{\longrightarrow}
+\newcommand{\orange}[1]{\textcolor{orange}{#1}}
+\newcommand{\borange}[1]{\textbf{\textcolor{orange}{#1}}}
+\newcommand{\BX}{\mathbf{B}(X)}
+\newcommand{\A}{\mathcal{A}}
+\newcommand{\biindice}[3]
+{
+	\renewcommand{\arraystretch}{0.7}
+	\begin{array}[t]{c}
+		{\displaystyle #1}\\ {\scriptstyle #2}\\ {\scriptstyle #3}
+	\end{array}
+	\renewcommand{\arraystretch}{1}
+}
+\newcommand{\triindice}[4]
+{
+	\renewcommand{\arraystretch}{0.7}
+	\begin{array}[t]{c}
+		{\displaystyle #1}\\ {\scriptstyle #2}\\ {\scriptstyle
+			#3}\\{\scriptstyle #4}
+	\end{array}
+	\renewcommand{\arraystretch}{1}
+}
+\def\pointir{\unskip . ---  \ignorespaces}
+\def\tir{\unskip --\ignorespaces}
+%\newtheorem{preuve}{Preuve}%{\hfill \rule{0.5cm}{0.5cm}}
+% -------------------------------------------
+\colorlet{bordeaux}{red!60!blue!20!darkgray}
+
+\begin{document}
+	%\tableofcontents
+	%\dominitoc
+	%\chapter{Fonction à une seule variable réelle}
+	%\minitoc
+	
+	
+	
+	\newenvironment{correct}%
+	{\noindent\ignorespaces}%
+	{\par\noindent\ignorespacesafterend}
+	
+\includegraphics{algebre25.png}
+	
+	\textbf{{\large Exercice 1 : Applications} (CLO 1, 2) 4 points}
+	\begin{enumerate}
+		
+		\item Les applications suivantes sont-elles injectives ? sont-elles surjectives ? \hfill 1.5pt
+		\begin{enumerate}
+			\item $f : \ensR \longrightarrow \ensR$ , $f(x) = x^2$. 
+			\item $g : \ensR \longrightarrow \ensR$ , $f(x) = x^3$.
+			\item $h : \ensR \longrightarrow \ensZ$ , $f(x) = E(x)$ (où $E$ représente la partie entière d'un réel). 
+		\end{enumerate}
+		\item Soient $f$ et $g$ deux applications de $\ensR \longrightarrow \ensR$, montrer que : 
+		\begin{enumerate}
+			\item $g \circ f$ est injective $\mapsto$ $f$ est injective. \hfill 1.25pt
+			\item $g \circ f$ est surjective $\mapsto$ $g$ est surjective. \hfill 1.25pt
+		\end{enumerate} 
+
+	
+	\end{enumerate}
+	
+	\textbf{{\large Exercice 2 : Relation et classe d'équivalence} (CLO3) 3.5 points}
+	
+	\begin{enumerate}
+		\item Rappeler les caractéristiques d'une relation d'équivalence. \hfill 0.5pt
+		\item Soit $\mathcal{R}$ la relation définie sur $\ensR$ par : 
+		$$ x \mathcal{R} y \Leftrightarrow f(x) = f(y)$$ où $f(t) = \frac{t^3 + 2}{t^2 + 1}$. 
+		\begin{enumerate}
+			\item Montrer que $\mathcal{R}$ est une relation d'équivalence. \hfill 1.5pt
+			\item Donner le tableau de variation de la fonction $f$. \hfill 0.5pt 
+			\item En déduire à partir du tableau de variation de $f$ le cardinal de $cl(a)$ la classe d'équivalence d'un réel $a$. \hfill 1 pt
+		\end{enumerate}
+	\end{enumerate}
+	
+\textbf{{\large Exercice 3 : Groupes symétriques} (CLO4, 5) 5 points}
+
+\medskip
+\textbf{A. Questions à choix multiples (QCM) 2points}
+
+\begin{enumerate}
+\item Soit $\sigma \in S_n$. Une \textbf{inversion} d’une permutation $\sigma$ est :
+\begin{enumerate}
+\item un couple $(i,j)$ tel que $i<j$ et $\sigma(i)<\sigma(j)$ ;
+\item un couple $(i,j)$ tel que $i<j$ et $\sigma(i)>\sigma(j)$ ;
+\item un élément $i$ tel que $\sigma(i)=i$ ;
+\item une transposition apparaissant dans la décomposition de $\sigma$.
+\end{enumerate}
+
+\item Un \textbf{cycle de longueur $p$} est :
+\begin{enumerate}
+\item une permutation ayant exactement $p$ points fixes ;
+\item une permutation qui est le produit de $p$ transpositions ;
+\item une permutation qui permute cycliquement $p$ éléments distincts et fixe les autres ;
+\item une permutation paire.
+\end{enumerate}
+
+\item Une \textbf{transposition} est :
+\begin{enumerate}
+\item une permutation qui échange deux éléments et fixe tous les autres ;
+\item une permutation de signature $-1$ ;
+\item un cycle de longueur $3$ ;
+\item une permutation possédant exactement une inversion.
+\end{enumerate}
+
+\item La \textbf{signature} d’une permutation $\sigma$ est :
+\begin{enumerate}
+\item le nombre total de cycles dans la décomposition de $\sigma$ ;
+\item égale à $+1$ si $\sigma$ est paire et à $-1$ si $\sigma$ est impaire ;
+\item le nombre d’inversions de $\sigma$ ;
+\item toujours égale à $1$.
+\end{enumerate}
+\end{enumerate}
+
+\textbf{B. Soient les permutations suivantes :}
+
+\[
+\tau_1 =
+\begin{pmatrix}
+1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+2 & 3 & 1 & 5 & 7 & 4 & 6
+\end{pmatrix}
+\]
+
+\begin{enumerate}
+\item Déterminer le nombre d’inversions et la parité de $\tau_1$. \hfill 1pt
+
+\item Décomposer la permutations $\tau_1$ en produits de cycles à supports disjoints. \hfill 0.5pt
+
+\item Décomposer la permutation $\tau_1$ en produits de transpositions. \hfill 0.5pt
+
+\item Calculer $\tau_1^{100}$. \hfill 1pt
+\end{enumerate}
+
+
+\textbf{{\large Exercice 4 : Groupes et anneaux} (CLO4,6) 7.5 points}
+
+\textit{Les questions sont indépendantes.} 
+\begin{enumerate}
+	\item \textbf{QCM 2 points}
+
+\begin{enumerate}
+
+\item Un \textbf{groupe cyclique} est :
+\begin{enumerate}
+\item un groupe commutatif fini ;
+\item un groupe engendré par un seul élément ;
+\item un groupe dont tous les éléments sont d’ordre fini ;
+\item un groupe ayant exactement un générateur.
+\end{enumerate}
+
+\item Soit $(G,\cdot)$ un groupe et $a\in G$. Le sous-ensemble
+$\langle a\rangle = \{a^n \mid n\in\mathbb{Z}\}$ est :
+\begin{enumerate}
+\item toujours un sous-groupe de $G$ ;
+\item un sous-groupe si et seulement si $G$ est abélien ;
+\item égal à $G$ pour tout $a\in G$ ;
+\item un anneau commutatif.
+\end{enumerate}
+
+\item Quelle affirmation est correcte ?
+\begin{enumerate}
+\item Tout groupe monogène est cyclique ;
+\item Tout groupe cyclique est non abélien ;
+\item Tout groupe monogène est fini ;
+\item Aucun groupe cyclique n’est abélien.
+\end{enumerate}
+
+\item Un \textbf{anneau} $(A,+,\cdot)$ est une structure telle que :
+\begin{enumerate}
+\item $(A,+)$ est un groupe abélien et la multiplication est associative ;
+\item $(A,+)$ et $(A,\cdot)$ sont deux groupes ;
+\item la multiplication est toujours commutative ;
+\item tout élément admet un inverse multiplicatif.
+\end{enumerate}
+
+\end{enumerate}
+	\item \textbf{Racine troisième}
+	\begin{enumerate}
+		\item Montrer que $ U_3 = \{ z  \in \ensC / z^3 = 1\}$ est un sous-groupe de $(\ensC^*, \times)$. \hfill 1pt
+		\item Montrer que $U_3$ est un groupe monogène. Est-t-il cyclique ? \hfill 1pt
+	\end{enumerate} 
+	
+	\item \textbf{Morphisme de groupes}
+	\\Soit $(G,*)$ et $(G', T)$ deux groupes. Soient H et K deux sous-groupes de G et G' respectivement. \\ Soit $f : G \longrightarrow G'$ un morphisme de groupes. 
+	\begin{enumerate}
+		\item Montrer que $f(H)$ est un sous groupe de $G'$. \hfill 1pt 
+		\item Montrer que $f^{-1}(K)$ est un sous groupe de $G$. \hfill 1pt
+	\end{enumerate}
+	\item Soit $(\ensZ^2, + , *)$ tel que : 
+	$$ (a,b)+(c,d) = (a+c, b+d)$$
+	$$ (a,b)*(c,d) = (ac, ad+bc)$$
+ Montrer que $(\ensZ^2, + , *)$ est un anneau commutatif. \hfill 1.5pt
+		
+\end{enumerate}
+
+\end{document}
