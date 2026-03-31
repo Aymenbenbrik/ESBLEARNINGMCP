@@ -418,6 +418,38 @@ export interface ImprovementProposal {
   rationale: string;
 }
 
+export interface QuestionSource {
+  document: string;
+  page: string;
+  excerpt: string;
+  document_id?: number;
+}
+
+export interface QuestionWithSources {
+  question_number: number;
+  question_text_preview: string;
+  aa?: string[];
+  bloom_level?: string;
+  sources?: QuestionSource[];
+}
+
+export interface ExamMetadata {
+  exam_name?: string;
+  class_name?: string;
+  language?: string;
+  declared_duration_min?: number;
+  exam_date?: string;
+  instructors?: string[];
+  num_pages?: number;
+  exam_type?: string;
+  answer_on_sheet?: boolean | null;
+  calculator_allowed?: boolean | null;
+  computer_allowed?: boolean | null;
+  internet_allowed?: boolean | null;
+  documents_allowed?: boolean | null;
+  department?: string;
+}
+
 export interface ExamEvaluation {
   overview: string;
   questions_count: number;
@@ -428,6 +460,7 @@ export interface ExamEvaluation {
   bloom_distribution: BloomDistribution;
   difficulty_by_chapter: DifficultyByChapter[];
   aa_alignment: AAAlignment[];
+  questions_with_sources?: QuestionWithSources[];
   strengths: string[];
   feedback: string[];
   suggestions: string[];
@@ -449,6 +482,7 @@ export interface CourseExam {
   target_aa_ids: number[];
   has_practical_target: boolean;
   ai_evaluation: ExamEvaluation | null;
+  exam_metadata?: ExamMetadata;
   created_at: string;
   updated_at: string;
 }
@@ -579,4 +613,86 @@ export interface TnExamListResponse {
 export interface TnExamDetailResponse {
   course: { id: number; title: string; description: string | null };
   exam: TnExamDocument;
+}
+
+export interface ExamHeaderData {
+  exam_name?: string | null;
+  class_name?: string | null;
+  language?: string | null;
+  declared_duration_min?: number | null;
+  exam_date?: string | null;
+  instructors?: string[] | null;
+  num_pages?: number | null;
+  exam_type?: string | null;
+  answer_on_sheet?: boolean | null;
+  calculator_allowed?: boolean | null;
+  computer_allowed?: boolean | null;
+  internet_allowed?: boolean | null;
+  documents_allowed?: boolean | null;
+  department?: string | null;
+}
+
+export interface ExtractedQuestion {
+  id: number;
+  question_number: string;
+  exercise_number: number;
+  exercise_title: string;
+  text: string;
+  has_figure: boolean;
+  points: number | null;
+  question_type: string;
+  difficulty: string;
+  bloom_level: string;
+  estimated_time_min: number | null;
+  /** AA numbers covered by this question (from extract-questions endpoint) */
+  aa_numbers?: number[];
+}
+
+export interface QuestionSourceMatch {
+  question_id: number;
+  question_number: string;
+  sources: {
+    document_id: number;
+    document_name: string;
+    page: number;
+    chapter_id?: number | null;
+    chapter_name?: string | null;
+    chapter_order?: number | null;
+    section?: string | null;
+    /** @deprecated use chapter_name instead */
+    chapter?: string | null;
+    excerpt?: string | null;
+    similarity?: number | null;
+  }[];
+}
+
+/** Question de la Nouvelle Proposition (existante ou générée) */
+export interface ProposedQuestion {
+  local_id: string;
+  exercise_number: number;
+  exercise_title: string;
+  text: string;
+  bloom: string;
+  difficulty: string;
+  type: string;
+  points: number;
+  estimated_time_min?: number;
+  has_figure?: boolean;
+  aa_numbers?: number[];
+  rationale?: string;
+  source: 'extracted' | 'generated';
+  status: 'pending' | 'confirmed' | 'editing';
+}
+
+/** Config de génération pour un exercice */
+export interface ExerciseGenConfig {
+  exercise_number: number;
+  exercise_title: string;
+  dependent: boolean;
+  questions_config: Array<{
+    bloom: string;
+    difficulty: string;
+    type: string;
+    points: number;
+  }>;
 }

@@ -38,6 +38,7 @@ def _extract_json_array(text: str):
 def _extract_exam_metadata(exam_text: str) -> Dict[str, Any]:
     """Use LLM to extract structured exam metadata from the raw PDF text (header focus)."""
     import json as _json
+    from langchain_core.messages import HumanMessage
     # Use first 6000 chars (header is usually in first 2 pages)
     header_text = exam_text[:6000]
     prompt = f"""
@@ -300,18 +301,57 @@ _DIFF_MULTIPLIER: Dict[str, float] = {
 }
 
 
-def _estimate_question_time(q: Dict[str, Any]) -> float:
+def _estimate_question_time(q: Dict[str, Any], use_ai: bool = True) -> float:
     """Estimate time in minutes for a single question.
-
-    Formula: base_time × bloom_multiplier × difficulty_multiplier
-    Rounds to 1 decimal. Minimum 0.5 min.
+    
+    Uses Gemini AI for context-aware estimation if use_ai=True,
+    otherwise falls back to algorithmic formula.
     """
+    # Try AI estimation first (more accurate)
+    if use_ai:
+        try:
+            from flask import current_app
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            import re
+            
+            llm = ChatGoogleGenerativeAI(
+                model='gemini-2.5-flash',
+                google_api_key=current_app.config.get('GOOGLE_API_KEY'),
+                temperature=0.2,
+                max_tokens=256
+            )
+            
+            q_text = q.get('Text') or q.get('QuestionText', '')
+            q_type = q.get('Type', 'Ouvert')
+            bloom = q.get('Bloom_Level', 'Appliquer')
+            diff = q.get('Difficulty', 'Moyen')
+            
+            prompt = f"""Estime le temps (en minutes) pour répondre à cette question:
+
+Question: {q_text[:400]}
+Type: {q_type} | Bloom: {bloom} | Difficulté: {diff}
+
+Retourne UNIQUEMENT un nombre entre 1 et 20."""
+
+            response = llm.invoke(prompt)
+            time_str = response.content.strip()
+            
+            # Extract number
+            match = re.search(r'(\d+\.?\d*)', time_str)
+            if match:
+                estimated_time = float(match.group(1))
+                if 0.5 <= estimated_time <= 20:
+                    return round(estimated_time, 1)
+        except Exception:
+            pass  # Fallback to algorithm
+    
+    # ALGORITHMIC FALLBACK
     qtype = (q.get("Type") or q.get("type") or "").strip()
     bloom = (q.get("Bloom_Level") or "").strip()
     diff = (q.get("Difficulty") or "Moyen").strip()
 
-    # Normalize type key lookup (case-insensitive prefix)
-    base = 4.0  # default: short answer
+    # Normalize type key lookup
+    base = 4.0
     for key, val in _BASE_TIME_BY_TYPE.items():
         if qtype.lower().startswith(key.lower()) or key.lower().startswith(qtype.lower()):
             base = val
@@ -328,10 +368,19 @@ def _build_time_analysis(
     questions: List[Dict[str, Any]],
     declared_duration_min: Optional[float],
 ) -> Dict[str, Any]:
-    """Compute time estimates, total, and comparison with declared duration."""
+    """Compute time estimates, total, and comparison with declared duration.
+    
+    Uses existing estimated_time_min from Gemini extraction when available,
+    otherwise calls _estimate_question_time (Gemini LLM + algorithmic fallback).
+    """
     total_estimated = 0.0
     for q in questions:
-        t = _estimate_question_time(q)
+        # Prefer existing Gemini-estimated value from extraction phase
+        existing = q.get('estimated_time_min') or q.get('EstimatedTime')
+        if existing and isinstance(existing, (int, float)) and 0.5 <= float(existing) <= 60:
+            t = round(float(existing), 1)
+        else:
+            t = _estimate_question_time(q)
         q["estimated_time_min"] = t
         total_estimated += t
 
@@ -344,6 +393,7 @@ def _build_time_analysis(
         "reading_buffer_min": reading_buffer_min,
         "total_with_buffer_min": total_with_buffer,
         "declared_duration_min": declared_duration_min,
+        "time_estimation_source": "gemini_ai",  # Time estimated by Gemini AI (extraction or LLM)
     }
 
     if declared_duration_min:

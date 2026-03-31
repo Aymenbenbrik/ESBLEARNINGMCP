@@ -21,6 +21,11 @@ import {
   TnExamValidationResponse,
   TnExamListResponse,
   TnExamDetailResponse,
+  ExamHeaderData,
+  ExtractedQuestion,
+  QuestionSourceMatch,
+  ProposedQuestion,
+  ExerciseGenConfig,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -209,6 +214,16 @@ export const tnExamsApi = {
       data
     ),
 
+  extractHeader: (courseId: number, examId: number) =>
+    apiClient.post<{ success: boolean; header: ExamHeaderData; message: string }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/extract-header`
+    ),
+
+  extractQuestions: (courseId: number, examId: number) =>
+    apiClient.post<{ success: boolean; questions: ExtractedQuestion[]; count: number; message: string }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/extract-questions`
+    ),
+
   getValidation: (courseId: number, examId: number) =>
     apiClient.get<TnExamValidationResponse>(
       `/api/v1/courses/${courseId}/tn-exams/${examId}/validation`
@@ -221,4 +236,57 @@ export const tnExamsApi = {
     apiClient.get(`/api/v1/courses/${courseId}/tn-exams/${examId}/report`, {
       responseType: 'blob',
     }),
+
+  matchSources: (courseId: number, examId: number, questionIds?: number[]) =>
+    apiClient.post<{ matches: QuestionSourceMatch[] }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/match-sources`,
+      questionIds ? { question_ids: questionIds } : {}
+    ),
+
+  /** Generate questions for an exercise using Gemini */
+  generateExerciseQuestions: (courseId: number, examId: number, config: ExerciseGenConfig) =>
+    apiClient.post<{ questions: Array<{ text: string; bloom_level: string; difficulty: string; question_type: string; points: number; estimated_time_min?: number; aa_numbers?: number[]; rationale?: string }> }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/generate-exercise-questions`,
+      config
+    ),
+
+  /** Save a new exam proposal (confirmed questions) to the database */
+  saveProposal: (courseId: number, examId: number, data: { questions: ProposedQuestion[]; title?: string }) =>
+    apiClient.post<{ ok: boolean; message: string; exam: TnExamDocument }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/save-proposal`,
+      data
+    ),
+
+  /** Get structured report data as JSON (no LaTeX required) for preview */
+  getReportData: (courseId: number, examId: number) =>
+    apiClient.get<{
+      general_info: {
+        course_title: string;
+        exam_name: string;
+        class_name: string;
+        language: string;
+        duration_min: number | null;
+        exam_date: string;
+        instructors: string[];
+      };
+      validation: Array<{ criterion: string; label: string; status: 'PASS' | 'WARNING' | 'FAIL'; detail: string; ok: boolean }>;
+      scores: { content: number; quality: number; total: number };
+      bloom_percentages: Record<string, number>;
+      difficulty_percentages: Record<string, number>;
+      aa_percentages: Record<string, number>;
+      type_distribution: Record<string, number>;
+      aa_mapping: Array<{ question_number: number; aa_numbers: number[]; bloom: string; points: number; exercise_number: number }>;
+      question_classification: Array<{ question_number: number; type: string; bloom: string; difficulty: string; points: number; exercise_number: number; exercise_title: string }>;
+      time_analysis: Record<string, any>;
+      source_coverage_rate: number;
+      total_questions: number;
+      has_full_analysis: boolean;
+    }>(`/api/v1/courses/${courseId}/tn-exams/${examId}/report-data`),
+
+  /** Match a single question text to course documents using RAG */
+  matchQuestion: (courseId: number, examId: number, questionText: string) =>
+    apiClient.post<{ sources: QuestionSourceMatch['sources']; total_docs_searched: number }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/match-question`,
+      { question_text: questionText }
+    ),
 };
