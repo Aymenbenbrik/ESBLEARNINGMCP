@@ -23,3 +23,13 @@ ESB-main/uploads/
 
 # Logs
 *.log
+
+# Backup files
+*.backup
+*.bak
+
+# Temp/debug scripts (use scripts/ folder instead)
+ESB-main/tmp_*.txt
+
+# Test data scripts (committed to scripts/ only)
+create_users.py
