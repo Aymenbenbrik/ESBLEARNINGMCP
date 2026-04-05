@@ -16,6 +16,7 @@ import {
   TnExamDocument,
   GeneratedQuestion,
   TnExamValidationResponse,
+  TnExamCorrection,
 } from '../types/course';
 import { toast } from 'sonner';
 
@@ -543,6 +544,37 @@ export function useGenerateCurativeQuestions(courseId: number, examId: number) {
     },
     onError: (error: any) => {
       toast.error(error.message || 'Erreur lors de la génération des questions');
+    },
+  });
+}
+
+export function useGenerateCorrection(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => tnExamsApi.generateCorrection(courseId, examId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exam-corrections', courseId, examId] });
+    },
+  });
+}
+
+export function useTnExamCorrections(courseId: number, examId: number) {
+  return useQuery({
+    queryKey: ['tn-exam-corrections', courseId, examId],
+    queryFn: () => tnExamsApi.getCorrections(courseId, examId).then(r => r.data.corrections),
+    enabled: !!courseId && !!examId,
+  });
+}
+
+export function useUpdateCorrection(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ index, data }: { index: number; data: Partial<TnExamCorrection> }) =>
+      tnExamsApi.updateCorrection(courseId, examId, index, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam-corrections', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
     },
   });
 }

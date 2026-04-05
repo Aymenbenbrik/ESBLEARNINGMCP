@@ -163,7 +163,7 @@ MCP_TOOL_DEFINITIONS = [
 
 def _llm(temperature: float = 0.3):
     api_key = current_app.config.get('GOOGLE_API_KEY', '')
-    model = current_app.config.get('GEMINI_MODEL', 'gemini-2.0-flash')
+    model = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
     return ChatGoogleGenerativeAI(
         model=model,
         google_api_key=api_key,

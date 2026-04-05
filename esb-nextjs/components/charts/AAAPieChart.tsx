@@ -58,7 +58,7 @@ export function AAAPieChart({ data }: AAAPieChartProps) {
             Percentage: <span className="font-medium text-foreground">{percentage}%</span>
           </p>
           <p className="text-sm text-muted-foreground">
-            Avg Score: <span className="font-medium text-foreground">{data.avg_score.toFixed(1)}%</span>
+            Avg Score: <span className="font-medium text-foreground">{data.avg_score != null ? data.avg_score.toFixed(1) : '—'}%</span>
           </p>
         </div>
       );

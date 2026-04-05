@@ -85,7 +85,7 @@ class VideoAnalysisService:
         
         # Initialize Gemini client
         logger.info("Initializing Gemini API client")
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = "gemini-2.5-flash"
         self.google_api_key = google_api_key
         
         logger.info("Video Analysis Service initialized successfully (No FFmpeg)")

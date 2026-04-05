@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useCourse, useCourseDashboard, useDeleteCourse, useUploadModule } from '@/lib/hooks/useCourses';
+import { useCourse, useCourseDashboard, useDeleteCourse, useUploadModule, useTnExams } from '@/lib/hooks/useCourses';
 import { CourseHeader } from '@/components/courses/CourseHeader';
 import { ChaptersList } from '@/components/courses/ChaptersList';
 import { ModuleAttachments } from '@/components/courses/ModuleAttachments';
@@ -15,15 +15,96 @@ import { DeleteCourseDialog } from '@/components/courses/DeleteCourseDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { BarChart3, BookOpen, Database, FileText } from 'lucide-react';
+import { BarChart3, BookOpen, Database, FileText, CheckCircle2 } from 'lucide-react';
 import { Breadcrumbs } from '@/components/shared/Breadcrumbs';
 import { safeNumber, safePercent } from '@/lib/format';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { AttendanceTab } from '@/components/courses/AttendanceTab';
 import { GradesTab } from '@/components/courses/GradesTab';
 import { ExamTab } from '@/components/courses/ExamTab';
+import { useExams, usePublishExam, useUnpublishExam } from '@/lib/hooks/useExamBank';
+import { Clock, Trophy, Play, Shield, Zap, Globe, EyeOff, BarChart2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { GenerateExamDialog } from '@/components/courses/GenerateExamDialog';
+import type { TnExamDocument } from '@/lib/types/course';
+import type { ValidatedExam } from '@/lib/types/exam-bank';
 
-type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'examen' | 'epreuves';
+type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'examen' | 'epreuves' | 'epreuve_exam';
+
+// ── ExamBankCard — teacher card with publish/unpublish + results ─────────────
+
+function ExamBankCard({ exam, courseId }: { exam: ValidatedExam; courseId: number }) {
+  const publishMutation = usePublishExam(courseId);
+  const unpublishMutation = useUnpublishExam(courseId);
+  const isPending = publishMutation.isPending || unpublishMutation.isPending;
+
+  const handleToggle = () => {
+    if (exam.is_available) {
+      unpublishMutation.mutate(exam.id);
+    } else {
+      publishMutation.mutate(exam.id);
+    }
+  };
+
+  return (
+    <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground font-mono mb-0.5">ID #{exam.id}</p>
+          <h3 className="font-semibold text-sm truncate">{exam.title}</h3>
+          {exam.description && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{exam.description}</p>
+          )}
+        </div>
+        <Badge
+          variant={exam.is_available ? 'default' : 'secondary'}
+          className={`text-xs flex-shrink-0 ${exam.is_available ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
+        >
+          {exam.is_available ? '● Publié' : '○ Brouillon'}
+        </Badge>
+      </div>
+
+      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{exam.duration_minutes} min</span>
+        <span className="flex items-center gap-1"><Trophy className="h-3 w-3" />{exam.total_points} pts</span>
+        <span>{exam.question_count} questions</span>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-1 flex-wrap">
+          {exam.safe_exam_enabled && <Badge variant="outline" className="text-xs">Safe</Badge>}
+          {exam.face_id_required && <Badge variant="outline" className="text-xs">FaceID</Badge>}
+        </div>
+        <div className="flex gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/courses/${courseId}/exam/${exam.id}/dashboard`}>
+              <BarChart2 className="h-3 w-3 mr-1" />
+              Résultats
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/courses/${courseId}/exam/${exam.id}`}>
+              <Play className="h-3 w-3 mr-1" />
+              Voir
+            </Link>
+          </Button>
+          <Button
+            size="sm"
+            variant={exam.is_available ? 'outline' : 'default'}
+            className={exam.is_available ? 'text-red-600 border-red-200 hover:bg-red-50' : 'bg-green-600 hover:bg-green-700 text-white'}
+            onClick={handleToggle}
+            disabled={isPending}
+          >
+            {exam.is_available
+              ? <><EyeOff className="h-3 w-3 mr-1" />Dépublier</>
+              : <><Globe className="h-3 w-3 mr-1" />Publier</>
+            }
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function CourseDetailPage() {
   const params = useParams();
@@ -34,7 +115,11 @@ export default function CourseDetailPage() {
   const { data: dashboardData } = useCourseDashboard(courseId);
   const uploadModuleMutation = useUploadModule();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { data: availableExams, isLoading: examsLoading } = useExams(courseId);
+  const { data: tnExams, isLoading: tnExamsLoading } = useTnExams(courseId);
   const [activeTab, setActiveTab] = useState<TabId>('description');
+  const [generateDialogExam, setGenerateDialogExam] = useState<TnExamDocument | null>(null);
+  const [editDialogExam, setEditDialogExam] = useState<{ tn: TnExamDocument; validated: ValidatedExam } | null>(null);
   const { user } = useAuth();
   const isTeacher = !!(user?.is_teacher || user?.is_superuser);
 
@@ -86,8 +171,9 @@ export default function CourseDetailPage() {
     { id: 'dashboard',   label: isStudent ? 'Mon tableau de bord' : 'Dashboard classe' },
     { id: 'presence',    label: '📋 Présence' },
     { id: 'notes',       label: '📊 Notes' },
-    ...(course.can_edit && isTN ? [{ id: 'epreuves' as TabId, label: '📝 Épreuves' }] : []),
+    ...(course.can_edit && isTN ? [{ id: 'epreuves' as TabId, label: '📝 Préparer épreuve' }] : []),
     ...(course.can_edit && !isTN ? [{ id: 'examen' as TabId, label: '📝 Examen' }] : []),
+    { id: 'epreuve_exam' as TabId, label: '🎯 Passer une épreuve' },
   ];
 
   return (
@@ -285,6 +371,196 @@ export default function CourseDetailPage() {
         )}
       </div>
 
+        {/* Tab: Épreuve Exam — visible to all users */}
+        {activeTab === 'epreuve_exam' && (
+          <div className="space-y-6">
+            {/* Teacher view */}
+            {course.can_edit && (
+              <div className="space-y-6">
+
+                {/* Section: Épreuves TN (préparées) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">Épreuves préparées</h2>
+                      <p className="text-sm text-muted-foreground">Épreuves analysées et sauvegardées dans &quot;Préparer épreuve&quot;.</p>
+                    </div>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/courses/${courseId}/exams`}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Gérer les épreuves
+                      </Link>
+                    </Button>
+                  </div>
+                  {tnExamsLoading ? (
+                    <div className="flex justify-center py-4"><Skeleton className="h-24 w-full" /></div>
+                  ) : !tnExams || tnExams.length === 0 ? (
+                    <div className="rounded-[12px] border border-dashed border-bolt-line bg-muted/20 p-6 text-center">
+                      <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Aucune épreuve préparée. Utilisez l&apos;onglet &quot;Préparer épreuve&quot; pour en ajouter.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {tnExams.map(exam => {
+                        const linkedExam = availableExams?.find(e => e.tn_exam_id === exam.id);
+                        return (
+                          <div key={exam.id} className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-xs text-muted-foreground font-mono mb-0.5">ID #{exam.id}</p>
+                                <h3 className="font-semibold text-sm">{exam.title ?? `Épreuve #${exam.id}`}</h3>
+                              </div>
+                              <Badge
+                                variant={exam.has_analysis ? 'default' : 'secondary'}
+                                className={`text-xs flex-shrink-0 ${exam.has_analysis ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
+                              >
+                                {exam.has_analysis ? '✓ Analysée' : 'Non analysée'}
+                              </Badge>
+                            </div>
+                            {exam.total_questions && (
+                              <div className="text-xs text-muted-foreground">
+                                {exam.total_questions} question{exam.total_questions > 1 ? 's' : ''}
+                              </div>
+                            )}
+                            {linkedExam && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 rounded px-2 py-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Examen en ligne généré — ID #{linkedExam.id}
+                              </div>
+                            )}
+                            <div className="flex gap-2 justify-end">
+                              <Button asChild size="sm" variant="outline">
+                                <Link href={`/courses/${courseId}/exams/${exam.id}`}>
+                                  <Play className="h-3 w-3 mr-1" />
+                                  Voir
+                                </Link>
+                              </Button>
+                              {exam.has_analysis && (
+                                <Button
+                                  size="sm"
+                                  className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+                                  onClick={() => linkedExam
+                                    ? setEditDialogExam({ tn: exam, validated: linkedExam })
+                                    : setGenerateDialogExam(exam)
+                                  }
+                                >
+                                  <Zap className="h-3 w-3" />
+                                  {linkedExam ? 'Modifier examen' : 'Générer examen'}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Section: Épreuves banque de questions */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">Épreuves en ligne (banque)</h2>
+                      <p className="text-sm text-muted-foreground">Gérez les épreuves interactives disponibles pour ce cours.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/courses/${courseId}/course-review`}>
+                          <BookOpen className="mr-2 h-4 w-4" />
+                          Course Review
+                        </Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/question-bank?course_id=${courseId}`}>
+                          <Shield className="mr-2 h-4 w-4" />
+                          Gérer dans la banque
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                  {examsLoading ? (
+                    <div className="flex justify-center py-8"><Skeleton className="h-32 w-full" /></div>
+                  ) : !availableExams || availableExams.length === 0 ? (
+                    <div className="rounded-[12px] border border-dashed border-bolt-line bg-muted/20 p-6 text-center">
+                      <Shield className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Aucune épreuve créée. Créez des épreuves depuis la banque de questions.</p>
+                      <Button asChild className="mt-3" size="sm">
+                        <Link href={`/question-bank?course_id=${courseId}`}>Créer une épreuve</Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {availableExams.map(exam => (
+                        <ExamBankCard
+                          key={exam.id}
+                          exam={exam}
+                          courseId={courseId}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Student view */}
+            {!course.can_edit && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Épreuves disponibles</h2>
+                  <p className="text-sm text-muted-foreground">Passez les épreuves assignées à ce cours.</p>
+                </div>
+                {examsLoading ? (
+                  <div className="flex justify-center py-8"><Skeleton className="h-32 w-full" /></div>
+                ) : !availableExams || availableExams.filter(e => e.is_available).length === 0 ? (
+                  <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-8 text-center">
+                    <Shield className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="font-semibold">Aucune épreuve disponible</p>
+                    <p className="text-sm text-muted-foreground mt-1">Votre enseignant n&apos;a pas encore activé d&apos;épreuve pour ce cours.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {availableExams.filter(e => e.is_available).map(exam => (
+                      <div key={exam.id} className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-5 space-y-4">
+                        <div>
+                          <h3 className="font-semibold">{exam.title}</h3>
+                          {exam.description && <p className="text-sm text-muted-foreground mt-1">{exam.description}</p>}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                          <div className="bg-blue-50 rounded p-2">
+                            <Clock className="h-4 w-4 text-blue-500 mx-auto mb-0.5" />
+                            <p className="font-semibold">{exam.duration_minutes} min</p>
+                          </div>
+                          <div className="bg-purple-50 rounded p-2">
+                            <p className="text-lg font-bold text-purple-600">{exam.question_count}</p>
+                            <p className="text-muted-foreground">questions</p>
+                          </div>
+                          <div className="bg-green-50 rounded p-2">
+                            <Trophy className="h-4 w-4 text-green-500 mx-auto mb-0.5" />
+                            <p className="font-semibold">{exam.total_points} pts</p>
+                          </div>
+                        </div>
+                        {exam.safe_exam_enabled && (
+                          <div className="flex gap-1 flex-wrap">
+                            <Badge variant="outline" className="text-xs"><Shield className="h-3 w-3 mr-1" />Safe Exam</Badge>
+                            {exam.face_id_required && <Badge variant="outline" className="text-xs">FaceID requis</Badge>}
+                          </div>
+                        )}
+                        <Button asChild className="w-full">
+                          <Link href={`/courses/${courseId}/exam/${exam.id}`}>
+                            <Play className="h-4 w-4 mr-2" />
+                            Commencer l&apos;épreuve
+                          </Link>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
       <DeleteCourseDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
@@ -292,6 +568,27 @@ export default function CourseDetailPage() {
         courseName={course.title}
         onDelete={handleDelete}
       />
+
+      {/* Generate exam dialog */}
+      {generateDialogExam && (
+        <GenerateExamDialog
+          open={!!generateDialogExam}
+          onOpenChange={open => { if (!open) setGenerateDialogExam(null); }}
+          tnExam={generateDialogExam}
+          courseId={courseId}
+        />
+      )}
+
+      {/* Edit generated exam dialog */}
+      {editDialogExam && (
+        <GenerateExamDialog
+          open={!!editDialogExam}
+          onOpenChange={open => { if (!open) setEditDialogExam(null); }}
+          tnExam={editDialogExam.tn}
+          courseId={courseId}
+          existingExam={editDialogExam.validated}
+        />
+      )}
     </>
   );
 }

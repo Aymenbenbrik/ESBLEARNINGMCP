@@ -144,7 +144,7 @@ def extract_aap_from_pdf(pdf_path):
         if not api_key:
              raise ValueError("Google API key not configured")
              
-        model = current_app.config.get("GEMINI_MODEL", "gemini-2.0-flash-lite")
+        model = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
         
         llm = ChatGoogleGenerativeAI(
             model=model,
@@ -465,7 +465,7 @@ class SyllabusTNService:
     @staticmethod
     def _client(temperature=0):
         api = current_app.config.get("GOOGLE_API_KEY")
-        model = current_app.config.get("GEMINI_MODEL", "gemini-2.0-flash-lite")
+        model = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
         if not api:
             raise ValueError("Google API key missing")
              

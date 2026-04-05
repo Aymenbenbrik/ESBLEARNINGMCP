@@ -430,6 +430,7 @@ export interface QuestionWithSources {
   question_text_preview: string;
   aa?: string[];
   bloom_level?: string;
+  points?: number;
   sources?: QuestionSource[];
 }
 
@@ -553,6 +554,8 @@ export interface TnExamQuestion {
   Type?: string;
   estimated_time_min?: number;
   source_docs?: string[];
+  exercise_number?: number | string;
+  exercise_title?: string;
 }
 
 export interface TnExamMetadata {
@@ -590,7 +593,24 @@ export interface TnExamAnalysisResults {
   time_analysis?: TnExamTimeAnalysis;
   recommendations?: string[];
   strengths?: string[];
+  corrections?: TnExamCorrection[];
   [key: string]: unknown;
+}
+
+export interface TnExamCorrection {
+  index: number;
+  exercise_number: number;
+  exercise_title: string;
+  question_text: string;
+  question_type: string;
+  points: number;
+  bloom_level?: string;
+  difficulty?: string;
+  aa_numbers?: number[];
+  correction: string;
+  points_detail: string;
+  criteres: string[];
+  validated: boolean;
 }
 
 export interface ValidationCriterion {

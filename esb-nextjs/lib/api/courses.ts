@@ -26,6 +26,7 @@ import {
   QuestionSourceMatch,
   ProposedQuestion,
   ExerciseGenConfig,
+  TnExamCorrection,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -288,5 +289,24 @@ export const tnExamsApi = {
     apiClient.post<{ sources: QuestionSourceMatch['sources']; total_docs_searched: number }>(
       `/api/v1/courses/${courseId}/tn-exams/${examId}/match-question`,
       { question_text: questionText }
+    ),
+
+  /** Generate AI correction for each extracted question */
+  generateCorrection: (courseId: number, examId: number) =>
+    apiClient.post<{ corrections: TnExamCorrection[]; count: number }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/generate-correction`
+    ),
+
+  /** Retrieve generated corrections */
+  getCorrections: (courseId: number, examId: number) =>
+    apiClient.get<{ corrections: TnExamCorrection[]; count: number }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/corrections`
+    ),
+
+  /** Update / validate a single correction by index */
+  updateCorrection: (courseId: number, examId: number, index: number, data: Partial<TnExamCorrection>) =>
+    apiClient.put<TnExamCorrection>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/corrections/${index}`,
+      data
     ),
 };

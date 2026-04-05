@@ -437,7 +437,7 @@ def generate_chapter_summary(chapter_id):
             if not api_key:
                 raise ValueError("Google API key is not configured")
 
-            model = current_app.config.get('GEMINI_MODEL', 'gemini-2.0-flash')
+            model = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
 
             llm = ChatGoogleGenerativeAI(
                 model=model,
@@ -984,7 +984,7 @@ def generate_chapter_description(chapter_id):
         prompt_context = "\n".join(context_parts)
 
         llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             temperature=0.4,
             max_tokens=800,
             google_api_key=current_app.config.get('GOOGLE_API_KEY'),
@@ -1019,3 +1019,5 @@ def generate_chapter_description(chapter_id):
     except Exception as e:
         logger.error(f"Error generating chapter description: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------------------------

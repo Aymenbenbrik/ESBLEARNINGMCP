@@ -27,7 +27,8 @@ const BLOOM_COLORS = [
   '#a855f7', // purple-500 - Create
 ];
 
-const getBloomColor = (level: string): string => {
+const getBloomColor = (level: string | undefined | null): string => {
+  if (!level) return BLOOM_COLORS[0];
   const bloomLevels = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
   const index = bloomLevels.indexOf(level.toLowerCase());
   return index !== -1 ? BLOOM_COLORS[index] : BLOOM_COLORS[0];
@@ -53,7 +54,7 @@ export function BloomBarChart({ data }: BloomBarChartProps) {
             Questions: <span className="font-medium text-foreground">{data.count}</span>
           </p>
           <p className="text-sm text-muted-foreground">
-            Avg Score: <span className="font-medium text-foreground">{data.avg_score.toFixed(1)}%</span>
+          Avg Score: <span className="font-medium text-foreground">{data.avg_score != null ? data.avg_score.toFixed(1) : '—'}%</span>
           </p>
         </div>
       );
@@ -74,7 +75,7 @@ export function BloomBarChart({ data }: BloomBarChartProps) {
           textAnchor="end"
           height={80}
           className="text-xs"
-          tickFormatter={(value) => value.charAt(0).toUpperCase() + value.slice(1)}
+          tickFormatter={(value) => value ? value.charAt(0).toUpperCase() + value.slice(1) : ''}
         />
         <YAxis
           label={{ value: 'Number of Questions', angle: -90, position: 'insideLeft' }}

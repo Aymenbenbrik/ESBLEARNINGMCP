@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   Youtube, FileText, Image as ImageIcon, ClipboardList,
@@ -17,6 +17,7 @@ import type { SectionActivity, ActivityType } from '@/lib/types/references';
 import type { Document, TNSection } from '@/lib/types/course';
 import { practicalWorkApi } from '@/lib/api/practicalWork';
 import type { PracticalWork } from '@/lib/types/practicalWork';
+import { chapterPipelineApi, ChapterExercise } from '@/lib/api/chapter-pipeline';
 import { toast } from 'sonner';
 
 // ─── Column palette ───────────────────────────────────────────────────────────
@@ -349,6 +350,7 @@ function SemanticColumn({
   allActivities,
   documents,
   practicalWorks,
+  publishedExercises,
   canEdit,
   courseId,
   chapterId,
@@ -360,6 +362,7 @@ function SemanticColumn({
   allActivities: SectionActivity[];
   documents?: Document[];
   practicalWorks?: PracticalWork[];
+  publishedExercises?: ChapterExercise[];
   canEdit: boolean;
   courseId: number;
   chapterId: number;
@@ -384,7 +387,8 @@ function SemanticColumn({
 
   const activities = allActivities.filter(a => col.types.includes(a.activity_type as ActivityType));
 
-  const totalItems = activities.length + (documents?.length ?? 0) + (practicalWorks?.length ?? 0);
+  const exerciseCount = col.id === 'consolidation' ? (publishedExercises?.length ?? 0) : 0;
+  const totalItems = activities.length + (documents?.length ?? 0) + (practicalWorks?.length ?? 0) + exerciseCount;
 
   const hasSectionGroups = sections.length > 1 || sections.some(s => (s.sub_sections ?? []).length > 0);
 
@@ -537,6 +541,32 @@ function SemanticColumn({
               </div>
             )}
 
+            {/* Published exercises in consolidation column */}
+            {col.id === 'consolidation' && publishedExercises && publishedExercises.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs font-semibold text-blue-700 mb-1.5 flex items-center gap-1">
+                  <BookOpen className="h-3 w-3" /> Exercices publiés ({publishedExercises.length})
+                </p>
+                {publishedExercises.map((ex) => (
+                  <Link
+                    key={ex.id}
+                    href={`/courses/${courseId}/chapters/${chapterId}?tab=consolidation`}
+                    className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs hover:bg-blue-50 transition-colors no-underline mb-1.5 group"
+                  >
+                    <BookOpen className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-blue-900 truncate">{ex.title}</p>
+                      <p className="text-muted-foreground">
+                        {ex.questions?.length ?? 0} question{(ex.questions?.length ?? 0) !== 1 ? 's' : ''}
+                        {ex.total_points ? ` · ${ex.total_points} pts` : ''}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-3.5 w-3.5 text-blue-300 group-hover:text-blue-600 transition-colors shrink-0" />
+                  </Link>
+                ))}
+              </div>
+            )}
+
             {/* Inline add forms */}
             {showAddVideo && defaultSectionId && (
               <AddYoutubeForm sectionId={defaultSectionId} onClose={() => setShowAddVideo(false)} />
@@ -629,9 +659,18 @@ export function ChapterSemanticColumns({
     })),
   });
 
+  // Fetch published consolidation exercises for the chapter
+  const exercisesQuery = useQuery({
+    queryKey: ['chapter-exercises', chapterId, 'consolidation'],
+    queryFn: () => chapterPipelineApi.listExercises(chapterId, 'consolidation'),
+    enabled: !!chapterId,
+    select: (data) => data.filter(e => e.status === 'published'),
+  });
+
   const isLoading = queries.some((q) => q.isLoading) || tpQueries.some((q) => q.isLoading);
   const allActivities = queries.flatMap((q) => q.data ?? []);
   const allPracticalWorks = tpQueries.flatMap((q) => q.data ?? []);
+  const publishedExercises = exercisesQuery.data ?? [];
 
   if (sectionIds.length === 0 && !canEdit) {
     return (
@@ -663,6 +702,7 @@ export function ChapterSemanticColumns({
           allActivities={allActivities}
           documents={idx === 0 ? documents : undefined}
           practicalWorks={idx === 1 ? allPracticalWorks : undefined}
+          publishedExercises={idx === 2 ? publishedExercises : undefined}
           canEdit={canEdit}
           courseId={courseId}
           chapterId={chapterId}

@@ -21,7 +21,8 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   hard: '#ef4444', // red-500
 };
 
-const getDifficultyColor = (difficulty: string): string => {
+const getDifficultyColor = (difficulty: string | undefined | null): string => {
+  if (!difficulty) return '#6b7280';
   return DIFFICULTY_COLORS[difficulty.toLowerCase()] || '#6b7280'; // gray-500 as fallback
 };
 
@@ -51,7 +52,7 @@ export function DifficultyPieChart({ data }: DifficultyPieChartProps) {
             Percentage: <span className="font-medium text-foreground">{percentage}%</span>
           </p>
           <p className="text-sm text-muted-foreground">
-            Avg Score: <span className="font-medium text-foreground">{data.avg_score.toFixed(1)}%</span>
+            Avg Score: <span className="font-medium text-foreground">{data.avg_score != null ? data.avg_score.toFixed(1) : '—'}%</span>
           </p>
         </div>
       );

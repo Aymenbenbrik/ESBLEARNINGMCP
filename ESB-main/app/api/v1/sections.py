@@ -29,7 +29,7 @@ from app import db
 from app.models import (
     User, TNChapter, TNSection, SectionActivity, SectionQuiz,
     SectionAssignment, SectionQuizSubmission, AssignmentSubmission,
-    Enrollment
+    Enrollment, Chapter
 )
 
 logger = logging.getLogger(__name__)
@@ -42,13 +42,39 @@ def _get_user():
 
 
 def _chapter_access(chapter_id: int):
-    """Return (user, tn_chapter, course, is_teacher)."""
+    """Return (user, tn_chapter, course, is_teacher).
+
+    chapter_id can be either an old Chapter.id (15-24) or a TNChapter.id (1-10).
+    We try TNChapter first; if not found we resolve via the old Chapter model.
+    """
     user = _get_user()
-    tn_chapter = TNChapter.query.get_or_404(chapter_id)
-    syllabus = tn_chapter.syllabus
-    course = syllabus.course if syllabus else None
-    if not course:
-        return user, tn_chapter, None, False
+
+    # Try as a TNChapter id directly
+    tn_chapter = TNChapter.query.get(chapter_id)
+
+    if tn_chapter is not None:
+        syllabus = tn_chapter.syllabus
+        course = syllabus.course if syllabus else None
+        if not course:
+            return user, tn_chapter, None, False
+    else:
+        # Assume chapter_id is an old Chapter.id
+        old_ch = Chapter.query.get(chapter_id)
+        if old_ch is None:
+            from flask import abort
+            abort(404)
+        course = old_ch.course
+        if not course:
+            return user, None, None, False
+        # Find the matching TNChapter via syllabus index == chapter order
+        syllabus = getattr(course, 'syllabus', None)
+        tn_chapter = None
+        if syllabus:
+            for tnc in (syllabus.tn_chapters or []):
+                if tnc.index == old_ch.order:
+                    tn_chapter = tnc
+                    break
+
     is_teacher = bool(user.is_teacher and course.teacher_id == user.id) or bool(user.is_superuser)
     return user, tn_chapter, course, is_teacher
 

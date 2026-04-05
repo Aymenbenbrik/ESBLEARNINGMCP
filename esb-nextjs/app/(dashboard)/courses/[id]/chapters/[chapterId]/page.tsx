@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   useChapter, useDeleteChapter, useGenerateSummary,
@@ -52,8 +52,11 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Bot, FileSearch, CheckCircle2 as CheckCircleIcon, AlertCircle } from 'lucide-react';
+import { Loader2, Bot, FileSearch, CheckCircle2 as CheckCircleIcon, AlertCircle, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
+import { AgenticPipelinePanel } from '@/components/chapters/AgenticPipelinePanel';
+import { ConsolidationTab } from '@/components/chapters/ConsolidationTab';
+import { ActivitesPratiquesTab } from '@/components/chapters/ActivitesPratiquesTab';
 
 export default function ChapterDetailPage() {
   const params = useParams();
@@ -92,6 +95,21 @@ export default function ChapterDetailPage() {
   const [detectTpSuggestions, setDetectTpSuggestions] = useState<Array<{title: string; description: string; type: string; estimated_duration: string; difficulty?: string}>>([]);
   const [detectTpProgress, setDetectTpProgress] = useState<{step: string; current: number; total: number; docNames: string[]}>({ step: '', current: 0, total: 0, docNames: [] });
   const detectTpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Tab navigation
+  type ChapterTab = 'overview' | 'consolidation' | 'activites';
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') as ChapterTab | null;
+  const [currentTab, setCurrentTab] = useState<ChapterTab>(
+    tabParam && ['overview', 'consolidation', 'activites'].includes(tabParam) ? tabParam : 'overview'
+  );
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as ChapterTab | null;
+    if (tab && ['overview', 'consolidation', 'activites'].includes(tab)) {
+      setCurrentTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (data?.tn_chapter?.sections) {
@@ -427,6 +445,43 @@ export default function ChapterDetailPage() {
             />
           </div>
 
+          {/* Tab navigation */}
+          <div className="bg-white border-b border-bolt-line px-8">
+            <div className="flex gap-1">
+              {([
+                { id: "overview",      label: "Vue d'ensemble",          Icon: BookOpen     },
+                { id: "consolidation", label: "Consolidation des acquis", Icon: ClipboardList },
+                { id: "activites",     label: "Activités pratiques",     Icon: FlaskConical },
+              ] as Array<{ id: string; label: string; Icon: any }>).map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setCurrentTab(id as any)}
+                  className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    currentTab === id
+                      ? "border-blue-600 text-blue-600"
+                      : "border-transparent text-muted-foreground hover:text-bolt-ink hover:border-gray-300"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {currentTab === "consolidation" && (
+            <div className="p-6 space-y-4">
+              {isTeacher && <AgenticPipelinePanel chapterId={chapterId} />}
+              <ConsolidationTab chapterId={chapterId} isTeacher={isTeacher} />
+            </div>
+          )}
+          {currentTab === "activites" && (
+            <div className="p-6 space-y-4">
+              {isTeacher && <AgenticPipelinePanel chapterId={chapterId} />}
+              <ActivitesPratiquesTab chapterId={chapterId} isTeacher={isTeacher} />
+            </div>
+          )}
+          {currentTab === "overview" && <>
           {/* ── 3 Semantic Columns ─────────────────────────────────── */}
           <div className="p-6 space-y-6">
             <ChapterSemanticColumns
@@ -601,6 +656,8 @@ export default function ChapterDetailPage() {
               )}
             </div>
           </div>
+        </>
+        }
         </main>
       </div>
 

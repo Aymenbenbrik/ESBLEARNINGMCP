@@ -503,7 +503,7 @@ def generate_quiz_questions(
     if not api_key:
         raise ValueError("Google API key not configured")
 
-    model = current_app.config.get('GEMINI_MODEL', 'gemini-2.0-flash')
+    model = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
 
     # Handle backward compatibility
     if num_questions and not (num_mcq or num_open):

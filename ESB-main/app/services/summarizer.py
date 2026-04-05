@@ -30,7 +30,7 @@ class DocumentSummarizer:
         import os
         
         return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.3
         )
@@ -279,7 +279,7 @@ Overview:"""
                 image_data = base64.standard_b64encode(f.read()).decode("utf-8")
             
             llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 google_api_key=os.getenv("GOOGLE_API_KEY"),
                 temperature=0.3
             )

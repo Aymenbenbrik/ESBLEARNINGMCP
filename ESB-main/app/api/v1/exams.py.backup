@@ -263,11 +263,16 @@ def analyze_course_exam(course_id):
     db.session.commit()
 
     try:
-        # Use comprehensive analyze_tn_exam - extracts real questions with AA, Bloom, bareme, RAG
+        # Use the comprehensive analyze_tn_exam function which does:
+        # - Extracts questions individually
+        # - Classifies by AA, Bloom, difficulty
+        # - Extracts barème
+        # - RAG matching for sources
+        # - Metadata extraction
         from app.services.tn_exam_evaluation_service import analyze_tn_exam
         from app.models import Document
         
-        # Create temporary Document object
+        # Create a temporary Document object for analyze_tn_exam
         temp_doc = Document(
             course_id=course_id,
             file_path=exam.file_path,
@@ -275,19 +280,48 @@ def analyze_course_exam(course_id):
             document_type='exam'
         )
         
-        # Comprehensive analysis
+        # Call the comprehensive analysis
         analysis_result = analyze_tn_exam(course, temp_doc)
         
-        # Store metadata
+        # Extract metadata from the analysis
         exam.exam_metadata = analysis_result.get('exam_metadata', {})
         
-        # Build evaluation for frontend
+        # Convert the detailed analysis to the format expected by the frontend
         questions = analysis_result.get('questions', [])
-        bloom_dist = analysis_result.get('bloom_distribution_pct', {})
-        aa_dist = analysis_result.get('aa_distribution', {})
-        time_analysis = analysis_result.get('time_analysis', {})
         
-        # Questions with sources for frontend display
+        # Build evaluation dict with all details
+        evaluation = {
+            'overview': f"Épreuve analysée: {len(questions)} questions détectées",
+            'questions_count': len(questions),
+            'estimated_duration': analysis_result.get('time_analysis', {}).get('estimated_duration_readable', '2h'),
+            'avg_difficulty': 'moyen',  # Will be calculated below
+            'has_practical_questions': any(q.get('IsPractical', False) for q in questions),
+            'practical_questions_count': sum(1 for q in questions if q.get('IsPractical', False)),
+        }
+        
+        # Bloom distribution from actual questions
+        bloom_dist = analysis_result.get('bloom_distribution_pct', {})
+        evaluation['bloom_distribution'] = {
+            'remembering': int(bloom_dist.get('remembering', 0)),
+            'understanding': int(bloom_dist.get('understanding', 0)),
+            'applying': int(bloom_dist.get('applying', 0)),
+            'analyzing': int(bloom_dist.get('analyzing', 0)),
+            'evaluating': int(bloom_dist.get('evaluating', 0)),
+            'creating': int(bloom_dist.get('creating', 0)),
+        }
+        
+        # AA alignment from actual questions
+        aa_stats = analysis_result.get('aa_distribution', {})
+        aa_alignment = []
+        for aa_num, count in aa_stats.items():
+            aa_alignment.append({
+                'aa': f'AA{aa_num}',
+                'covered': count > 0,
+                'comment': f'{count} question(s)' if count > 0 else 'Non couvert'
+            })
+        evaluation['aa_alignment'] = aa_alignment
+        
+        # Questions with sources (RAG)
         questions_with_sources = []
         for i, q in enumerate(questions, 1):
             sources = []
@@ -295,66 +329,45 @@ def analyze_course_exam(course_id):
                 sources.append({
                     'document': src.get('title', 'Document'),
                     'page': str(src.get('page', 'N/A')),
-                    'excerpt': (src.get('excerpt', '') or '')[:200]
+                    'excerpt': src.get('excerpt', '')[:200]  # Limit excerpt length
                 })
-            
-            # Extract AA list
-            aa_list = q.get('AA', [])
-            if isinstance(aa_list, (int, float)):
-                aa_list = [int(aa_list)]
-            elif not isinstance(aa_list, list):
-                aa_list = []
             
             questions_with_sources.append({
                 'question_number': i,
                 'question_text_preview': (q.get('Text') or q.get('QuestionText', ''))[:150],
-                'aa': [f"AA{a}" for a in aa_list],
+                'aa': [f"AA{a}" for a in q.get('AA', [])] if isinstance(q.get('AA'), list) else [],
                 'bloom_level': q.get('BloomLevel', 'unknown'),
-                'difficulty': q.get('Difficulty', 'unknown'),
-                'points': q.get('Points', 0),
-                'estimated_time': q.get('EstimatedTime', 0),
-                'type': q.get('Type', 'unknown'),
                 'sources': sources
             })
         
-        # Build evaluation dict
-        evaluation = {
-            'overview': f"Épreuve analysée: {len(questions)} questions détectées et classifiées",
-            'questions_count': len(questions),
-            'estimated_duration': time_analysis.get('estimated_duration_readable', '2h'),
-            'avg_difficulty': 'moyen',
-            'has_practical_questions': any(q.get('IsPractical', False) for q in questions),
-            'practical_questions_count': sum(1 for q in questions if q.get('IsPractical', False)),
-            'bloom_distribution': {
-                'remembering': int(bloom_dist.get('remembering', 0)),
-                'understanding': int(bloom_dist.get('understanding', 0)),
-                'applying': int(bloom_dist.get('applying', 0)),
-                'analyzing': int(bloom_dist.get('analyzing', 0)),
-                'evaluating': int(bloom_dist.get('evaluating', 0)),
-                'creating': int(bloom_dist.get('creating', 0)),
-            },
-            'aa_alignment': [
-                {
-                    'aa': f'AA{num}',
-                    'covered': count > 0,
-                    'comment': f'{count} question(s)' if count > 0 else 'Non couvert'
-                }
-                for num, count in sorted(aa_dist.items())
-            ],
-            'questions_with_sources': questions_with_sources,
-            'difficulty_by_chapter': [],
-            'strengths': analysis_result.get('strengths', [
-                f"{len(questions)} questions bien structurées",
-                f"Total de points: {analysis_result.get('total_max_points', 'N/A')}"
-            ]),
-            'feedback': analysis_result.get('feedback', [
-                f"Durée estimée: {time_analysis.get('estimated_duration_readable', 'N/A')}",
-                f"Barème total: {analysis_result.get('total_max_points', 0)} points"
-            ]),
-            'suggestions': analysis_result.get('suggestions', []),
-            'overall_score': 7,  # Will be calculated
-            'improvement_proposals': []
-        }
+        evaluation['questions_with_sources'] = questions_with_sources
+        
+        # Difficulty by chapter (simplified from questions)
+        difficulty_by_chapter = []
+        # Group by chapters if we have that info
+        evaluation['difficulty_by_chapter'] = difficulty_by_chapter
+        
+        # Strengths and suggestions
+        evaluation['strengths'] = analysis_result.get('strengths', [
+            f"{len(questions)} questions bien structurées",
+            f"Bonne couverture Bloom: {max(bloom_dist.values(), default=0):.0f}% sur niveau dominant" if bloom_dist else "Distribution Bloom équilibrée"
+        ])
+        
+        evaluation['feedback'] = analysis_result.get('feedback', [
+            f"Durée estimée: {analysis_result.get('time_analysis', {}).get('estimated_duration_readable', 'N/A')}",
+            f"Total de points: {analysis_result.get('total_max_points', 'N/A')}"
+        ])
+        
+        evaluation['suggestions'] = analysis_result.get('suggestions', [])
+        
+        # Overall score (based on coverage and balance)
+        aa_coverage = len([aa for aa in aa_alignment if aa['covered']]) / max(len(aa_alignment), 1) * 100
+        bloom_balance = 100 - abs(50 - max(bloom_dist.values(), default=50))
+        overall_score = int((aa_coverage * 0.5 + bloom_balance * 0.5) / 10)
+        evaluation['overall_score'] = min(10, max(1, overall_score))
+        
+        # Improvement proposals (keep empty or add based on gaps)
+        evaluation['improvement_proposals'] = []
         
         exam.ai_evaluation = evaluation
         exam.status = 'done'
@@ -366,7 +379,7 @@ def analyze_course_exam(course_id):
         logger.error(f'Exam analysis failed: {e}', exc_info=True)
         exam.status = 'error'
         
-        # Try to at least extract metadata
+        # Try to at least extract metadata even if full analysis fails
         try:
             ext = exam.file_path.rsplit('.', 1)[1].lower() if exam.file_path else ''
             text = _extract_text(exam.file_path, ext)
@@ -378,6 +391,153 @@ def analyze_course_exam(course_id):
         exam.ai_evaluation = {'error': str(e), 'error_message': 'Analyse échouée. Vérifiez les logs.'}
         db.session.commit()
         return jsonify({'exam': exam.to_dict(), 'warning': str(e)}), 200
+        all_aa_list = []
+        if syllabus:
+            for aa in syllabus.tn_aa:
+                all_aa_list.append({'number': aa.number, 'description': aa.description or ''})
+
+        target_ids = exam.target_aa_ids or []
+        if target_ids:
+            target_aas = [a for a in all_aa_list if a['number'] in target_ids]
+        else:
+            target_aas = all_aa_list
+
+        aa_context = '\n'.join(
+            f"AA{a['number']}: {a['description']}" for a in target_aas[:20]
+        ) if target_aas else 'Non définis'
+
+        chapter_context = _get_chapter_difficulty_context(course)
+
+        # Get course documents for RAG (matching questions to sources)
+        from app.services.tn_exam_evaluation_service import _get_course_documents_for_rag
+        from app.services.vector_store import VectorStore
+        
+        attachments_texts, attachments_meta = _get_course_documents_for_rag(course)
+        
+        # Build a context of available sources for the LLM
+        sources_context = "DOCUMENTS DISPONIBLES POUR RÉFÉRENCEMENT:\n"
+        for i, meta in enumerate(attachments_meta[:10]):  # Limit to 10 sources
+            title = meta.get('title', 'Document')
+            chapter = meta.get('chapter')
+            if chapter:
+                sources_context += f"- SRC{i+1}: {title} (Chapitre {chapter.get('order')}: {chapter.get('title', '')})\n"
+            else:
+                sources_context += f"- SRC{i+1}: {title}\n"
+
+        exam_type_label = EXAM_TYPE_LABELS.get(exam.exam_type or 'examen', 'Examen')
+        practical_instruction = (
+            "L'enseignant ATTEND des questions pratiques dans cette épreuve."
+            if exam.has_practical_target
+            else "Cette épreuve ne cible PAS de questions pratiques (théorique)."
+        )
+
+        prompt = f"""Tu es un expert pédagogique. Analyse cette épreuve de cours.
+
+COURS: {course.title}
+TYPE D'ÉPREUVE: {exam_type_label}
+PONDÉRATION: {exam.weight or 30}%
+{practical_instruction}
+
+ACQUIS D'APPRENTISSAGE CIBLÉS:
+{aa_context}
+
+STRUCTURE DES CHAPITRES (niveaux de difficulté):
+{chapter_context}
+
+{sources_context}
+
+TEXTE DE L'ÉPREUVE:
+{text[:8000]}
+
+Retourne UNIQUEMENT un JSON valide avec cette structure exacte (pas de markdown, pas de texte avant/après):
+{{
+  "overview": "résumé de l'épreuve en 2-3 phrases",
+  "questions_count": <nombre de questions>,
+  "estimated_duration": "<durée estimée ex: 2h>",
+  "avg_difficulty": "<facile|moyen|difficile>",
+  "has_practical_questions": <true|false>,
+  "practical_questions_count": <nombre de questions pratiques, 0 si aucune>,
+  "bloom_distribution": {{
+    "remembering": <% int, total doit faire 100>,
+    "understanding": <% int>,
+    "applying": <% int>,
+    "analyzing": <% int>,
+    "evaluating": <% int>,
+    "creating": <% int>
+  }},
+  "difficulty_by_chapter": [
+    {{"chapter": "Chapitre 1: <titre>", "difficulty": "<facile|moyen|difficile>", "questions_count": <int>, "comment": "..."}}
+  ],
+  "aa_alignment": [
+    {{"aa": "AA1", "covered": <true|false>, "comment": "..."}}
+  ],
+  "questions_with_sources": [
+    {{
+      "question_number": 1,
+      "question_text_preview": "Premier 100 caractères de la question...",
+      "aa": ["AA1", "AA2"],
+      "bloom_level": "applying",
+      "sources": [
+        {{"document": "Chapitre 1: Introduction", "page": "3", "excerpt": "extrait pertinent..."}}
+      ]
+    }}
+  ],
+  "strengths": ["point fort 1", "point fort 2"],
+  "feedback": ["observation 1", "observation 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "overall_score": <note sur 10 int>,
+  "improvement_proposals": [
+    {{
+      "aa": "AA2",
+      "bloom_level": "analyzing",
+      "question_type": "open_ended",
+      "is_practical": <true|false>,
+      "difficulty": "moyen",
+      "question_text": "Texte de la question proposée...",
+      "rationale": "Pourquoi cette question améliore l'épreuve"
+    }}
+  ]
+}}
+
+RÈGLES:
+- improvement_proposals: propose 3-5 questions pour corriger les lacunes détectées (AAs non couverts, niveaux Bloom manquants, équilibre pratique/théorique)
+- difficulty_by_chapter: analyse quels chapitres sont couverts et à quel niveau
+- has_practical_questions: true si l'épreuve contient des manipulations, TP, code, calculs appliqués
+- bloom_distribution: les 6 valeurs doivent totaliser 100
+- questions_with_sources: pour chaque question détectée, essaie de trouver la source (SRC1, SRC2, etc.) dans les documents disponibles. Si tu identifies un concept/définition dans une question qui vient probablement d'un document, indique-le avec la référence SRC appropriée et un extrait court."""
+
+        # Use gemini-2.5-pro for deep pedagogical analysis + question generation
+        llm = _get_gemini(task='analysis')
+        try:
+            response = llm.invoke(prompt)
+        except Exception as model_err:
+            logger.warning(f'Pro model failed, trying flash: {model_err}')
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            fallback_llm = ChatGoogleGenerativeAI(
+                model='gemini-2.5-flash',
+                google_api_key=current_app.config.get('GOOGLE_API_KEY', ''),
+                temperature=0.2, max_tokens=8192
+            )
+            response = fallback_llm.invoke(prompt)
+        raw = response.content.strip()
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+        evaluation = json.loads(raw.strip())
+
+        exam.ai_evaluation = evaluation
+        exam.status = 'done'
+        exam.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'exam': exam.to_dict()}), 200
+
+    except Exception as e:
+        logger.error(f'Exam analysis failed: {e}')
+        exam.status = 'error'
+        exam.ai_evaluation = {'error': str(e), 'error_message': 'Analyse échouée. Vérifiez les logs.'}
+        db.session.commit()
+        return jsonify({'exam': exam.to_dict(), 'warning': str(e)}), 200  # Return 200 so frontend refetches
 
 
 # ─── GENERATE extra questions (Gemini 2.5 Pro) ──────────────────────────────────
@@ -487,6 +647,7 @@ def generate_exam_latex(course_id, exam_id):
 
     exam = CourseExam.query.filter_by(id=exam_id, course_id=course_id).first_or_404()
     ev = exam.ai_evaluation or {}
+    metadata = exam.exam_metadata or {}
 
     data = request.get_json(silent=True) or {}
     include_proposals = data.get('include_proposals', True)
@@ -494,17 +655,62 @@ def generate_exam_latex(course_id, exam_id):
     proposals = ev.get('improvement_proposals', []) if include_proposals else []
     aa_list = [a['aa'] for a in (ev.get('aa_alignment') or []) if a.get('covered')]
 
+    # Extract metadata for LaTeX header
+    duration_min = metadata.get('declared_duration_min', 120)
+    duration_str = f"{duration_min // 60}h{duration_min % 60:02d}" if duration_min else ev.get('estimated_duration', '2h')
+    exam_name = metadata.get('exam_name', course.title)
+    class_name = metadata.get('class_name', '')
+    exam_date = metadata.get('exam_date', '')
+    calculator = metadata.get('calculator_allowed')
+    documents = metadata.get('documents_allowed')
+    computer = metadata.get('computer_allowed')
+    internet = metadata.get('internet_allowed')
+
+    # Build instructions based on metadata
+    instructions = []
+    if calculator is True:
+        instructions.append("☑ Calculatrice autorisée")
+    elif calculator is False:
+        instructions.append("☐ Calculatrice NON autorisée")
+    
+    if documents is True:
+        instructions.append("☑ Documents autorisés")
+    elif documents is False:
+        instructions.append("☐ Documents NON autorisés")
+    
+    if computer is True:
+        instructions.append("☑ Ordinateur autorisé")
+    elif computer is False:
+        instructions.append("☐ Ordinateur NON autorisé")
+    
+    if internet is True:
+        instructions.append("☑ Internet autorisé")
+    elif internet is False:
+        instructions.append("☐ Internet NON autorisé")
+    
+    instructions_text = " | ".join(instructions) if instructions else "Voir consignes ci-dessous"
+
     prompt = f"""Tu es un expert en création d'épreuves universitaires. Génère un document LaTeX complet pour une nouvelle épreuve.
 
-COURS: {course.title}
+COURS: {exam_name}
+CLASSE: {class_name}
 TYPE D'ÉPREUVE: {EXAM_TYPE_LABELS.get(exam.exam_type or 'examen', 'Examen')}
-DURÉE: {ev.get('estimated_duration', '2h')}
+DURÉE: {duration_str}
+DATE: {exam_date}
+AUTORISATIONS: {instructions_text}
 AAs VALIDÉS: {', '.join(aa_list) or 'Tous les AAs du cours'}
 PROPOSITIONS D'AMÉLIORATION: {json.dumps(proposals[:5], ensure_ascii=False)}
 
 Génère un document LaTeX complet avec:
 1. Préambule avec packages nécessaires (amsmath, amssymb, geometry, graphicx, enumitem, etc.)
-2. Page de garde avec: nom de l'établissement, intitulé du cours, durée, date, instructions
+2. Page de garde avec:
+   - Nom de l'établissement: ESPRIT School of Business
+   - Intitulé du cours: {exam_name}
+   - Classe: {class_name}
+   - Durée: {duration_str}
+   - Date: {exam_date}
+   - Instructions avec CASES COCHÉES pour les autorisations:
+     {instructions_text}
 3. 3-5 exercices numérotés couvrant les AAs définis
 4. Mix de questions: QCM, questions ouvertes, calculs/démonstrations si pertinent
 5. Barème complet (total = 20 points)
@@ -514,6 +720,7 @@ IMPORTANT:
 - Génère du LaTeX VALIDE et compilable
 - N'inclus PAS de commentaires explicatifs hors du LaTeX
 - Utilise \\documentclass{{exam}} ou \\documentclass{{article}} selon le contenu
+- Pour les cases à cocher, utilise: \\square ou \\boxtimes (package amssymb)
 - Retourne UNIQUEMENT le code LaTeX, sans balises markdown"""
 
     try:
@@ -540,45 +747,142 @@ IMPORTANT:
 
 # ─── COMPILE LaTeX to PDF (pdflatex) ────────────────────────────────────────────
 
-@api_v1_bp.route('/courses/<int:course_id>/exam/<int:exam_id>/extract-header', methods=['POST'])
+@api_v1_bp.route('/courses/<int:course_id>/exam/<int:exam_id>/generate-report', methods=['POST'])
 @jwt_required()
-def extract_exam_header(course_id, exam_id):
-    """Extract exam header information using Gemini 2.5 Pro."""
+def generate_exam_report(course_id, exam_id):
+    """Generate official exam evaluation report using the template."""
     user, course, is_teacher, _ = _course_access(course_id)
     if not is_teacher:
         return jsonify({'error': 'Access denied'}), 403
 
     exam = CourseExam.query.filter_by(id=exam_id, course_id=course_id).first_or_404()
+    ev = exam.ai_evaluation or {}
+    metadata = exam.exam_metadata or {}
+
+    # Read the official template
+    template_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        '..', '..', 'Validation Examen', 'rapport examen officiel.tex'
+    )
     
-    if not exam.file_path:
-        return jsonify({'error': 'No exam file uploaded'}), 400
+    if not os.path.exists(template_path):
+        return jsonify({'error': 'Template not found'}), 404
 
-    try:
-        # Extract text from exam
-        ext = exam.file_path.rsplit('.', 1)[1].lower() if exam.file_path else ''
-        text = _extract_text(exam.file_path, ext)
-        
-        if not text.strip():
-            return jsonify({'error': 'Could not extract text from file'}), 400
+    with open(template_path, 'r', encoding='utf-8') as f:
+        template = f.read()
 
-        # Use Gemini 2.5 Pro to extract header metadata
-        from app.services.tn_exam_evaluation_service import _extract_exam_metadata
-        header_data = _extract_exam_metadata(text)
+    # Extract data for filling the template
+    course_name = metadata.get('exam_name', course.title)
+    class_name = metadata.get('class_name', '')
+    language = metadata.get('language', 'Français')
+    duration_min = metadata.get('declared_duration_min', 120)
+    duration_str = f"{duration_min // 60}h{duration_min % 60:02d}" if duration_min else ev.get('estimated_duration', '2h')
+    exam_date = metadata.get('exam_date', '')
+    instructors = metadata.get('instructors', [])
+    instructors_str = ', '.join(instructors) if instructors else ''
+    
+    # Checkbox helpers
+    def checkbox(value):
+        if value is True:
+            return "\\boxtimes"
+        elif value is False:
+            return "\\square"
+        return "\\square"
+    
+    calculator = checkbox(metadata.get('calculator_allowed'))
+    documents = checkbox(metadata.get('documents_allowed'))
+    computer = checkbox(metadata.get('computer_allowed'))
+    internet = checkbox(metadata.get('internet_allowed'))
+    answer_on_sheet = checkbox(metadata.get('answer_on_sheet'))
+    
+    # Bloom distribution for radar chart
+    bloom_dist = ev.get('bloom_distribution', {})
+    bloom_coords = []
+    bloom_levels = ['remembering', 'understanding', 'applying', 'analyzing', 'evaluating', 'creating']
+    for i, level in enumerate(bloom_levels):
+        angle = i * 60
+        value = bloom_dist.get(level, 0) / 10  # Scale 0-10 for chart
+        bloom_coords.append(f"({angle},{value})")
+    bloom_coords_str = ' '.join(bloom_coords)
+    
+    # AA alignment table
+    aa_alignment = ev.get('aa_alignment', [])
+    aa_rows = []
+    questions_with_sources = ev.get('questions_with_sources', [])
+    
+    for i, aa_item in enumerate(aa_alignment[:10]):  # Limit to 10 AAs
+        aa_code = aa_item.get('aa', f'AA{i+1}')
+        # Find questions for this AA
+        questions = [q for q in questions_with_sources if aa_code in q.get('aa', [])]
+        question_nums = ', '.join([f"Q{q.get('question_number', '')}" for q in questions[:3]])
+        bloom_level = questions[0].get('bloom_level', 'N/A') if questions else 'N/A'
+        points = sum([q.get('points', 0) for q in questions])
         
-        # Save to database
-        exam.exam_metadata = header_data
-        exam.updated_at = datetime.utcnow()
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'header': header_data,
-            'message': 'Header extracted successfully'
-        }), 200
-        
-    except Exception as e:
-        logger.error(f'Header extraction failed: {e}', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        aa_rows.append(f"{aa_code} & {question_nums or 'N/A'} & {bloom_level} & {points} \\\\ \\hline")
+    
+    aa_table = '\n'.join(aa_rows) if aa_rows else "AA1 & Q1 & Application & 5 \\\\ \\hline"
+    
+    # Question classification
+    question_rows = []
+    for q in questions_with_sources[:15]:  # Limit to 15 questions
+        q_num = q.get('question_number', 1)
+        q_type = 'MCQ' if 'mcq' in q.get('question_text_preview', '').lower() else 'Open'
+        bloom = q.get('bloom_level', 'Unknown')
+        skill = 'Problem solving' if bloom in ['applying', 'analyzing'] else 'Recall'
+        question_rows.append(f"Q{q_num} & {q_type} & {bloom} & {skill} \\\\ \\hline")
+    
+    question_table = '\n'.join(question_rows) if question_rows else "Q1 & MCQ & Knowledge & Recall \\\\ \\hline"
+    
+    # Overall score (0-90 scale)
+    overall_score = ev.get('overall_score', 7)
+    score_90 = int((overall_score / 10) * 90)
+    
+    # Fill the template
+    filled_template = template.replace(
+        "Course / Cours & \\\\ \\hline",
+        f"Course / Cours & {course_name} \\\\ \\hline"
+    ).replace(
+        "Class / Classe & \\\\ \\hline",
+        f"Class / Classe & {class_name} \\\\ \\hline"
+    ).replace(
+        "Language / Langue & \\\\ \\hline",
+        f"Language / Langue & {language} \\\\ \\hline"
+    ).replace(
+        "Duration / Durée & \\\\ \\hline",
+        f"Duration / Durée & {duration_str} \\\\ \\hline"
+    ).replace(
+        "Date & \\\\ \\hline",
+        f"Date & {exam_date} \\\\ \\hline"
+    ).replace(
+        "Instructor(s) & \\\\ \\hline",
+        f"Instructor(s) & {instructors_str} \\\\ \\hline"
+    ).replace(
+        "Documents allowed & \\yesno \\\\",
+        f"Documents allowed & {documents} Yes \\hspace{{0.5cm}} {checkbox(not metadata.get('documents_allowed'))} No \\\\"
+    ).replace(
+        "Calculator allowed & \\yesno \\\\",
+        f"Calculator allowed & {calculator} Yes \\hspace{{0.5cm}} {checkbox(not metadata.get('calculator_allowed'))} No \\\\"
+    ).replace(
+        "Computer allowed & \\yesno \\\\",
+        f"Computer allowed & {computer} Yes \\hspace{{0.5cm}} {checkbox(not metadata.get('computer_allowed'))} No \\\\"
+    ).replace(
+        "Internet allowed & \\yesno \\\\",
+        f"Internet allowed & {internet} Yes \\hspace{{0.5cm}} {checkbox(not metadata.get('internet_allowed'))} No \\\\"
+    ).replace(
+        "AA1 & Q1 & Application & 5 \\\\ \\hline",
+        aa_table
+    ).replace(
+        "(0,5) (60,4) (120,3) (180,4) (240,2) (300,1)",
+        bloom_coords_str
+    ).replace(
+        "Q1 & MCQ & Knowledge & Recall \\\\ \\hline",
+        question_table
+    ).replace(
+        "\\textcolor{white}{\\textbf{Total}} & \\textcolor{white}{\\textbf{/90}}",
+        f"\\textcolor{{white}}{{\\textbf{{Total}}}} & \\textcolor{{white}}{{\\textbf{{/{score_90}}}}}"
+    )
+    
+    return jsonify({'latex': filled_template}), 200
 
 
 @api_v1_bp.route('/courses/<int:course_id>/exam/<int:exam_id>/compile-latex', methods=['POST'])

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 
 
@@ -129,6 +129,8 @@ import {
   Calendar,
 
   Globe,
+  GraduationCap,
+  Wand2,
 
 } from 'lucide-react';
 
@@ -203,6 +205,7 @@ import {
 import { ExamLatexEditor } from '@/components/courses/ExamLatexEditor';
 
 import { ExamMCPPanel } from '@/components/courses/ExamMCPPanel';
+import { CorrectionTab } from '@/components/courses/CorrectionTab';
 
 import { tnExamsApi } from '@/lib/api/courses';
 
@@ -2900,6 +2903,8 @@ function AnalyseAITab({
 
   // Questions extracted via the QuestionsTab (Gemini 2.5 Pro Vision)
   const extractedFromTab = (exam.analysis_results as any)?.extracted_questions as ExtractedQuestion[] | undefined;
+
+  const router = useRouter();
 
   const analyzeMutation = useAnalyzeTnExam(courseId);
 
@@ -6618,6 +6623,12 @@ export default function ExamDetailPage() {
 
           </TabsTrigger>
 
+          <TabsTrigger value="correction" className="gap-2">
+
+            <GraduationCap className="h-4 w-4" /> Correction épreuve
+
+          </TabsTrigger>
+
         </TabsList>
 
 
@@ -6656,6 +6667,10 @@ export default function ExamDetailPage() {
 
           <AnalyseAITab exam={exam} courseId={courseId} examId={examId} onReanalyze={refetch} />
 
+        </TabsContent>
+
+        <TabsContent value="correction">
+          <CorrectionTab exam={exam} courseId={courseId} examId={examId} />
         </TabsContent>
 
       </Tabs>

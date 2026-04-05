@@ -1473,3 +1473,298 @@ Retourne UNIQUEMENT un tableau JSON valide :
     except Exception as e:
         current_app.logger.error(f'[GEN-EXERCISE-Q] Failed: {e}', exc_info=True)
         return jsonify({'error': str(e), 'questions': []}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORRECTION AUTOMATIQUE DE L'ÉPREUVE TN
+# ─────────────────────────────────────────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/generate-correction', methods=['POST'])
+@jwt_required()
+def generate_correction(course_id: int, document_id: int):
+    """
+    Génère une correction pour chaque question validée de l'épreuve TN via Gemini.
+    Stocke les corrections dans analysis_results['corrections'].
+    """
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    if not doc.analysis_results:
+        return jsonify({'error': "L'épreuve TN n'a pas encore été analysée"}), 400
+
+    ar = doc.analysis_results
+    questions = ar.get('extracted_questions') or ar.get('questions') or []
+    validated_questions = [q for q in questions if q.get('validated')]
+
+    if not validated_questions:
+        return jsonify({'error': 'Aucune question validée trouvée'}), 400
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=current_app.config.get('GOOGLE_API_KEY', ''))
+        model = genai.GenerativeModel('gemini-2.5-flash')
+
+        corrections = []
+        for i, q in enumerate(validated_questions):
+            q_text = q.get('text') or q.get('question_text') or ''
+            q_type = q.get('question_type') or q.get('type') or 'Ouvert'
+            points = float(q.get('points') or q.get('bareme') or 2)
+            bloom = q.get('bloom_level') or q.get('Bloom_Level') or ''
+            difficulty = q.get('difficulty') or q.get('Difficulty') or ''
+            exercise_num = q.get('exercise_number') or q.get('exercice') or (i + 1)
+            exercise_title = q.get('exercise_title') or f'Exercice {exercise_num}'
+            aa_numbers = q.get('aa_numbers') or []
+
+            prompt = f"""Tu es un enseignant expert. Génère une correction modèle détaillée pour cette question d'examen.
+
+Question : {q_text}
+Type : {q_type}
+Bloom : {bloom}
+Difficulté : {difficulty}
+Barème : {points} points
+
+Retourne un JSON avec :
+{{
+  "correction": "correction détaillée complète",
+  "points_detail": "décomposition des points (ex: 1pt pour X, 2pt pour Y)",
+  "criteres": ["critère 1", "critère 2", "critère 3"]
+}}"""
+
+            try:
+                resp = model.generate_content(prompt)
+                text = resp.text.strip()
+                start = text.find('{')
+                end = text.rfind('}') + 1
+                if start >= 0 and end > start:
+                    import json
+                    parsed = json.loads(text[start:end])
+                else:
+                    parsed = {'correction': text, 'points_detail': '', 'criteres': []}
+            except Exception:
+                parsed = {'correction': 'Erreur de génération', 'points_detail': '', 'criteres': []}
+
+            corrections.append({
+                'index': i,
+                'exercise_number': exercise_num,
+                'exercise_title': exercise_title,
+                'question_text': q_text,
+                'question_type': q_type,
+                'points': points,
+                'bloom_level': bloom,
+                'difficulty': difficulty,
+                'aa_numbers': aa_numbers,
+                'correction': parsed.get('correction', ''),
+                'points_detail': parsed.get('points_detail', ''),
+                'criteres': parsed.get('criteres', []),
+                'validated': False,
+            })
+
+        # Save to analysis_results
+        from sqlalchemy.orm.attributes import flag_modified
+        ar['corrections'] = corrections
+        doc.analysis_results = ar
+        flag_modified(doc, 'analysis_results')
+        db.session.commit()
+
+        return jsonify({'corrections': corrections, 'count': len(corrections)}), 200
+
+    except Exception as e:
+        current_app.logger.error(f'[GEN-CORRECTION] Failed: {e}', exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@tn_exams_api_bp.route('/<int:document_id>/corrections', methods=['GET'])
+@jwt_required()
+def get_corrections(course_id: int, document_id: int):
+    """Retourne les corrections générées pour cette épreuve TN."""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    ar = doc.analysis_results or {}
+    corrections = ar.get('corrections', [])
+    return jsonify({'corrections': corrections, 'count': len(corrections)}), 200
+
+
+@tn_exams_api_bp.route('/<int:document_id>/corrections/<int:correction_index>', methods=['PUT'])
+@jwt_required()
+def update_correction(course_id: int, document_id: int, correction_index: int):
+    """Met à jour / valide une correction par son index."""
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    ar = doc.analysis_results or {}
+    corrections = ar.get('corrections', [])
+
+    correction = next((c for c in corrections if c.get('index') == correction_index), None)
+    if correction is None:
+        return jsonify({'error': 'Correction introuvable'}), 404
+
+    data = request.get_json() or {}
+    for field in ['correction', 'points_detail', 'criteres', 'validated']:
+        if field in data:
+            correction[field] = data[field]
+
+    from sqlalchemy.orm.attributes import flag_modified
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify(correction), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CORRECTION ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/generate-correction', methods=['POST'])
+@jwt_required()
+def generate_tn_correction(course_id, document_id):
+    """Génère une correction modèle pour chaque question extraite (via Gemini)."""
+    import json as _json
+    import google.generativeai as genai
+
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.filter_by(id=document_id, course_id=course_id, document_type='tn_exam').first_or_404()
+
+    if not doc.analysis_results:
+        return jsonify({'error': "L'épreuve n'a pas été analysée"}), 400
+
+    ar = doc.analysis_results or {}
+    questions = ar.get('extracted_questions') or ar.get('questions') or []
+
+    if not questions:
+        return jsonify({'error': 'Aucune question trouvée dans l\'épreuve'}), 400
+
+    api_key = current_app.config.get('GOOGLE_API_KEY', '')
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.5-flash')
+
+    corrections = []
+    module = (ar.get('exam_metadata') or {}).get('module', 'la matière')
+
+    for i, q in enumerate(questions):
+        text = q.get('text') or q.get('Text') or q.get('question_text', f'Question {i+1}')
+        pts = q.get('points') or q.get('Points') or 1
+        bloom = q.get('bloom_level') or q.get('Bloom_Level', '')
+        difficulty = q.get('difficulty') or q.get('Difficulty', '')
+        qtype = q.get('question_type') or q.get('Type', 'open_ended')
+        aa = q.get('aa_numbers') or q.get('AA#') or []
+        ex_num = q.get('exercise_number', 1)
+        ex_title = q.get('exercise_title', '')
+
+        prompt = (
+            f"Tu es un enseignant expert en {module}.\n"
+            f"Génère une correction modèle détaillée pour cette question d'examen universitaire.\n\n"
+            f"Exercice {ex_num}: {ex_title}\n"
+            f"Question: {text}\n"
+            f"Points: {pts}\n"
+            f"Niveau Bloom: {bloom}\n"
+            f"Difficulté: {difficulty}\n"
+            f"Type: {qtype}\n\n"
+            f"Réponds UNIQUEMENT en JSON valide:\n"
+            f'{{"correction": "<correction détaillée en markdown>", "points_detail": "<détail des points>", "criteres": ["<critère 1>", "<critère 2>"]}}'
+        )
+
+        try:
+            resp = model.generate_content(prompt)
+            txt = resp.text.strip()
+            start = txt.find('{')
+            end = txt.rfind('}') + 1
+            if start >= 0 and end > start:
+                parsed = _json.loads(txt[start:end])
+            else:
+                parsed = {'correction': txt, 'points_detail': '', 'criteres': []}
+        except Exception as e:
+            current_app.logger.warning(f'Correction generation failed for q {i}: {e}')
+            parsed = {'correction': 'Correction non disponible.', 'points_detail': '', 'criteres': []}
+
+        corrections.append({
+            'index': i,
+            'exercise_number': ex_num,
+            'exercise_title': ex_title,
+            'question_text': text,
+            'question_type': qtype,
+            'points': pts,
+            'bloom_level': bloom,
+            'difficulty': difficulty,
+            'aa_numbers': aa,
+            'correction': parsed.get('correction', ''),
+            'points_detail': parsed.get('points_detail', ''),
+            'criteres': parsed.get('criteres', []),
+            'validated': False,
+        })
+
+    updated_ar = dict(ar)
+    updated_ar['corrections'] = corrections
+    doc.analysis_results = updated_ar
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify({'corrections': corrections, 'count': len(corrections)})
+
+
+@tn_exams_api_bp.route('/<int:document_id>/corrections', methods=['GET'])
+@jwt_required()
+def get_tn_corrections(course_id, document_id):
+    """Récupère les corrections déjà générées."""
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.filter_by(id=document_id, course_id=course_id, document_type='tn_exam').first_or_404()
+    ar = doc.analysis_results or {}
+    corrections = ar.get('corrections', [])
+    return jsonify({'corrections': corrections, 'count': len(corrections)})
+
+
+@tn_exams_api_bp.route('/<int:document_id>/corrections/<int:index>', methods=['PUT'])
+@jwt_required()
+def update_tn_correction(course_id, document_id, index):
+    """Modifie et valide une correction individuelle."""
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.filter_by(id=document_id, course_id=course_id, document_type='tn_exam').first_or_404()
+    ar = doc.analysis_results or {}
+    corrections = ar.get('corrections', [])
+
+    if index < 0 or index >= len(corrections):
+        return jsonify({'error': 'Index invalide'}), 404
+
+    data = request.get_json() or {}
+    corrections[index].update({
+        'correction': data.get('correction', corrections[index].get('correction', '')),
+        'points_detail': data.get('points_detail', corrections[index].get('points_detail', '')),
+        'criteres': data.get('criteres', corrections[index].get('criteres', [])),
+        'validated': data.get('validated', corrections[index].get('validated', False)),
+    })
+
+    updated_ar = dict(ar)
+    updated_ar['corrections'] = corrections
+    doc.analysis_results = updated_ar
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify(corrections[index])

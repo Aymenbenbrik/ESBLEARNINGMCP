@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Brain, FileText, CheckCircle, XCircle, Lightbulb, Info, ChevronDown, ChevronUp, FlaskConical, BookOpen, Code2 } from 'lucide-react';
+import { Plus, Trash2, Brain, FileText, CheckCircle, XCircle, Lightbulb, Info, ChevronDown, ChevronUp, FlaskConical, BookOpen, Code2, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +16,10 @@ import { ExamAnalyticsDashboard } from './ExamAnalyticsDashboard';
 import { ExamConfigForm } from './ExamConfigForm';
 import { ExamImprovementSection } from './ExamImprovementSection';
 import { ExamLatexEditor } from './ExamLatexEditor';
+import { ExamMetadataSection } from './ExamMetadataSection';
+import { ExamSourcesSection } from './ExamSourcesSection';
+import { ExamQuestionsTable } from './ExamQuestionsTable';
+import { ExamHeaderSection } from './ExamHeaderSection';
 
 interface Props {
   courseId: number;
@@ -64,7 +68,45 @@ function BloomBar({ dist }: { dist: BloomDistribution }) {
   );
 }
 
-function EvalDashboard({ ev }: { ev: ExamEvaluation }) {
+function EvalDashboard({ ev, exam, courseId }: { ev: ExamEvaluation; exam: CourseExam; courseId: number }) {
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  const handleGenerateReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/courses/${courseId}/exam/${exam.id}/generate-report`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!res.ok) throw new Error('Failed to generate report');
+
+      const data = await res.json();
+      
+      // Download the LaTeX source
+      const blob = new Blob([data.latex], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rapport_examen_${exam.id}.tex`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      alert('✅ Rapport généré avec succès! Fichier .tex téléchargé.');
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('❌ Erreur lors de la génération du rapport');
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
@@ -165,6 +207,65 @@ function EvalDashboard({ ev }: { ev: ExamEvaluation }) {
             </ul>
           </div>
         )}
+      </div>
+
+      {/* Header Section - Always visible with extraction button */}
+      <div className="mt-6">
+        <ExamHeaderSection 
+          examId={exam.id}
+          courseId={courseId}
+          initialHeader={exam.exam_metadata}
+          onHeaderUpdated={(header) => {
+            console.log('Header updated:', header);
+          }}
+        />
+      </div>
+
+      {/* Questions Table */}
+      {ev.questions_with_sources && ev.questions_with_sources.length > 0 && (
+        <div className="mt-6">
+          <ExamQuestionsTable 
+            questions={ev.questions_with_sources} 
+            totalPoints={ev.questions_with_sources.reduce((sum, q) => sum + (q.points || 0), 0)}
+          />
+        </div>
+      )}
+
+      {/* Sources Section (kept for backward compatibility) */}
+      {ev.questions_with_sources && ev.questions_with_sources.length > 0 && (
+        <ExamSourcesSection questions={ev.questions_with_sources} />
+      )}
+
+      {/* Generate Official Report Button */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <h4 className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Rapport Officiel d&apos;Évaluation
+            </h4>
+            <p className="text-sm text-blue-700">
+              Générer un rapport PDF complet avec le template officiel (métadonnées, distribution Bloom, mapping AA, score global)
+            </p>
+          </div>
+          <button
+            onClick={handleGenerateReport}
+            disabled={isGeneratingReport}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+          >
+            {isGeneratingReport ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Génération...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Générer Rapport
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -283,7 +384,7 @@ function EvalCard({ exam, courseId, canEdit, defaultOpen = false }: {
                   <Brain className="h-4 w-4 text-bolt-accent" />
                   Evaluation IA
                 </h3>
-                <EvalDashboard ev={exam.ai_evaluation} />
+                <EvalDashboard ev={exam.ai_evaluation} exam={exam} courseId={courseId} />
               </div>
               <div className="rounded-xl border border-bolt-line bg-muted/20 p-4 md:p-5">
                 <ExamAnalyticsDashboard ev={exam.ai_evaluation} />
