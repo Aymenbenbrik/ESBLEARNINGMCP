@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { useState } from 'react';
@@ -77,13 +77,13 @@ function ExamBankCard({ exam, courseId }: { exam: ValidatedExam; courseId: numbe
         </div>
         <div className="flex gap-2">
           <Button asChild size="sm" variant="outline">
-            <Link href={`/courses/${courseId}/exam/${exam.id}/dashboard`}>
+            <Link href={`/courses/${courseId}/exams/${exam.id}/dashboard`}>
               <BarChart2 className="h-3 w-3 mr-1" />
               Résultats
             </Link>
           </Button>
           <Button asChild size="sm" variant="outline">
-            <Link href={`/courses/${courseId}/exam/${exam.id}`}>
+            <Link href={`/courses/${courseId}/exams/${exam.id}/take`}>
               <Play className="h-3 w-3 mr-1" />
               Voir
             </Link>
@@ -547,7 +547,7 @@ export default function CourseDetailPage() {
                           </div>
                         )}
                         <Button asChild className="w-full">
-                          <Link href={`/courses/${courseId}/exam/${exam.id}`}>
+                          <Link href={`/courses/${courseId}/exams/${exam.id}/take`}>
                             <Play className="h-4 w-4 mr-2" />
                             Commencer l&apos;épreuve
                           </Link>

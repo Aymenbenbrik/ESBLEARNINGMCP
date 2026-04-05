@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 
 
@@ -6411,6 +6411,13 @@ export default function ExamDetailPage() {
 
   const analyzePageMutation = useAnalyzeTnExam(courseId);
   const [isAnalyzingFromEval, setIsAnalyzingFromEval] = useState(false);
+  const [linkedExam, setLinkedExam] = useState<any>(null);
+  useEffect(() => {
+    fetch(`/api/v1/exam-bank/exams?course_id=${courseId}&tn_exam_id=${examId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.exams?.length) setLinkedExam(data.exams[0]); })
+      .catch(() => {});
+  }, [courseId, examId]);
 
   const handleAnalyzeFromEval = async () => {
     setIsAnalyzingFromEval(true);
@@ -6516,6 +6523,29 @@ export default function ExamDetailPage() {
       </div>
 
 
+
+      {/* Linked ValidatedExam Navigation Bar */}
+      {linkedExam && (
+        <div className="flex items-center gap-2 mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex-wrap">
+          <span className="text-sm font-medium text-indigo-700 mr-2">Épreuve en ligne liée :</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-indigo-300 text-indigo-700 hover:bg-indigo-100"
+            onClick={() => router.push(`/courses/${courseId}/exams/${linkedExam.id}/dashboard`)}
+          >
+            📊 Résultats
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-indigo-300 text-indigo-700 hover:bg-indigo-100"
+            onClick={() => router.push(`/courses/${courseId}/exams/${linkedExam.id}/take`)}
+          >
+            ▶ Voir l&apos;épreuve
+          </Button>
+        </div>
+      )}
 
       {/* Header */}
 

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -128,7 +128,7 @@ export default function CourseReviewPage() {
                 {review.exam_summaries.map((ex) => (
                   <tr key={ex.id} className="border-b hover:bg-gray-50">
                     <td className="py-2">
-                      <button onClick={() => router.push(`/courses/${courseId}/exam/${ex.id}/dashboard`)}
+                      <button onClick={() => router.push(`/courses/${courseId}/exams/${ex.id}/dashboard`)}
                         className="text-indigo-600 hover:underline font-medium">{ex.title}</button>
                     </td>
                     <td className="text-center py-2">
