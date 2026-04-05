@@ -30,13 +30,13 @@ export function LatexText({ text, block = false, className }: Props) {
         if (part.type === 'block') {
           return (
             <div key={i} className="my-2 overflow-x-auto">
-              <BlockMath math={part.content} errorColor="#cc0000" />
+              <BlockMath math={part.content} renderError={(err) => <span className="text-red-500 text-xs">{err.message}</span>} />
             </div>
           );
         }
         if (part.type === 'inline') {
           return (
-            <InlineMath key={i} math={part.content} errorColor="#cc0000" />
+            <InlineMath key={i} math={part.content} renderError={(err) => <span className="text-red-500 text-xs">{err.message}</span>} />
           );
         }
         return <React.Fragment key={i}>{part.content}</React.Fragment>;
