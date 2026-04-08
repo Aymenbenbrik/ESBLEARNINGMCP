@@ -1,11 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Trash2, Plus, ChevronDown, ChevronUp, BookOpen, FileText, Edit2, X, Check } from 'lucide-react';
+import { Trash2, Plus, ChevronDown, ChevronUp, BookOpen, FileText, Edit2, X, Check, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   useAttendanceSessions,
   useSessionRecords,
@@ -15,6 +22,7 @@ import {
   useMyAttendance,
   useCourseActivities,
   useSaveSessionActivities,
+  useCourseClasses,
 } from '@/lib/hooks/useCourses';
 import { AttendanceRecord, AttendanceSession, CourseActivity } from '@/lib/types/course';
 
@@ -142,13 +150,15 @@ function SessionDetailPanel({
   courseId,
   session,
   canEdit,
+  classId,
 }: {
   courseId: number;
   session: AttendanceSession;
   canEdit: boolean;
+  classId?: number;
 }) {
   const [activeTab, setActiveTab] = useState<'presence' | 'activities'>('presence');
-  const { data, isLoading } = useSessionRecords(courseId, session.id);
+  const { data, isLoading } = useSessionRecords(courseId, session.id, classId);
   const saveRecords = useSaveRecords(courseId);
   const saveActivities = useSaveSessionActivities(courseId);
   const [localStatuses, setLocalStatuses] = useState<Record<number, 'present' | 'late' | 'absent'>>({});
@@ -270,10 +280,138 @@ function SessionDetailPanel({
   );
 }
 
+// ─── Attendance Helpers ───────────────────────────────────────────────────────
+
+interface StudentAttendanceSummary {
+  name: string;
+  email: string;
+  present: number;
+  late: number;
+  absent: number;
+  total: number;
+  rate: number;
+}
+
+function computeStudentAttendanceSummaries(sessions: AttendanceSession[]): StudentAttendanceSummary[] {
+  const map = new Map<number, StudentAttendanceSummary>();
+  for (const session of sessions) {
+    if (!session.records) continue;
+    for (const r of session.records) {
+      let entry = map.get(r.student_id);
+      if (!entry) {
+        entry = {
+          name: r.student_name ?? r.student_email ?? `Étudiant #${r.student_id}`,
+          email: r.student_email ?? '',
+          present: 0,
+          late: 0,
+          absent: 0,
+          total: 0,
+          rate: 0,
+        };
+        map.set(r.student_id, entry);
+      }
+      entry.total++;
+      if (r.status === 'present') entry.present++;
+      else if (r.status === 'late') entry.late++;
+      else entry.absent++;
+    }
+  }
+  for (const entry of map.values()) {
+    entry.rate = entry.total > 0 ? Math.round(((entry.present + entry.late) / entry.total) * 100) : 0;
+  }
+  return Array.from(map.values()).sort((a, b) => a.rate - b.rate);
+}
+
+function exportAttendanceCSV(sessions: AttendanceSession[]) {
+  const header = 'Séance,Date,Présents,En retard,Absents';
+  const rows = sessions.map(s =>
+    `"${s.title}","${s.date}",${s.present_count ?? 0},${s.late_count ?? 0},${s.absent_count ?? 0}`
+  );
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `presence_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function rateColorClass(rate: number) {
+  if (rate >= 80) return 'text-green-600';
+  if (rate >= 60) return 'text-yellow-600';
+  return 'text-red-600';
+}
+
+function rateBgClass(rate: number) {
+  if (rate >= 80) return '';
+  if (rate >= 60) return 'bg-yellow-50';
+  return 'bg-red-50';
+}
+
+function PerStudentAttendanceSummary({ sessions }: { sessions: AttendanceSession[] }) {
+  const summaries = computeStudentAttendanceSummaries(sessions);
+  if (summaries.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-bolt-line bg-white shadow-sm overflow-hidden">
+      <div className="p-4 border-b border-bolt-line">
+        <h3 className="text-sm font-semibold">Taux de présence par étudiant</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-bolt-line bg-muted/20">
+              <th className="text-left p-3 font-medium">Étudiant</th>
+              <th className="text-center p-3 font-medium">Présent</th>
+              <th className="text-center p-3 font-medium">Retard</th>
+              <th className="text-center p-3 font-medium">Absent</th>
+              <th className="text-center p-3 font-medium">Taux</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaries.map(s => (
+              <tr key={s.email} className={`border-b border-bolt-line last:border-0 ${rateBgClass(s.rate)}`}>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    {s.rate < 80 && <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />}
+                    <div>
+                      <p className="font-medium">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">{s.email}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="p-3 text-center text-green-600 font-medium">{s.present}</td>
+                <td className="p-3 text-center text-yellow-600 font-medium">{s.late}</td>
+                <td className="p-3 text-center text-red-600 font-medium">{s.absent}</td>
+                <td className={`p-3 text-center font-bold ${rateColorClass(s.rate)}`}>
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-16 h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          s.rate >= 80 ? 'bg-green-500' : s.rate >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(s.rate, 100)}%` }}
+                      />
+                    </div>
+                    {s.rate}%
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Teacher View ─────────────────────────────────────────────────────────────
 
 function TeacherAttendanceView({ courseId }: { courseId: number }) {
-  const { data, isLoading } = useAttendanceSessions(courseId);
+  const [selectedClassId, setSelectedClassId] = useState<number | undefined>(undefined);
+  const { data: classes } = useCourseClasses(courseId);
+  const { data, isLoading } = useAttendanceSessions(courseId, selectedClassId);
   const createSession = useCreateSession(courseId);
   const deleteSession = useDeleteSession(courseId);
 
@@ -285,10 +423,12 @@ function TeacherAttendanceView({ courseId }: { courseId: number }) {
   const [showActivityPicker, setShowActivityPicker] = useState(false);
   const [selectedActivities, setSelectedActivities] = useState<CourseActivity[]>([]);
 
+  const hasClasses = !!classes && classes.length > 0;
+
   const handleCreate = () => {
     if (!title.trim() || !date) return;
     createSession.mutate(
-      { title: title.trim(), date, activities_covered: selectedActivities },
+      { title: title.trim(), date, activities_covered: selectedActivities, class_id: selectedClassId },
       {
         onSuccess: () => {
           setTitle('');
@@ -305,12 +445,38 @@ function TeacherAttendanceView({ courseId }: { courseId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3">
         <h3 className="text-base font-semibold">Séances ({sessions.length})</h3>
-        <Button size="sm" variant="outline" onClick={() => setShowForm(v => !v)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Ajouter une séance
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasClasses && (
+            <Select
+              value={selectedClassId !== undefined ? String(selectedClassId) : 'all'}
+              onValueChange={(v) => setSelectedClassId(v === 'all' ? undefined : Number(v))}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Toutes les classes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les classes</SelectItem>
+                {classes!.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name} ({c.students_count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {sessions.length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => exportAttendanceCSV(sessions)}>
+              <Download className="h-4 w-4 mr-1" />
+              CSV
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setShowForm(v => !v)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Ajouter une séance
+          </Button>
+        </div>
       </div>
 
       {showForm && (
@@ -418,10 +584,13 @@ function TeacherAttendanceView({ courseId }: { courseId: number }) {
             </div>
           </div>
           {expandedId === session.id && (
-            <SessionDetailPanel courseId={courseId} session={session} canEdit={true} />
+            <SessionDetailPanel courseId={courseId} session={session} canEdit={true} classId={selectedClassId} />
           )}
         </div>
       ))}
+
+      {/* Per-student attendance rates summary */}
+      {sessions.length > 0 && <PerStudentAttendanceSummary sessions={sessions} />}
     </div>
   );
 }
@@ -433,6 +602,35 @@ type MyAttendanceEntry = {
   status: 'present' | 'late' | 'absent';
   activities_covered?: CourseActivity[];
 };
+
+function CircularProgress({ rate, size = 80 }: { rate: number; size?: number }) {
+  const strokeWidth = 6;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (rate / 100) * circumference;
+  const color = rate >= 80 ? '#22c55e' : rate >= 60 ? '#eab308' : '#ef4444';
+
+  return (
+    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} stroke="#e5e7eb" strokeWidth={strokeWidth} fill="none" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-700"
+        />
+      </svg>
+      <span className="absolute text-sm font-bold" style={{ color }}>{rate}%</span>
+    </div>
+  );
+}
 
 function StudentAttendanceView({ courseId }: { courseId: number }) {
   const { data, isLoading } = useMyAttendance(courseId);
@@ -450,18 +648,37 @@ function StudentAttendanceView({ courseId }: { courseId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-4">
-        {[
-          { label: 'Présent', value: present, cls: 'text-green-600' },
-          { label: 'En retard', value: late, cls: 'text-yellow-600' },
-          { label: 'Absent', value: absent, cls: 'text-red-600' },
-          { label: 'Taux de présence', value: `${rate}%`, cls: 'text-bolt-accent' },
-        ].map(item => (
-          <div key={item.label} className="rounded-xl border border-bolt-line bg-white shadow-sm p-4">
-            <p className="text-xs text-muted-foreground">{item.label}</p>
-            <p className={`text-2xl font-bold mt-1 ${item.cls}`}>{item.value}</p>
+      {/* Visual attendance indicator with circular progress */}
+      <div className="rounded-xl border border-bolt-line bg-white shadow-sm p-6">
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <CircularProgress rate={rate} size={100} />
+          <div className="flex-1 grid gap-3 grid-cols-3 w-full">
+            {[
+              { label: 'Présent', value: present, cls: 'text-green-600' },
+              { label: 'En retard', value: late, cls: 'text-yellow-600' },
+              { label: 'Absent', value: absent, cls: 'text-red-600' },
+            ].map(item => (
+              <div key={item.label} className="text-center">
+                <p className={`text-2xl font-bold ${item.cls}`}>{item.value}</p>
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Alert for low attendance */}
+        {rate < 80 && total > 0 && (
+          <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+            <span className="text-red-500 text-lg">⚠️</span>
+            <div>
+              <p className="text-sm font-medium text-red-800">Taux de présence insuffisant</p>
+              <p className="text-xs text-red-600">
+                Votre taux de présence est de {rate}%, en dessous du seuil requis de 80%.
+                Veuillez améliorer votre assiduité.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {attendance.length > 0 && (

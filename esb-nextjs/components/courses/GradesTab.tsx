@@ -1,18 +1,37 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Save, Download, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   useGradeWeights,
   useUpdateGradeWeights,
   useAllGrades,
   useMyGrade,
+  useCourseClasses,
+  useClassStats,
 } from '@/lib/hooks/useCourses';
 import { GradeWeight, StudentGrade } from '@/lib/types/course';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
 
 interface Props {
   courseId: number;
@@ -26,9 +45,70 @@ function gradeColor(grade: number | null) {
   return 'text-red-600 font-bold';
 }
 
+function gradeRowBg(grade: number | null) {
+  if (grade === null) return '';
+  if (grade >= 14) return 'bg-green-50';
+  if (grade >= 10) return 'bg-yellow-50';
+  return 'bg-red-50';
+}
+
 function fmt(v: number | null) {
   if (v === null) return '–';
   return v.toFixed(2);
+}
+
+function computeDistribution(grades: StudentGrade[]) {
+  const ranges = [
+    { range: '0-4', min: 0, max: 4, count: 0 },
+    { range: '4-8', min: 4, max: 8, count: 0 },
+    { range: '8-12', min: 8, max: 12, count: 0 },
+    { range: '12-16', min: 12, max: 16, count: 0 },
+    { range: '16-20', min: 16, max: 20.01, count: 0 },
+  ];
+  for (const g of grades) {
+    if (g.final_grade === null) continue;
+    for (const r of ranges) {
+      if (g.final_grade >= r.min && g.final_grade < r.max) {
+        r.count++;
+        break;
+      }
+    }
+  }
+  return ranges;
+}
+
+const HISTOGRAM_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#16a34a'];
+
+function computeLocalStats(grades: StudentGrade[]) {
+  const valid = grades.filter(g => g.final_grade !== null).map(g => g.final_grade as number);
+  if (valid.length === 0) return null;
+  const sorted = [...valid].sort((a, b) => a - b);
+  const sum = sorted.reduce((a, b) => a + b, 0);
+  const count = sorted.length;
+  const avg = sum / count;
+  const min = sorted[0];
+  const max = sorted[count - 1];
+  const median = count % 2 === 0
+    ? (sorted[count / 2 - 1] + sorted[count / 2]) / 2
+    : sorted[Math.floor(count / 2)];
+  const passing = sorted.filter(g => g >= 10).length;
+  const passRate = (passing / count) * 100;
+  return { average: avg, min, max, median, count, passRate };
+}
+
+function exportGradesCSV(grades: StudentGrade[]) {
+  const header = 'Étudiant,Email,Quiz /20,Devoir /20,Présence /20,Examen /20,Note finale /20';
+  const rows = grades.map(g =>
+    `"${g.student_name}","${g.student_email}",${fmt(g.quiz_avg)},${fmt(g.assignment_avg)},${fmt(g.attendance_score)},${fmt(g.exam_score)},${fmt(g.final_grade)}`
+  );
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `notes_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Weight Config ────────────────────────────────────────────────────────────
@@ -104,22 +184,132 @@ function WeightConfig({ courseId }: { courseId: number }) {
   );
 }
 
+// ─── Stats Summary Cards ──────────────────────────────────────────────────────
+
+function StatsSummaryCards({ grades, apiStats }: {
+  grades: StudentGrade[];
+  apiStats?: { average: number | null; min: number | null; max: number | null; median: number | null; count: number } | null;
+}) {
+  const localStats = useMemo(() => computeLocalStats(grades), [grades]);
+  const s = apiStats && apiStats.count > 0 ? {
+    average: apiStats.average,
+    min: apiStats.min,
+    max: apiStats.max,
+    median: apiStats.median,
+    count: apiStats.count,
+    passRate: localStats?.passRate ?? 0,
+  } : localStats;
+
+  if (!s) return null;
+
+  const cards = [
+    { label: 'Moyenne', value: fmt(s.average), color: gradeColor(s.average), icon: '📊' },
+    { label: 'Min', value: fmt(s.min), color: gradeColor(s.min), icon: '📉' },
+    { label: 'Max', value: fmt(s.max), color: gradeColor(s.max), icon: '📈' },
+    { label: 'Médiane', value: fmt(s.median), color: gradeColor(s.median), icon: '📐' },
+    { label: 'Taux de réussite', value: `${s.passRate.toFixed(0)}%`, color: s.passRate >= 50 ? 'text-green-600 font-bold' : 'text-red-600 font-bold', icon: '🎯' },
+  ];
+
+  return (
+    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+      {cards.map(c => (
+        <div key={c.label} className="rounded-xl border border-bolt-line bg-white shadow-sm p-4 text-center">
+          <p className="text-lg mb-1">{c.icon}</p>
+          <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
+          <p className="text-xs text-muted-foreground mt-1">{c.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Grade Distribution Histogram ─────────────────────────────────────────────
+
+function GradeHistogram({ grades }: { grades: StudentGrade[] }) {
+  const distribution = useMemo(() => computeDistribution(grades), [grades]);
+  const hasData = distribution.some(d => d.count > 0);
+  if (!hasData) return null;
+
+  return (
+    <div className="rounded-xl border border-bolt-line bg-white shadow-sm p-4 md:p-6">
+      <h3 className="text-sm font-semibold mb-4">Distribution des notes</h3>
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={distribution} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+            <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+            <Tooltip
+              contentStyle={{ borderRadius: 8, fontSize: 13 }}
+              formatter={(value: any) => [`${value} étudiant(s)`, 'Nombre']}
+            />
+            <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={60}>
+              {distribution.map((_, i) => (
+                <Cell key={i} fill={HISTOGRAM_COLORS[i]} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 // ─── Teacher Grade Table ──────────────────────────────────────────────────────
 
 function TeacherGradesView({ courseId }: { courseId: number }) {
-  const { data, isLoading } = useAllGrades(courseId);
+  const [selectedClassId, setSelectedClassId] = useState<number | undefined>(undefined);
+  const { data: classes, isLoading: classesLoading } = useCourseClasses(courseId);
+  const { data, isLoading } = useAllGrades(courseId, selectedClassId);
+  const { data: stats } = useClassStats(courseId, selectedClassId);
 
   const grades: StudentGrade[] = data?.grades ?? [];
+  const hasClasses = !!classes && classes.length > 0;
 
   return (
     <div className="space-y-4">
       <WeightConfig courseId={courseId} />
 
+      {/* Stats Summary Cards */}
+      {grades.length > 0 && (
+        <StatsSummaryCards grades={grades} apiStats={selectedClassId !== undefined ? stats : undefined} />
+      )}
+
+      {/* Grade Distribution Histogram */}
+      {grades.length > 0 && <GradeHistogram grades={grades} />}
+
       <div className="rounded-xl border border-bolt-line bg-white shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-bolt-line">
+        <div className="p-4 border-b border-bolt-line flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-base font-semibold">Notes des étudiants</h3>
+          <div className="flex items-center gap-2">
+            {grades.length > 0 && (
+              <Button size="sm" variant="outline" onClick={() => exportGradesCSV(grades)}>
+                <Download className="h-4 w-4 mr-1" />
+                Exporter CSV
+              </Button>
+            )}
+            {hasClasses && (
+              <Select
+                value={selectedClassId !== undefined ? String(selectedClassId) : 'all'}
+                onValueChange={(v) => setSelectedClassId(v === 'all' ? undefined : Number(v))}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Toutes les classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les classes</SelectItem>
+                  {classes!.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name} ({c.students_count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
-        {isLoading ? (
+
+        {isLoading || classesLoading ? (
           <div className="p-4"><Skeleton className="h-32" /></div>
         ) : grades.length === 0 ? (
           <div className="p-8 text-center">
@@ -140,7 +330,10 @@ function TeacherGradesView({ courseId }: { courseId: number }) {
               </thead>
               <tbody>
                 {grades.map(g => (
-                  <tr key={g.student_id} className="border-b border-bolt-line last:border-0 hover:bg-muted/10">
+                  <tr
+                    key={g.student_id}
+                    className={`border-b border-bolt-line last:border-0 transition-colors hover:opacity-80 ${gradeRowBg(g.final_grade)}`}
+                  >
                     <td className="p-3">
                       <p className="font-medium">{g.student_name}</p>
                       <p className="text-xs text-muted-foreground">{g.student_email}</p>
@@ -179,6 +372,11 @@ function StudentGradesView({ courseId }: { courseId: number }) {
   }
 
   const weights = (data as any).weights as GradeWeight | undefined;
+  const classAvg: number | null = (data as any).class_average ?? null;
+  const rank: number | null = (data as any).rank ?? null;
+  const totalStudents: number | null = (data as any).total_students ?? null;
+
+  const myGrade = data.final_grade;
 
   const components = [
     {
@@ -211,15 +409,48 @@ function StudentGradesView({ courseId }: { courseId: number }) {
     },
   ];
 
+  const isAboveAvg = classAvg !== null && myGrade !== null && myGrade >= classAvg;
+  const isBelowAvg = classAvg !== null && myGrade !== null && myGrade < classAvg;
+
   return (
     <div className="space-y-4">
-      {/* Final grade card */}
+      {/* Final grade card with comparison */}
       <div className="rounded-xl border border-bolt-line bg-white shadow-sm p-6 text-center">
         <p className="text-sm text-muted-foreground mb-1">Note finale</p>
         <p className={`text-5xl font-bold ${gradeColor(data.final_grade)}`}>
           {fmt(data.final_grade)}
           <span className="text-2xl text-muted-foreground font-normal">/20</span>
         </p>
+
+        {/* Comparison indicator */}
+        {classAvg !== null && myGrade !== null && (
+          <div className="mt-3 flex items-center justify-center gap-3 text-sm">
+            <span className="text-muted-foreground">Moyenne de classe : <strong>{classAvg.toFixed(2)}</strong></span>
+            {isAboveAvg ? (
+              <span className="inline-flex items-center gap-1 text-green-600 font-medium">
+                <TrendingUp className="h-4 w-4" />
+                +{(myGrade - classAvg).toFixed(2)}
+              </span>
+            ) : isBelowAvg ? (
+              <span className="inline-flex items-center gap-1 text-red-600 font-medium">
+                <TrendingDown className="h-4 w-4" />
+                {(myGrade - classAvg).toFixed(2)}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-muted-foreground font-medium">
+                <ArrowRight className="h-4 w-4" />
+                Égal
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Rank */}
+        {rank !== null && totalStudents !== null && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Classement : <strong className="text-foreground">{rank}</strong>/{totalStudents}
+          </p>
+        )}
       </div>
 
       {/* Component breakdown */}
