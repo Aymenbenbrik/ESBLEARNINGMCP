@@ -179,8 +179,8 @@ export const programsApi = {
   // =========================================================================
 
   listAAPs: async (programId: number): Promise<ProgramAAP[]> => {
-    const { data } = await apiClient.get<ProgramAAP[]>(`${BASE_URL}/${programId}/aap`);
-    return data;
+    const { data } = await apiClient.get<{ aaps: ProgramAAP[] }>(`${BASE_URL}/${programId}/aap`);
+    return data.aaps;
   },
 
   createAAP: async (
@@ -215,10 +215,10 @@ export const programsApi = {
   // =========================================================================
 
   listCompetences: async (programId: number): Promise<ProgramCompetence[]> => {
-    const { data } = await apiClient.get<ProgramCompetence[]>(
+    const { data } = await apiClient.get<{ competences: ProgramCompetence[] }>(
       `${BASE_URL}/${programId}/competences`
     );
-    return data;
+    return data.competences;
   },
 
   createCompetence: async (
