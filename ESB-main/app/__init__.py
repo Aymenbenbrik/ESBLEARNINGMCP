@@ -355,6 +355,7 @@ def create_app(config_name=None):
     from app.api.v1.calendar import calendar_api_bp
     from app.api.v1.feedback import feedback_api_bp
     from app.api.v1.student_evaluation import student_eval_bp
+    from app.api.v1.assistant import assistant_api_bp
     api_v1_bp.register_blueprint(auth_api_bp)
     api_v1_bp.register_blueprint(users_api_bp)
     api_v1_bp.register_blueprint(courses_api_bp)
@@ -379,6 +380,7 @@ def create_app(config_name=None):
     api_v1_bp.register_blueprint(calendar_api_bp)
     api_v1_bp.register_blueprint(feedback_api_bp)
     api_v1_bp.register_blueprint(student_eval_bp)
+    api_v1_bp.register_blueprint(assistant_api_bp)
     app.register_blueprint(api_v1_bp)
 
     # Exempt API routes from CSRF

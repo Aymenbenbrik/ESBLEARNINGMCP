@@ -1,0 +1,45 @@
+import { apiClient } from './client';
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+  language?: string;
+  tools_used?: string[];
+}
+
+export interface ChatResponse {
+  response: string;
+  language: string;
+  tools_used: string[];
+}
+
+const BASE = '/api/v1/assistant';
+
+export const assistantApi = {
+  chat: async (message: string, history: ChatMessage[]): Promise<ChatResponse> => {
+    const { data } = await apiClient.post<ChatResponse>(`${BASE}/chat`, {
+      message,
+      history: history.map(m => ({ role: m.role, content: m.content })),
+    });
+    return data;
+  },
+
+  textToSpeech: async (text: string, language: string): Promise<Blob> => {
+    const response = await apiClient.post(`${BASE}/tts`, { text, language }, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  speechToText: async (audioBlob: Blob): Promise<{ text: string; language: string }> => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+    const { data } = await apiClient.post<{ text: string; language: string }>(
+      `${BASE}/stt`,
+      formData,
+      { headers: { 'Content-Type': undefined as any } }
+    );
+    return data;
+  },
+};
