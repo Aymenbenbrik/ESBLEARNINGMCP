@@ -6,12 +6,14 @@ export interface ChatMessage {
   timestamp?: string;
   language?: string;
   tools_used?: string[];
+  tunbert_intents?: { intent: string; confidence: number; description_fr: string }[];
 }
 
 export interface ChatResponse {
   response: string;
   language: string;
   tools_used: string[];
+  tunbert_intents?: { intent: string; confidence: number; description_fr: string }[];
 }
 
 const BASE = '/api/v1/assistant';

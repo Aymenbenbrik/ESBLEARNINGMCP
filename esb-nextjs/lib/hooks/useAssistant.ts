@@ -19,6 +19,7 @@ export function useAssistant() {
         timestamp: new Date().toISOString(),
         language: data.language,
         tools_used: data.tools_used,
+        tunbert_intents: data.tunbert_intents,
       }]);
     },
   });

@@ -777,7 +777,23 @@ def chat_with_assistant(
             messages.append(HumanMessage(content=content))
         elif r == 'assistant':
             messages.append(AIMessage(content=content))
-    messages.append(HumanMessage(content=message))
+    # ── TunBERT enrichment for Tunisian dialect ──
+    language = _detect_language(message)
+    tunbert_context = ""
+    if language == "tn":
+        try:
+            from app.services.tunbert_service import enhance_tunisian_prompt
+            tunbert_context = enhance_tunisian_prompt(message, language)
+        except Exception as e:
+            logger.debug(f"TunBERT enrichment skipped: {e}")
+
+    # If TunBERT provided context, append it to the user message so the LLM
+    # has semantic hints about what the Tunisian text means.
+    enriched_message = message
+    if tunbert_context:
+        enriched_message = f"{message}\n\n{tunbert_context}"
+
+    messages.append(HumanMessage(content=enriched_message))
 
     try:
         llm = _get_llm()
@@ -798,13 +814,20 @@ def chat_with_assistant(
                     if name and name not in tools_used:
                         tools_used.append(name)
 
-        # Detect language
-        language = _detect_language(message)
+        # Language already detected above (before TunBERT enrichment)
+        tunbert_intents = []
+        if language == "tn":
+            try:
+                from app.services.tunbert_service import classify_tunisian_intent
+                tunbert_intents = classify_tunisian_intent(message, top_k=2)
+            except Exception:
+                pass
 
         return {
             "response": response_text,
             "language": language,
             "tools_used": tools_used,
+            "tunbert_intents": tunbert_intents,
         }
 
     except Exception as e:

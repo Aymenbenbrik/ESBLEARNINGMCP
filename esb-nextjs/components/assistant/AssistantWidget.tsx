@@ -180,6 +180,7 @@ export function AssistantWidget() {
                         <SuggestionChip text="📊 Comment vont mes notes ?" onSelect={sendMessage} />
                         <SuggestionChip text="📅 Qu'est-ce que j'ai cette semaine ?" onSelect={sendMessage} />
                         <SuggestionChip text="💡 Recommande-moi des exercices" onSelect={sendMessage} />
+                        <SuggestionChip text="🇹🇳 Chnou el notes mte3i ?" onSelect={sendMessage} />
                       </>
                     )}
                     {role === 'teacher' && (
@@ -306,6 +307,11 @@ function MessageBubble({
           {!isUser && message.tools_used && message.tools_used.length > 0 && (
             <Badge variant="secondary" className="text-[9px] px-1 py-0">
               🔧 {message.tools_used.length} outil{message.tools_used.length > 1 ? 's' : ''}
+            </Badge>
+          )}
+          {!isUser && message.tunbert_intents && message.tunbert_intents.length > 0 && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 border-amber-300 text-amber-700">
+              🦊 TunBERT
             </Badge>
           )}
           {!isUser && onPlayAudio && (

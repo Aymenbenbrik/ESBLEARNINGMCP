@@ -228,3 +228,23 @@ def speech_to_text():
     except Exception as e:
         logger.error(f"STT error: {e}", exc_info=True)
         return jsonify({'error': f'Speech-to-text failed: {str(e)}'}), 500
+
+
+# ── TunBERT status endpoint ──────────────────────────────────────────────────
+
+@assistant_api_bp.route('/tunbert-status', methods=['GET'])
+@jwt_required()
+def tunbert_status():
+    """Check TunBERT model status and capabilities."""
+    try:
+        from app.services.tunbert_service import get_tunbert_status
+        status = get_tunbert_status()
+        return jsonify(status), 200
+    except ImportError:
+        return jsonify({
+            'loaded': False,
+            'error': 'TunBERT service not available',
+        }), 200
+    except Exception as e:
+        logger.error(f"TunBERT status error: {e}")
+        return jsonify({'loaded': False, 'error': str(e)}), 500
