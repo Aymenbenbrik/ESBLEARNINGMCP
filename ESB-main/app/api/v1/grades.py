@@ -5,8 +5,11 @@ GET  /courses/<id>/grade-weights         get current weights
 PUT  /courses/<id>/grade-weights         save weights
 GET  /courses/<id>/grades                computed grades for all students (teacher)
 GET  /courses/<id>/grades/me             student: own computed grade
+GET  /courses/<id>/classes               list classes assigned to this course
+GET  /courses/<id>/classes/<cid>/stats   class-level grade statistics
 """
 import logging
+import statistics
 from datetime import datetime
 
 from flask import request, jsonify
@@ -17,7 +20,8 @@ from app import db
 from app.models import (User, Course, Enrollment, GradeWeight,
                          SectionQuiz, SectionQuizSubmission,
                          SectionAssignment, AssignmentSubmission,
-                         AttendanceSession, AttendanceRecord)
+                         AttendanceSession, AttendanceRecord,
+                         ClassCourseAssignment, Classe)
 
 logger = logging.getLogger(__name__)
 
@@ -165,10 +169,15 @@ def get_all_grades(course_id):
     weights = _get_or_create_weights(course_id)
     enrollments = Enrollment.query.filter_by(course_id=course_id).all()
 
+    # Optional class filter
+    class_id = request.args.get('class_id', type=int)
+
     result = []
     for enr in enrollments:
         student = User.query.get(enr.student_id)
         if not student:
+            continue
+        if class_id is not None and student.class_id != class_id:
             continue
         grade_data = _compute_student_grade(student.id, course, weights)
         grade_data['student_id'] = student.id
@@ -193,3 +202,69 @@ def get_my_grade(course_id):
     grade_data = _compute_student_grade(user.id, course, weights)
     grade_data['weights'] = weights.to_dict()
     return jsonify(grade_data), 200
+
+
+# ─── Course Classes ───────────────────────────────────────────────────────────
+
+@api_v1_bp.route('/courses/<int:course_id>/classes', methods=['GET'])
+@jwt_required()
+def get_course_classes(course_id):
+    """List classes assigned to this course via ClassCourseAssignment."""
+    user, course, is_teacher, is_student = _course_access(course_id)
+    if not is_teacher and not is_student:
+        return jsonify({'error': 'Access denied'}), 403
+
+    assignments = ClassCourseAssignment.query.filter_by(course_id=course_id).all()
+    classes = []
+    for a in assignments:
+        classe = Classe.query.get(a.class_id)
+        if classe:
+            classes.append({
+                'id': classe.id,
+                'name': classe.name,
+                'students_count': classe.students.count(),
+            })
+
+    return jsonify({'classes': classes}), 200
+
+
+# ─── Class Stats ──────────────────────────────────────────────────────────────
+
+@api_v1_bp.route('/courses/<int:course_id>/classes/<int:class_id>/stats', methods=['GET'])
+@jwt_required()
+def get_class_stats(course_id, class_id):
+    """Class-level grade statistics: average, min, max, median."""
+    user, course, is_teacher, _ = _course_access(course_id)
+    if not is_teacher:
+        return jsonify({'error': 'Access denied'}), 403
+
+    weights = _get_or_create_weights(course_id)
+    enrollments = Enrollment.query.filter_by(course_id=course_id).all()
+
+    finals = []
+    for enr in enrollments:
+        student = User.query.get(enr.student_id)
+        if not student or student.class_id != class_id:
+            continue
+        grade_data = _compute_student_grade(student.id, course, weights)
+        if grade_data['final_grade'] is not None:
+            finals.append(grade_data['final_grade'])
+
+    if not finals:
+        return jsonify({
+            'class_id': class_id,
+            'count': 0,
+            'average': None,
+            'min': None,
+            'max': None,
+            'median': None,
+        }), 200
+
+    return jsonify({
+        'class_id': class_id,
+        'count': len(finals),
+        'average': round(statistics.mean(finals), 2),
+        'min': round(min(finals), 2),
+        'max': round(max(finals), 2),
+        'median': round(statistics.median(finals), 2),
+    }), 200

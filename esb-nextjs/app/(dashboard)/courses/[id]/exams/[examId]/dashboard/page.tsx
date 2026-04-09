@@ -11,6 +11,7 @@ import {
   usePublishFeedbacks,
   useUpdateSessionFeedback,
 } from '@/lib/hooks/useExamBank';
+import { useStartSession } from '@/lib/hooks/useExamBank';
 import type { ExamSession, ExamSessionAnswer } from '@/lib/types/exam-bank';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -221,6 +222,7 @@ export default function ExamDashboardPage() {
 
   const { data, isLoading, refetch } = useExamResults(examId);
   const autoCorrect = useAutoCorrect(examId);
+  const startPreview = useStartSession();
   const publishExam = usePublishExam(courseId);
   const unpublishExam = useUnpublishExam(courseId);
   const updateFeedback = useUpdateSessionFeedback();
@@ -399,6 +401,23 @@ export default function ExamDashboardPage() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+            disabled={startPreview.isPending}
+            onClick={async () => {
+              try {
+                await startPreview.mutateAsync({ examId, isPreview: true });
+                router.push(`/courses/${courseId}/exams/${examId}/take`);
+              } catch (err: any) {
+                toast.error(err?.response?.data?.error || 'Erreur lors du lancement de la vérification');
+              }
+            }}
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            {startPreview.isPending ? 'Lancement...' : 'Vérifier le quiz'}
+          </Button>
           <Button
             variant="outline"
             size="sm"

@@ -10,12 +10,14 @@ class AttendanceSession(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classe.id'), nullable=True)
     title = db.Column(db.String(200), nullable=False)
     date = db.Column(db.Date, nullable=False)
     activities_covered = db.Column(db.Text, nullable=True)  # JSON list of {type, id, title}
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     course = db.relationship('Course', backref=db.backref('attendance_sessions', cascade='all, delete-orphan', lazy='dynamic'))
+    classe = db.relationship('Classe', backref=db.backref('attendance_sessions', lazy='dynamic'))
     records = db.relationship('AttendanceRecord', backref='session', cascade='all, delete-orphan', lazy='dynamic')
 
     def to_dict(self, include_records=False):
@@ -23,6 +25,7 @@ class AttendanceSession(db.Model):
         d = {
             'id': self.id,
             'course_id': self.course_id,
+            'class_id': self.class_id,
             'title': self.title,
             'date': self.date.isoformat() if self.date else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,

@@ -124,6 +124,30 @@ def _bootstrap_db(app: Flask):
             if 'suggestion_context' not in c:
                 db.session.execute(text('ALTER TABLE practical_work ADD COLUMN suggestion_context TEXT'))
 
+        # ExamSession: add is_preview for teacher preview mode
+        if table_exists('exam_session'):
+            c = cols('exam_session')
+            if 'is_preview' not in c:
+                db.session.execute(text("ALTER TABLE exam_session ADD COLUMN is_preview BOOLEAN DEFAULT 0"))
+
+        # SectionQuizSubmission: add is_preview for teacher preview mode
+        if table_exists('section_quiz_submission'):
+            c = cols('section_quiz_submission')
+            if 'is_preview' not in c:
+                db.session.execute(text("ALTER TABLE section_quiz_submission ADD COLUMN is_preview BOOLEAN DEFAULT 0"))
+
+        # Program: add program_type, descriptor_file, descriptor_uploaded_at, code
+        if table_exists('program'):
+            c = cols('program')
+            if 'program_type' not in c:
+                db.session.execute(text("ALTER TABLE program ADD COLUMN program_type VARCHAR(20)"))
+            if 'descriptor_file' not in c:
+                db.session.execute(text("ALTER TABLE program ADD COLUMN descriptor_file VARCHAR(255)"))
+            if 'descriptor_uploaded_at' not in c:
+                db.session.execute(text("ALTER TABLE program ADD COLUMN descriptor_uploaded_at DATETIME"))
+            if 'code' not in c:
+                db.session.execute(text("ALTER TABLE program ADD COLUMN code VARCHAR(50)"))
+
         db.session.commit()
 
 
@@ -312,6 +336,11 @@ def create_app(config_name=None):
     from app.api.v1.tn_exams import tn_exams_api_bp
     from app.api.v1.exam_bank import exam_bank_api_bp
     from app.api.v1.chapter_pipeline import chapter_pipeline_bp
+    from app.api.v1.progress import progress_api_bp
+    from app.api.v1.coach import coach_api_bp
+    from app.api.v1.calendar import calendar_api_bp
+    from app.api.v1.feedback import feedback_api_bp
+    from app.api.v1.student_evaluation import student_eval_bp
     api_v1_bp.register_blueprint(auth_api_bp)
     api_v1_bp.register_blueprint(users_api_bp)
     api_v1_bp.register_blueprint(courses_api_bp)
@@ -331,6 +360,11 @@ def create_app(config_name=None):
     api_v1_bp.register_blueprint(tn_exams_api_bp)
     api_v1_bp.register_blueprint(exam_bank_api_bp)
     api_v1_bp.register_blueprint(chapter_pipeline_bp)
+    api_v1_bp.register_blueprint(progress_api_bp)
+    api_v1_bp.register_blueprint(coach_api_bp)
+    api_v1_bp.register_blueprint(calendar_api_bp)
+    api_v1_bp.register_blueprint(feedback_api_bp)
+    api_v1_bp.register_blueprint(student_eval_bp)
     app.register_blueprint(api_v1_bp)
 
     # Exempt API routes from CSRF

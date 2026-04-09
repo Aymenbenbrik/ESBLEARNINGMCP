@@ -74,10 +74,10 @@ export interface UpdateSectionContentData {
 
 // ─── Section Activities Types ─────────────────────────────────────────────────
 
-export type ActivityType = 'youtube' | 'quiz' | 'assignment' | 'image' | 'text_doc' | 'pdf_extract';
+export type ActivityType = 'youtube' | 'quiz' | 'assignment' | 'image' | 'text_doc' | 'pdf_extract' | 'exercise';
 
 export interface SectionActivity {
-  id: number;
+  id: number | string;
   section_id: number;
   activity_type: ActivityType;
   title: string;
@@ -96,6 +96,17 @@ export interface SectionActivity {
   // pdf_extract activity
   pdf_page_start?: number | null;
   pdf_page_end?: number | null;
+  // exercise activity (Feature 2)
+  exercise_id?: number;
+  exercise_type?: string;
+  exercise_status?: string;
+  description?: string | null;
+  question_count?: number;
+  bloom_levels?: string[];
+  aa_codes?: string[];
+  total_points?: number | null;
+  estimated_duration_min?: number | null;
+  is_approved?: boolean;
 }
 
 export type QuizStatus = 'draft' | 'published';
@@ -181,6 +192,7 @@ export interface SectionQuizSubmission {
   grading_status: 'auto' | 'pending' | 'graded';
   submitted_at: string;
   attempt_number?: number;
+  is_preview?: boolean;
 }
 
 export interface GradedAnswer {
@@ -201,6 +213,7 @@ export interface TakeQuizResponse {
   attempts_used?: number;
   max_attempts?: number;
   survey_json?: Record<string, unknown> | null;
+  is_preview?: boolean;
 }
 
 export interface SubmitQuizResponse {
@@ -209,6 +222,7 @@ export interface SubmitQuizResponse {
   attempts_remaining?: number;
   grading_status?: 'auto' | 'pending';
   result: SectionQuizSubmission;
+  is_preview?: boolean;
   // Only present if show_feedback=true
   score?: number;
   max_score?: number;

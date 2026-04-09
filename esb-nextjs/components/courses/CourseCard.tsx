@@ -5,15 +5,17 @@ import { Badge } from '@/components/ui/badge';
 import { Course } from '@/lib/types/course';
 import { BookOpen, Calendar, User } from 'lucide-react';
 import { format } from 'date-fns';
+import { CourseProgressBar } from './CourseProgressBar';
 
 interface CourseCardProps {
   course: Course;
   userRole: 'teacher' | 'student';
   onEnroll?: (courseId: number) => void;
   isEnrolling?: boolean;
+  progress?: number;
 }
 
-export function CourseCard({ course, userRole, onEnroll, isEnrolling }: CourseCardProps) {
+export function CourseCard({ course, userRole, onEnroll, isEnrolling, progress }: CourseCardProps) {
   const isTeacher = userRole === 'teacher';
   const isStudent = userRole === 'student';
 
@@ -59,6 +61,14 @@ export function CourseCard({ course, userRole, onEnroll, isEnrolling }: CourseCa
             <span>Created {format(new Date(course.created_at), 'MMM d, yyyy')}</span>
           </div>
         </div>
+
+        {/* Progress bar for enrolled students */}
+        {isStudent && course.enrolled_at && progress !== undefined && (
+          <div className="mt-4 space-y-1">
+            <p className="text-xs font-medium text-slate-500">Progression</p>
+            <CourseProgressBar progress={progress} size="md" />
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="flex gap-2">

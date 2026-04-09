@@ -20,6 +20,13 @@ export interface Course {
   teacher?: User;
 }
 
+// AA ↔ AAP Mapping
+export interface AAAPMapping {
+  aa_number: number;
+  aa_description: string;
+  aap_codes: string[];
+}
+
 // TN Section
 export interface TNNormItem {
   number: number;
@@ -368,6 +375,21 @@ export interface StudentGrade {
   quiz_count: number;
   assignment_count: number;
   total_sessions: number;
+}
+
+export interface CourseClass {
+  id: number;
+  name: string;
+  students_count: number;
+}
+
+export interface ClassStats {
+  class_id: number;
+  count: number;
+  average: number | null;
+  min: number | null;
+  max: number | null;
+  median: number | null;
 }
 
 // ─── Exam ────────────────────────────────────────────────────────────────────

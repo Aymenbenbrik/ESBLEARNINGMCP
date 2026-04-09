@@ -4,6 +4,10 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCourse, useCourseDashboard, useDeleteCourse, useUploadModule, useTnExams } from '@/lib/hooks/useCourses';
+import { useAAEvaluation, useCalculateAAScores } from '@/lib/hooks/useEvaluation';
+import { AAHeatmap } from '@/components/evaluation/AAHeatmap';
+import { AAStats } from '@/components/evaluation/AAStats';
+import { RefreshCw, Target } from 'lucide-react';
 import { CourseHeader } from '@/components/courses/CourseHeader';
 import { ChaptersList } from '@/components/courses/ChaptersList';
 import { ModuleAttachments } from '@/components/courses/ModuleAttachments';
@@ -22,6 +26,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { AttendanceTab } from '@/components/courses/AttendanceTab';
 import { GradesTab } from '@/components/courses/GradesTab';
 import { ExamTab } from '@/components/courses/ExamTab';
+import { StudentsTab } from '@/components/courses/StudentsTab';
 import { useExams, usePublishExam, useUnpublishExam } from '@/lib/hooks/useExamBank';
 import { Clock, Trophy, Play, Shield, Zap, Globe, EyeOff, BarChart2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +34,7 @@ import { GenerateExamDialog } from '@/components/courses/GenerateExamDialog';
 import type { TnExamDocument } from '@/lib/types/course';
 import type { ValidatedExam } from '@/lib/types/exam-bank';
 
-type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'examen' | 'epreuves' | 'epreuve_exam';
+type TabId = 'description' | 'contenu' | 'dashboard' | 'presence' | 'notes' | 'etudiants' | 'examen' | 'epreuves' | 'epreuve_exam' | 'evaluation_aa';
 
 // ── ExamBankCard — teacher card with publish/unpublish + results ─────────────
 
@@ -122,6 +127,8 @@ export default function CourseDetailPage() {
   const [editDialogExam, setEditDialogExam] = useState<{ tn: TnExamDocument; validated: ValidatedExam } | null>(null);
   const { user } = useAuth();
   const isTeacher = !!(user?.is_teacher || user?.is_superuser);
+  const { data: aaEvalData, isLoading: aaEvalLoading } = useAAEvaluation(courseId, isTeacher && activeTab === 'evaluation_aa');
+  const calculateAAMutation = useCalculateAAScores(courseId);
 
   const handleDelete = () => {
     deleteMutation.mutate(courseId, {
@@ -171,8 +178,10 @@ export default function CourseDetailPage() {
     { id: 'dashboard',   label: isStudent ? 'Mon tableau de bord' : 'Dashboard classe' },
     { id: 'presence',    label: '📋 Présence' },
     { id: 'notes',       label: '📊 Notes' },
+    ...(course.can_edit ? [{ id: 'etudiants' as TabId, label: '👥 Étudiants' }] : []),
     ...(course.can_edit && isTN ? [{ id: 'epreuves' as TabId, label: '📝 Préparer épreuve' }] : []),
     ...(course.can_edit && !isTN ? [{ id: 'examen' as TabId, label: '📝 Examen' }] : []),
+    ...(course.can_edit ? [{ id: 'evaluation_aa' as TabId, label: '🎯 Évaluation AA' }] : []),
     { id: 'epreuve_exam' as TabId, label: '🎯 Passer une épreuve' },
   ];
 
@@ -343,6 +352,11 @@ export default function CourseDetailPage() {
           <GradesTab courseId={courseId} canEdit={course.can_edit} />
         )}
 
+        {/* Tab 6: Étudiants (teachers only) */}
+        {activeTab === 'etudiants' && course.can_edit && (
+          <StudentsTab courseId={courseId} />
+        )}
+
         {/* Tab 6: Examen (teachers only, non-TN) */}
         {activeTab === 'examen' && course.can_edit && (
           <ExamTab courseId={courseId} canEdit={course.can_edit} courseAAs={(data as any).tn_aa_distribution ?? []} />
@@ -370,6 +384,55 @@ export default function CourseDetailPage() {
           </div>
         )}
       </div>
+
+        {/* Tab: Évaluation AA (teachers only) */}
+        {activeTab === 'evaluation_aa' && course.can_edit && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Évaluation par Acquis d&apos;Apprentissage
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Visualisez les scores de chaque étudiant par AA pour ce cours.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full gap-2"
+                onClick={() => calculateAAMutation.mutate()}
+                disabled={calculateAAMutation.isPending}
+              >
+                <RefreshCw className={`h-4 w-4 ${calculateAAMutation.isPending ? 'animate-spin' : ''}`} />
+                Recalculer les scores AA
+              </Button>
+            </div>
+
+            {aaEvalLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-[300px]" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Skeleton className="h-[200px]" />
+                  <Skeleton className="h-[200px]" />
+                </div>
+              </div>
+            ) : aaEvalData ? (
+              <div className="space-y-6">
+                <AAHeatmap data={aaEvalData} />
+                <AAStats data={aaEvalData} />
+              </div>
+            ) : (
+              <div className="rounded-[12px] border border-bolt-line bg-white shadow-sm p-8 text-center">
+                <Target className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  Aucune donnée d&apos;évaluation. Cliquez sur &quot;Recalculer les scores AA&quot; pour générer les scores.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tab: Épreuve Exam — visible to all users */}
         {activeTab === 'epreuve_exam' && (

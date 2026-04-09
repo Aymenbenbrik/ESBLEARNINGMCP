@@ -331,22 +331,24 @@ export function useDeleteSectionQuiz(sectionId: number) {
   });
 }
 
-export function useTakeQuiz(sectionId: number, password?: string, enabled = true) {
+export function useTakeQuiz(sectionId: number, password?: string, enabled = true, isPreview = false) {
   return useQuery({
-    queryKey: [...sectionQuizKeys.forSection(sectionId), 'take', password ?? null],
-    queryFn: () => sectionQuizApi.take(sectionId, password),
+    queryKey: [...sectionQuizKeys.forSection(sectionId), 'take', password ?? null, isPreview ? 'preview' : 'normal'],
+    queryFn: () => sectionQuizApi.take(sectionId, password, isPreview || undefined),
     enabled: !!sectionId && enabled,
     retry: false,
   });
 }
 
-export function useSubmitSectionQuiz(sectionId: number) {
+export function useSubmitSectionQuiz(sectionId: number, isPreview = false) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (answers: Record<string, string>) => sectionQuizApi.submit(sectionId, answers),
+    mutationFn: (answers: Record<string, string>) => sectionQuizApi.submit(sectionId, answers, isPreview || undefined),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: sectionQuizKeys.forSection(sectionId) });
-      if (data.score !== undefined && data.max_score !== undefined) {
+      if (data.is_preview) {
+        toast.success('Vérification terminée — résultats non comptabilisés');
+      } else if (data.score !== undefined && data.max_score !== undefined) {
         toast.success(`Résultat : ${data.score}/${data.max_score} (${data.percent}%)`);
       } else {
         toast.success('Quiz soumis avec succès');

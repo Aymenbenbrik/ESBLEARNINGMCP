@@ -113,7 +113,8 @@ export function useDeleteQuestion(examId: number) {
 
 export function useStartSession() {
   return useMutation({
-    mutationFn: (examId: number) => examBankApi.startSession(examId).then(r => r.data),
+    mutationFn: ({ examId, isPreview }: { examId: number; isPreview?: boolean }) =>
+      examBankApi.startSession(examId, isPreview).then(r => r.data),
   });
 }
 

@@ -18,6 +18,9 @@ import {
   GenerateCourseQBankData,
   CreateCourseQBankData,
   UpdateCourseQBankData,
+  ExercisesListResponse,
+  StartExerciseResponse,
+  SubmitExerciseResponse,
 } from '../types/question-bank';
 import { toast } from 'sonner';
 
@@ -26,6 +29,7 @@ export const questionBankKeys = {
   all: ['question-bank'] as const,
   lists: () => [...questionBankKeys.all, 'list'] as const,
   list: (filters: QuestionBankFilters) => [...questionBankKeys.lists(), filters] as const,
+  exercises: (courseId: number) => [...questionBankKeys.all, 'exercises', courseId] as const,
   revisionOptions: (courseId: number) =>
     [...questionBankKeys.all, 'revision-options', courseId] as const,
   aaas: (courseId?: number) =>
@@ -253,5 +257,55 @@ export function useDeleteCourseQBankQuestion(courseId: number) {
       toast.success('Question supprimee');
     },
     onError: () => toast.error('Erreur lors de la suppression'),
+  });
+}
+
+/**
+ * List exercises (grouped dependent questions) for a course
+ */
+export function useExercises(courseId: number, filters?: {
+  exercise_type?: string;
+  status?: string;
+  chapter_id?: number;
+}) {
+  return useQuery<ExercisesListResponse>({
+    queryKey: [...questionBankKeys.exercises(courseId), filters],
+    queryFn: () => questionBankApi.listExercises(courseId, filters),
+    enabled: !!courseId,
+  });
+}
+
+/**
+ * Start an exercise as a quiz (Feature 3)
+ */
+export function useStartExercise() {
+  return useMutation<StartExerciseResponse, Error, number>({
+    mutationFn: (exerciseId) => questionBankApi.startExercise(exerciseId),
+    onSuccess: (data) => {
+      toast.success(data.message);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors du démarrage de l'exercice");
+    },
+  });
+}
+
+/**
+ * Submit answers for an exercise quiz (Feature 3)
+ */
+export function useSubmitExercise() {
+  return useMutation<
+    SubmitExerciseResponse,
+    Error,
+    { exerciseId: number; quizId: number; answers: Record<string, string> }
+  >({
+    mutationFn: ({ exerciseId, quizId, answers }) =>
+      questionBankApi.submitExercise(exerciseId, quizId, answers),
+    onSuccess: (data) => {
+      toast.success(`Score: ${data.score}% (${data.correct}/${data.total})`);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors de la soumission");
+    },
   });
 }

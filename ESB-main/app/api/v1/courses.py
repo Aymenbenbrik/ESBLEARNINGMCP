@@ -73,26 +73,8 @@ def list_courses():
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        if user.is_superuser:
-            # Superusers see all courses
-            courses = Course.query.order_by(Course.created_at.desc()).all()
-            enrolled_courses = [{
-                'id': course.id,
-                'title': course.title,
-                'description': course.description,
-                'teacher_id': course.teacher_id,
-                'created_at': course.created_at.isoformat() if course.created_at else None,
-                'updated_at': course.updated_at.isoformat() if course.updated_at else None,
-                'chapters_count': course.chapters.count()
-            } for course in courses]
-
-            return jsonify({
-                'enrolled_courses': enrolled_courses,
-                'available_courses': None,
-                'user_role': 'superuser'
-            }), 200
-        elif user.is_teacher:
-            # Teachers see courses they created
+        if user.is_teacher:
+            # Teachers see ONLY courses they teach (even if also superuser)
             courses = Course.query.filter_by(teacher_id=user.id).order_by(Course.created_at.desc()).all()
             enrolled_courses = [{
                 'id': course.id,
@@ -108,6 +90,24 @@ def list_courses():
                 'enrolled_courses': enrolled_courses,
                 'available_courses': None,
                 'user_role': 'teacher'
+            }), 200
+        elif user.is_superuser:
+            # Admin-only (not teacher) sees all courses for management
+            courses = Course.query.order_by(Course.created_at.desc()).all()
+            enrolled_courses = [{
+                'id': course.id,
+                'title': course.title,
+                'description': course.description,
+                'teacher_id': course.teacher_id,
+                'created_at': course.created_at.isoformat() if course.created_at else None,
+                'updated_at': course.updated_at.isoformat() if course.updated_at else None,
+                'chapters_count': course.chapters.count()
+            } for course in courses]
+
+            return jsonify({
+                'enrolled_courses': enrolled_courses,
+                'available_courses': None,
+                'user_role': 'superuser'
             }), 200
         else:
             # Students access is governed by their Classe (class) and/or explicit enrollments.
@@ -246,10 +246,11 @@ def get_course(course_id):
 
         course = Course.query.get_or_404(course_id)
 
-        # Check access - allow superusers
-        if not user.is_superuser:
-            is_teacher = user.is_teacher and course.teacher_id == user.id
+        # Check access
+        is_course_teacher = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
 
+        if not is_course_teacher and not is_admin_only:
             # Student access: class/program OR explicit enrollment
             is_student = False
             if not user.is_teacher:
@@ -268,11 +269,11 @@ def get_course(course_id):
                             if program:
                                 is_student = any(int(c.id) == int(course_id) for c in program.courses)
 
-            if not is_teacher and not is_student:
+            if not is_student:
                 return jsonify({'error': "You don't have access to this course"}), 403
 
         # Set permissions for response
-        is_teacher = user.is_superuser or (user.is_teacher and course.teacher_id == user.id)
+        is_teacher = is_course_teacher or is_admin_only
 
         # Get syllabus
         syllabus = SyllabusService.get_syllabus_by_course(course_id)
@@ -420,14 +421,14 @@ def list_course_chapters(course_id):
 
         course = Course.query.get_or_404(course_id)
 
-        # Access control (with superuser support)
-        if not user.is_superuser:
-            is_teacher = user.is_teacher and course.teacher_id == user.id
-            is_student = not user.is_teacher and Enrollment.query.filter_by(
-                student_id=user.id, course_id=course_id).first()
+        # Access control
+        is_course_teacher = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        is_student = not user.is_teacher and not user.is_superuser and Enrollment.query.filter_by(
+            student_id=user.id, course_id=course_id).first()
 
-            if not is_teacher and not is_student:
-                return jsonify({'error': 'Access denied'}), 403
+        if not is_course_teacher and not is_admin_only and not is_student:
+            return jsonify({'error': 'Access denied'}), 403
 
         # Get chapters
         chapters = course.chapters.order_by(Chapter.order).all()
@@ -852,6 +853,170 @@ def _compute_chapter_stats(course_id):
         return []
 
 
+# ─── Teacher Student Management ───────────────────────────────────────────────
+
+@courses_api_bp.route('/<int:course_id>/students', methods=['GET'])
+@jwt_required()
+def get_course_students(course_id):
+    """List all enrolled students in this course (teacher or superuser only)."""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        course = Course.query.get_or_404(course_id)
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
+            return jsonify({'error': 'Access denied'}), 403
+
+        enrollments = Enrollment.query.filter_by(course_id=course_id).all()
+        students = []
+        for e in enrollments:
+            s = User.query.get(e.student_id)
+            if s:
+                classe = Classe.query.get(s.class_id) if s.class_id else None
+                students.append({
+                    'id': s.id,
+                    'username': s.username,
+                    'email': s.email,
+                    'class_name': classe.name if classe else None,
+                    'enrolled_at': e.enrolled_at.isoformat() if e.enrolled_at else None,
+                })
+
+        return jsonify({'students': students, 'total': len(students)}), 200
+    except Exception as e:
+        logger.error(f"Error fetching course students: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@courses_api_bp.route('/<int:course_id>/students', methods=['POST'])
+@jwt_required()
+def enroll_students(course_id):
+    """Enroll multiple students in this course (teacher or superuser only)."""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        course = Course.query.get_or_404(course_id)
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
+            return jsonify({'error': 'Access denied'}), 403
+
+        data = request.get_json()
+        if not data or 'student_ids' not in data:
+            return jsonify({'error': 'student_ids is required'}), 400
+
+        student_ids = data['student_ids']
+        if not isinstance(student_ids, list):
+            return jsonify({'error': 'student_ids must be an array'}), 400
+
+        enrolled = 0
+        skipped = 0
+        for sid in student_ids:
+            student = User.query.get(sid)
+            if not student or student.is_teacher:
+                skipped += 1
+                continue
+            existing = Enrollment.query.filter_by(student_id=sid, course_id=course_id).first()
+            if existing:
+                skipped += 1
+                continue
+            db.session.add(Enrollment(student_id=sid, course_id=course_id))
+            enrolled += 1
+
+        db.session.commit()
+        return jsonify({'enrolled': enrolled, 'skipped': skipped}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error enrolling students: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@courses_api_bp.route('/<int:course_id>/students/<int:student_id>', methods=['DELETE'])
+@jwt_required()
+def remove_course_student(course_id, student_id):
+    """Remove a student enrollment from this course (teacher or superuser only)."""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        course = Course.query.get_or_404(course_id)
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
+            return jsonify({'error': 'Access denied'}), 403
+
+        enrollment = Enrollment.query.filter_by(student_id=student_id, course_id=course_id).first()
+        if not enrollment:
+            return jsonify({'error': 'Student is not enrolled in this course'}), 404
+
+        db.session.delete(enrollment)
+        db.session.commit()
+        return jsonify({'message': 'Student removed'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error removing student: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@courses_api_bp.route('/<int:course_id>/available-students', methods=['GET'])
+@jwt_required()
+def get_available_students(course_id):
+    """List students NOT enrolled in this course (teacher or superuser only)."""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        course = Course.query.get_or_404(course_id)
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
+            return jsonify({'error': 'Access denied'}), 403
+
+        search = request.args.get('search', '').strip()
+
+        enrolled_ids = [e.student_id for e in Enrollment.query.filter_by(course_id=course_id).all()]
+
+        query = User.query.filter(
+            User.is_teacher == False,
+            User.is_superuser == False,
+        )
+        if enrolled_ids:
+            query = query.filter(~User.id.in_(enrolled_ids))
+        if search:
+            query = query.filter(
+                db.or_(
+                    User.username.ilike(f'%{search}%'),
+                    User.email.ilike(f'%{search}%'),
+                )
+            )
+
+        available = query.order_by(User.username).all()
+        students = []
+        for s in available:
+            classe = Classe.query.get(s.class_id) if s.class_id else None
+            students.append({
+                'id': s.id,
+                'username': s.username,
+                'email': s.email,
+                'class_name': classe.name if classe else None,
+            })
+
+        return jsonify({'students': students, 'total': len(students)}), 200
+    except Exception as e:
+        logger.error(f"Error fetching available students: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @courses_api_bp.route('/<int:course_id>/dashboard', methods=['GET'])
 @jwt_required()
 def get_course_dashboard(course_id):
@@ -872,8 +1037,10 @@ def get_course_dashboard(course_id):
 
         course = Course.query.get_or_404(course_id)
 
-        # Check ownership (teacher or superuser)
-        if course.teacher_id != user.id and not user.is_superuser:
+        # Check ownership (teacher or admin-only)
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
             return jsonify({'error': 'Access denied'}), 403
 
         # Compute basic stats

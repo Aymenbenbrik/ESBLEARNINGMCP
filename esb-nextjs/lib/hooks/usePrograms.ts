@@ -13,6 +13,11 @@ import {
   RemoveCourseFromProgramResponse,
   CreateClassData,
   CreateClassResponse,
+  ProgramAAP,
+  ProgramCompetence,
+  AAPCompetenceMatrix,
+  ExtractDescriptorResult,
+  ProcessDescriptorResult,
 } from '../types/admin';
 import { toast } from 'sonner';
 
@@ -23,6 +28,9 @@ export const programKeys = {
   list: () => [...programKeys.lists()] as const,
   details: () => [...programKeys.all, 'detail'] as const,
   detail: (id: number) => [...programKeys.details(), id] as const,
+  aaps: (id: number) => [...programKeys.all, 'aaps', id] as const,
+  competences: (id: number) => [...programKeys.all, 'competences', id] as const,
+  matrix: (id: number) => [...programKeys.all, 'matrix', id] as const,
 };
 
 /**
@@ -165,6 +173,253 @@ export function useCreateClass() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to create class');
+    },
+  });
+}
+
+// ===========================================================================
+// DESCRIPTOR HOOKS
+// ===========================================================================
+
+export function useUploadDescriptor() {
+  const queryClient = useQueryClient();
+
+  return useMutation<any, Error, { programId: number; file: File }>({
+    mutationFn: ({ programId, file }) => programsApi.uploadDescriptor(programId, file),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      toast.success('Descripteur téléchargé avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec du téléchargement du descripteur');
+    },
+  });
+}
+
+export function useExtractDescriptor() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ExtractDescriptorResult, Error, number>({
+    mutationFn: (programId) => programsApi.extractDescriptor(programId),
+    onSuccess: (data, programId) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.aaps(programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.competences(programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(programId) });
+      toast.success(
+        `Extraction réussie : ${data.result.aaps_count} AAP, ${data.result.competences_count} compétences, ${data.result.links_count} liens` +
+        (data.result.courses_linked ? `, ${data.result.courses_linked} modules reliés` : '')
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec de l'extraction du descripteur");
+    },
+  });
+}
+
+export function useProcessDescriptor() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ProcessDescriptorResult, Error, number>({
+    mutationFn: (programId) => programsApi.processDescriptor(programId),
+    onSuccess: (data, programId) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.aaps(programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.competences(programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(programId) });
+      const steps = data.steps || [];
+      const modulesCount = data.modules_table?.length || 0;
+      const teachersCount = data.teachers_created?.length || 0;
+      toast.success(
+        `Pipeline terminé : ${steps.length} étapes, ${modulesCount} modules, ${teachersCount} enseignants créés`
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec du pipeline de traitement");
+    },
+  });
+}
+
+// ===========================================================================
+// AAP HOOKS
+// ===========================================================================
+
+export function useAAPs(programId: number) {
+  return useQuery<ProgramAAP[]>({
+    queryKey: programKeys.aaps(programId),
+    queryFn: () => programsApi.listAAPs(programId),
+    enabled: !!programId,
+  });
+}
+
+export function useCreateAAP() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ProgramAAP,
+    Error,
+    { programId: number; data: { code: string; description: string; order: number } }
+  >({
+    mutationFn: ({ programId, data }) => programsApi.createAAP(programId, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.aaps(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      toast.success('AAP créé avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec de la création de l'AAP");
+    },
+  });
+}
+
+export function useUpdateAAP() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ProgramAAP,
+    Error,
+    {
+      programId: number;
+      aapId: number;
+      data: { code?: string; description?: string; order?: number };
+    }
+  >({
+    mutationFn: ({ programId, aapId, data }) => programsApi.updateAAP(programId, aapId, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.aaps(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      toast.success('AAP modifié avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec de la modification de l'AAP");
+    },
+  });
+}
+
+export function useDeleteAAP() {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ message: string }, Error, { programId: number; aapId: number }>({
+    mutationFn: ({ programId, aapId }) => programsApi.deleteAAP(programId, aapId),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.aaps(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      toast.success(data.message || 'AAP supprimé avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Échec de la suppression de l'AAP");
+    },
+  });
+}
+
+// ===========================================================================
+// COMPETENCE HOOKS
+// ===========================================================================
+
+export function useCompetences(programId: number) {
+  return useQuery<ProgramCompetence[]>({
+    queryKey: programKeys.competences(programId),
+    queryFn: () => programsApi.listCompetences(programId),
+    enabled: !!programId,
+  });
+}
+
+export function useCreateCompetence() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ProgramCompetence,
+    Error,
+    { programId: number; data: { code: string; description: string } }
+  >({
+    mutationFn: ({ programId, data }) => programsApi.createCompetence(programId, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.competences(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      toast.success('Compétence créée avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la création de la compétence');
+    },
+  });
+}
+
+export function useUpdateCompetence() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ProgramCompetence,
+    Error,
+    {
+      programId: number;
+      compId: number;
+      data: { code?: string; description?: string };
+    }
+  >({
+    mutationFn: ({ programId, compId, data }) =>
+      programsApi.updateCompetence(programId, compId, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.competences(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      toast.success('Compétence modifiée avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la modification de la compétence');
+    },
+  });
+}
+
+export function useDeleteCompetence() {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ message: string }, Error, { programId: number; compId: number }>({
+    mutationFn: ({ programId, compId }) => programsApi.deleteCompetence(programId, compId),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.competences(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      toast.success(data.message || 'Compétence supprimée avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la suppression de la compétence');
+    },
+  });
+}
+
+// ===========================================================================
+// MATRIX HOOKS
+// ===========================================================================
+
+export function useMatrix(programId: number) {
+  return useQuery<AAPCompetenceMatrix>({
+    queryKey: programKeys.matrix(programId),
+    queryFn: () => programsApi.getMatrix(programId),
+    enabled: !!programId,
+  });
+}
+
+export function useUpdateMatrix() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    AAPCompetenceMatrix,
+    Error,
+    { programId: number; links: { competence_id: number; aap_ids: number[] }[] }
+  >({
+    mutationFn: ({ programId, links }) => programsApi.updateMatrix(programId, links),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.matrix(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.aaps(variables.programId) });
+      queryClient.invalidateQueries({ queryKey: programKeys.competences(variables.programId) });
+      toast.success('Matrice mise à jour avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de la mise à jour de la matrice');
     },
   });
 }

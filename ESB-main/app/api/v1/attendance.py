@@ -18,7 +18,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app.api.v1 import api_v1_bp
 from app import db
-from app.models import User, Course, Enrollment, AttendanceSession, AttendanceRecord
+from app.models import User, Course, Enrollment, AttendanceSession, AttendanceRecord, Classe
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,13 @@ def _course_access(course_id: int):
     return user, course, is_teacher, is_student
 
 
-def _enrolled_students(course_id: int):
+def _enrolled_students(course_id: int, class_id: int | None = None):
+    """Return enrolled students, optionally filtered by class."""
     enrollments = Enrollment.query.filter_by(course_id=course_id).all()
-    return [User.query.get(e.student_id) for e in enrollments]
+    students = [User.query.get(e.student_id) for e in enrollments]
+    if class_id is not None:
+        students = [s for s in students if s and s.class_id == class_id]
+    return [s for s in students if s]
 
 
 # ─── Sessions ─────────────────────────────────────────────────────────────────
@@ -46,11 +50,16 @@ def list_attendance_sessions(course_id):
     if not is_teacher and not is_student:
         return jsonify({'error': 'Access denied'}), 403
 
-    sessions = (AttendanceSession.query
+    class_id = request.args.get('class_id', type=int)
+
+    sessions_q = (AttendanceSession.query
                 .filter_by(course_id=course_id)
-                .order_by(AttendanceSession.date.desc())
-                .all())
-    total_students = Enrollment.query.filter_by(course_id=course_id).count()
+                .order_by(AttendanceSession.date.desc()))
+    if class_id is not None:
+        sessions_q = sessions_q.filter_by(class_id=class_id)
+    sessions = sessions_q.all()
+
+    total_students = len(_enrolled_students(course_id, class_id))
 
     result = []
     for s in sessions:
@@ -81,14 +90,22 @@ def create_attendance_session(course_id):
     except ValueError:
         return jsonify({'error': 'Invalid date format (YYYY-MM-DD)'}), 400
 
+    class_id = data.get('class_id')
+    if class_id is not None:
+        class_id = int(class_id)
+        if not Classe.query.get(class_id):
+            return jsonify({'error': 'Class not found'}), 404
+
     session = AttendanceSession(course_id=course_id, title=title, date=session_date)
+    if class_id is not None:
+        session.class_id = class_id
     activities = data.get('activities_covered', [])
     session.activities_covered = json.dumps(activities) if activities else None
     db.session.add(session)
     db.session.flush()
 
-    # Pre-populate records as absent for all enrolled students
-    students = _enrolled_students(course_id)
+    # Pre-populate records for enrolled students (filtered by class if provided)
+    students = _enrolled_students(course_id, class_id)
     for s in students:
         db.session.add(AttendanceRecord(session_id=session.id, student_id=s.id, status='absent'))
 
@@ -144,7 +161,8 @@ def get_session_records(course_id, session_id):
         return jsonify({'error': 'Access denied'}), 403
 
     session = AttendanceSession.query.filter_by(id=session_id, course_id=course_id).first_or_404()
-    students = _enrolled_students(course_id)
+    class_id = request.args.get('class_id', type=int)
+    students = _enrolled_students(course_id, class_id)
 
     records = []
     for student in students:

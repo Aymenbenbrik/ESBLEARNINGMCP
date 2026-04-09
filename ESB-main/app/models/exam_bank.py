@@ -147,6 +147,7 @@ class ExamSession(db.Model):
 
     status         = db.Column(db.String(20), default='started')
     # started | submitted | graded | disqualified
+    is_preview     = db.Column(db.Boolean, default=False)
 
     # FaceID
     face_verified            = db.Column(db.Boolean, default=False)
@@ -192,6 +193,7 @@ class ExamSession(db.Model):
             'feedback_published':      self.feedback_published or False,
             'graded_at':               self.graded_at.isoformat() if self.graded_at else None,
             'violation_count':         len(self.violations),
+            'is_preview':              self.is_preview or False,
         }
         if include_answers:
             d['answers'] = [a.to_dict() for a in self.answers]

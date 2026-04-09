@@ -138,6 +138,7 @@ export interface QuestionBankFilters {
   bloom_level?: string;
   difficulty?: string;
   approved?: 'true' | 'false' | 'all';
+  category?: 'independent' | 'exercise' | 'practical' | 'all';
   limit?: number;
   offset?: number;
 }
@@ -309,4 +310,78 @@ export interface aaCodesResponse {
 export interface AAAOption {
   value: string;
   label: string;
+}
+
+// ============================================================================
+// EXERCISE TYPES
+// ============================================================================
+
+export interface QuestionBankExercise {
+  id: number;
+  title: string;
+  description: string | null;
+  exercise_type: 'consolidation' | 'tp' | 'exam';
+  status: 'draft' | 'approved';
+  total_points: number | null;
+  estimated_duration_min: number | null;
+  aa_codes: string[] | null;
+  bloom_levels: string[] | null;
+  progression_notes: string | null;
+  chapter_id: number | null;
+  chapter_title: string | null;
+  question_count: number;
+  approved_at: string | null;
+  created_at: string | null;
+}
+
+export interface ExercisesListResponse {
+  exercises: QuestionBankExercise[];
+  total: number;
+}
+
+// ============================================================================
+// EXERCISE QUIZ TYPES (Feature 3)
+// ============================================================================
+
+export interface StartExerciseResponse {
+  message: string;
+  quiz: {
+    id: number;
+    course_id: number;
+    chapter_id: number;
+    exercise_id: number;
+    exercise_title: string;
+    num_questions: number;
+    created_at: string;
+  };
+  questions: Array<{
+    id: number;
+    question_text: string;
+    question_type: string;
+    choice_a: string | null;
+    choice_b: string | null;
+    choice_c: string | null;
+    bloom_level: string;
+    difficulty: string;
+  }>;
+}
+
+export interface SubmitExerciseResponse {
+  message: string;
+  quiz_id: number;
+  exercise_id: number;
+  exercise_type: string;
+  score: number;
+  correct: number;
+  total: number;
+  is_tp: boolean;
+  results: Array<{
+    id: number;
+    question_text: string;
+    question_type: string;
+    student_choice: string;
+    correct_choice: string | null;
+    is_correct: boolean | null;
+    explanation: string | null;
+  }>;
 }

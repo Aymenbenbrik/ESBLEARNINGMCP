@@ -12,6 +12,11 @@ import {
   RemoveCourseFromProgramResponse,
   CreateClassData,
   CreateClassResponse,
+  ProgramAAP,
+  ProgramCompetence,
+  AAPCompetenceMatrix,
+  ExtractDescriptorResult,
+  ProcessDescriptorResult,
 } from '../types/admin';
 
 const BASE_URL = '/api/v1/programs';
@@ -97,5 +102,147 @@ export const programsApi = {
       data
     );
     return response.data;
+  },
+
+  // =========================================================================
+  // DESCRIPTOR
+  // =========================================================================
+
+  /**
+   * Upload a descriptor file (.docx) for a program
+   */
+  uploadDescriptor: async (programId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    // Let Axios auto-set Content-Type with multipart boundary (remove default json header)
+    const { data } = await apiClient.post(
+      `${BASE_URL}/${programId}/upload-descriptor`,
+      formData,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { headers: { 'Content-Type': undefined as any } }
+    );
+    return data;
+  },
+
+  /**
+   * Extract AAP & competences from uploaded descriptor
+   */
+  extractDescriptor: async (programId: number): Promise<ExtractDescriptorResult> => {
+    const { data } = await apiClient.post<ExtractDescriptorResult>(
+      `${BASE_URL}/${programId}/extract-descriptor`
+    );
+    return data;
+  },
+
+  /**
+   * Process descriptor: full agentic AI pipeline
+   */
+  processDescriptor: async (programId: number): Promise<ProcessDescriptorResult> => {
+    const { data } = await apiClient.post<ProcessDescriptorResult>(
+      `${BASE_URL}/${programId}/process-descriptor`
+    );
+    return data;
+  },
+
+  // =========================================================================
+  // AAP
+  // =========================================================================
+
+  listAAPs: async (programId: number): Promise<ProgramAAP[]> => {
+    const { data } = await apiClient.get<ProgramAAP[]>(`${BASE_URL}/${programId}/aap`);
+    return data;
+  },
+
+  createAAP: async (
+    programId: number,
+    payload: { code: string; description: string; order: number }
+  ): Promise<ProgramAAP> => {
+    const { data } = await apiClient.post<ProgramAAP>(`${BASE_URL}/${programId}/aap`, payload);
+    return data;
+  },
+
+  updateAAP: async (
+    programId: number,
+    aapId: number,
+    payload: { code?: string; description?: string; order?: number }
+  ): Promise<ProgramAAP> => {
+    const { data } = await apiClient.put<ProgramAAP>(
+      `${BASE_URL}/${programId}/aap/${aapId}`,
+      payload
+    );
+    return data;
+  },
+
+  deleteAAP: async (programId: number, aapId: number): Promise<{ message: string }> => {
+    const { data } = await apiClient.delete<{ message: string }>(
+      `${BASE_URL}/${programId}/aap/${aapId}`
+    );
+    return data;
+  },
+
+  // =========================================================================
+  // COMPETENCES
+  // =========================================================================
+
+  listCompetences: async (programId: number): Promise<ProgramCompetence[]> => {
+    const { data } = await apiClient.get<ProgramCompetence[]>(
+      `${BASE_URL}/${programId}/competences`
+    );
+    return data;
+  },
+
+  createCompetence: async (
+    programId: number,
+    payload: { code: string; description: string }
+  ): Promise<ProgramCompetence> => {
+    const { data } = await apiClient.post<ProgramCompetence>(
+      `${BASE_URL}/${programId}/competences`,
+      payload
+    );
+    return data;
+  },
+
+  updateCompetence: async (
+    programId: number,
+    compId: number,
+    payload: { code?: string; description?: string }
+  ): Promise<ProgramCompetence> => {
+    const { data } = await apiClient.put<ProgramCompetence>(
+      `${BASE_URL}/${programId}/competences/${compId}`,
+      payload
+    );
+    return data;
+  },
+
+  deleteCompetence: async (
+    programId: number,
+    compId: number
+  ): Promise<{ message: string }> => {
+    const { data } = await apiClient.delete<{ message: string }>(
+      `${BASE_URL}/${programId}/competences/${compId}`
+    );
+    return data;
+  },
+
+  // =========================================================================
+  // MATRIX
+  // =========================================================================
+
+  getMatrix: async (programId: number): Promise<AAPCompetenceMatrix> => {
+    const { data } = await apiClient.get<AAPCompetenceMatrix>(
+      `${BASE_URL}/${programId}/aap-competence-matrix`
+    );
+    return data;
+  },
+
+  updateMatrix: async (
+    programId: number,
+    links: { competence_id: number; aap_ids: number[] }[]
+  ): Promise<AAPCompetenceMatrix> => {
+    const { data } = await apiClient.put<AAPCompetenceMatrix>(
+      `${BASE_URL}/${programId}/aap-competence-matrix`,
+      { links }
+    );
+    return data;
   },
 };

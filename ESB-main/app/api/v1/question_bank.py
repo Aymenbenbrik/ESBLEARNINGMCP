@@ -9,8 +9,10 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import (
     Course, Chapter, User, QuestionBankQuestion, Quiz, QuizQuestion,
-    Document, Enrollment, TNAA, TNSection, TNChapter, Syllabus
+    Document, Enrollment, TNAA, TNSection, TNChapter, Syllabus,
+    PracticeQuiz, PracticeQuizQuestion,
 )
+from app.models.pipeline import QuestionBankExercise
 from app.api.v1.utils import get_current_user, teacher_required, parse_int_list, parse_string_list
 from app.services.ai_service import generate_quiz_questions
 from sqlalchemy import func, or_
@@ -38,6 +40,7 @@ def list_questions():
         difficulty: Optional - Difficulty level
         approved: Optional - Filter by approval status ('true', 'false', 'all')
         mine_only: Optional - Show only questions approved by current teacher ('true', 'false')
+        category: Optional - Filter by category ('independent', 'exercise', 'practical', 'all')
         limit: Optional - Results per page (default 50, max 100)
         offset: Optional - Pagination offset (default 0)
 
@@ -103,6 +106,22 @@ def list_questions():
         if mine_only and (user.is_teacher or user.is_superuser):
             query = query.filter(QuestionBankQuestion.approved_by_id == user.id)
 
+        # Category filter
+        category = request.args.get('category', 'all').lower()
+        if category == 'independent':
+            query = query.filter(QuestionBankQuestion.exercise_id.is_(None))
+            query = query.filter(QuestionBankQuestion.question_type.notin_(['code']))
+        elif category == 'exercise':
+            query = query.filter(QuestionBankQuestion.exercise_id.isnot(None))
+        elif category == 'practical':
+            query = query.filter(
+                or_(
+                    QuestionBankQuestion.question_type == 'code',
+                    QuestionBankQuestion.programming_language.isnot(None)
+                )
+            )
+            query = query.filter(QuestionBankQuestion.exercise_id.is_(None))
+
         # Pagination
         limit = min(request.args.get('limit', 50, type=int), 100)
         offset = request.args.get('offset', 0, type=int)
@@ -154,6 +173,59 @@ def list_questions():
     except Exception as e:
         logger.error(f"Error listing questions: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@question_bank_api_bp.route('/exercises', methods=['GET'])
+@jwt_required()
+def list_exercises():
+    """List exercises (grouped dependent questions) for a course."""
+    user = get_current_user()
+    if not user or (not user.is_teacher and not user.is_superuser):
+        return jsonify({'error': 'Accès réservé aux enseignants'}), 403
+
+    course_id = request.args.get('course_id', type=int)
+    if not course_id:
+        return jsonify({'error': 'course_id is required'}), 400
+
+    query = QuestionBankExercise.query.filter_by(course_id=course_id)
+
+    exercise_type = request.args.get('exercise_type', '').strip()
+    if exercise_type:
+        query = query.filter(QuestionBankExercise.exercise_type == exercise_type)
+
+    status = request.args.get('status', '').strip()
+    if status:
+        query = query.filter(QuestionBankExercise.status == status)
+
+    chapter_id = request.args.get('chapter_id', type=int)
+    if chapter_id:
+        query = query.filter(QuestionBankExercise.chapter_id == chapter_id)
+
+    exercises = query.order_by(QuestionBankExercise.created_at.desc()).all()
+
+    return jsonify({
+        'exercises': [
+            {
+                'id': ex.id,
+                'title': ex.title,
+                'description': ex.description,
+                'exercise_type': ex.exercise_type,
+                'status': ex.status,
+                'total_points': ex.total_points,
+                'estimated_duration_min': ex.estimated_duration_min,
+                'aa_codes': ex.aa_codes,
+                'bloom_levels': ex.bloom_levels,
+                'progression_notes': ex.progression_notes,
+                'chapter_id': ex.chapter_id,
+                'chapter_title': Chapter.query.get(ex.chapter_id).title if ex.chapter_id else None,
+                'question_count': QuestionBankQuestion.query.filter_by(exercise_id=ex.id).count(),
+                'approved_at': ex.approved_at.isoformat() if ex.approved_at else None,
+                'created_at': ex.created_at.isoformat() if ex.created_at else None,
+            }
+            for ex in exercises
+        ],
+        'total': len(exercises),
+    }), 200
 
 
 @question_bank_api_bp.route('/debug/stats', methods=['GET'])
@@ -269,7 +341,9 @@ def approve_questions():
 
         # Verify course access
         course = Course.query.get_or_404(course_id)
-        if course.teacher_id != user.id and not user.is_superuser:
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
             return jsonify({'error': 'Access denied'}), 403
 
         # Process questions
@@ -359,7 +433,9 @@ def generate_questions_bga():
 
         # Verify course access
         course = Course.query.get_or_404(course_id)
-        if course.teacher_id != user.id and not user.is_superuser:
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
             return jsonify({'error': 'Access denied'}), 403
 
         chapter = Chapter.query.get_or_404(chapter_id)
@@ -462,7 +538,9 @@ def generate_questions_tn(course_id):
 
         # Verify course access
         course = Course.query.get_or_404(course_id)
-        if course.teacher_id != user.id and not user.is_superuser:
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
             return jsonify({'error': 'Access denied'}), 403
 
         if not selections:
@@ -596,7 +674,9 @@ def approve_tn_questions(course_id):
 
         # Verify course access
         course = Course.query.get_or_404(course_id)
-        if course.teacher_id != user.id and not user.is_superuser:
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin_only = user.is_superuser and not user.is_teacher
+        if not is_owner and not is_admin_only:
             return jsonify({'error': 'Access denied'}), 403
 
         approved_count = 0
@@ -783,28 +863,43 @@ def take_revision_quiz(course_id):
         # Get all matching questions
         available_questions = query.all()
 
-        if len(available_questions) < num_questions:
+        # Feature 6: prioritize approved bank questions, use what's available
+        if len(available_questions) >= num_questions:
+            selected_questions = random.sample(available_questions, num_questions)
+            source = 'bank'
+        elif len(available_questions) > 0:
+            selected_questions = available_questions
+            source = 'bank'
+            num_questions = len(selected_questions)
+        else:
             return jsonify({
-                'error': f'Insufficient questions. Found {len(available_questions)}, need {num_questions}'
+                'error': f'No approved questions found for this course with the given filters'
             }), 400
 
-        # Randomly select questions
-        selected_questions = random.sample(available_questions, num_questions)
+        # Determine chapter_id for the PracticeQuiz (required field).
+        # Use the first selected chapter, or the first chapter of the course.
+        if chapter_ids:
+            quiz_chapter_id = chapter_ids[0]
+        else:
+            first_chapter = Chapter.query.filter_by(course_id=course_id).order_by(Chapter.order).first()
+            if not first_chapter:
+                return jsonify({'error': 'Course has no chapters'}), 400
+            quiz_chapter_id = first_chapter.id
 
-        # Create quiz
-        quiz = Quiz(
-            student_id=user.id,
+        # Create practice quiz for revision
+        practice_quiz = PracticeQuiz(
             course_id=course_id,
-            title=f"Revision Quiz - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
-            quiz_type='revision'
+            chapter_id=quiz_chapter_id,
+            student_id=user.id,
+            num_questions=num_questions,
         )
-        db.session.add(quiz)
+        db.session.add(practice_quiz)
         db.session.flush()  # Get quiz ID
 
-        # Add questions to quiz
+        # Add questions to quiz (without answers for student)
         for q_bank_question in selected_questions:
-            question = QuizQuestion(
-                quiz_id=quiz.id,
+            question = PracticeQuizQuestion(
+                practice_quiz_id=practice_quiz.id,
                 question_text=q_bank_question.question_text,
                 question_type=q_bank_question.question_type,
                 choice_a=q_bank_question.choice_a,
@@ -814,23 +909,25 @@ def take_revision_quiz(course_id):
                 explanation=q_bank_question.explanation,
                 bloom_level=q_bank_question.bloom_level,
                 difficulty=q_bank_question.difficulty,
-                clo=q_bank_question.clo
+                clo=q_bank_question.clo,
+                source_question_id=q_bank_question.id,
             )
             db.session.add(question)
 
         db.session.commit()
 
         # Return quiz without answers
-        quiz_questions = QuizQuestion.query.filter_by(quiz_id=quiz.id).all()
+        quiz_questions = PracticeQuizQuestion.query.filter_by(practice_quiz_id=practice_quiz.id).all()
 
         return jsonify({
             'message': 'Revision quiz created',
+            'source': source,
             'quiz': {
-                'id': quiz.id,
-                'title': quiz.title,
-                'course_id': quiz.course_id,
-                'created_at': quiz.created_at.isoformat() if quiz.created_at else None,
-                'num_questions': len(quiz_questions)
+                'id': practice_quiz.id,
+                'course_id': practice_quiz.course_id,
+                'chapter_id': practice_quiz.chapter_id,
+                'created_at': practice_quiz.created_at.isoformat() if practice_quiz.created_at else None,
+                'num_questions': len(quiz_questions),
             },
             'questions': [
                 {
@@ -841,11 +938,11 @@ def take_revision_quiz(course_id):
                     'choice_b': q.choice_b if q.question_type == 'mcq' else None,
                     'choice_c': q.choice_c if q.question_type == 'mcq' else None,
                     'bloom_level': q.bloom_level,
-                    'difficulty': q.difficulty
+                    'difficulty': q.difficulty,
                     # Note: correct_choice is NOT included
                 }
                 for q in quiz_questions
-            ]
+            ],
         }), 200
 
     except Exception as e:
@@ -957,9 +1054,12 @@ def migrate_from_documents():
             query = query.filter(Document.course_id == course_id)
             # Verify teacher owns this course
             course = Course.query.get(course_id)
-            if course and course.teacher_id != user.id and not user.is_superuser:
-                return jsonify({'error': 'Access denied to this course'}), 403
-        elif user.is_teacher and not user.is_superuser:
+            if course:
+                is_owner = user.is_teacher and course.teacher_id == user.id
+                is_admin_only = user.is_superuser and not user.is_teacher
+                if not is_owner and not is_admin_only:
+                    return jsonify({'error': 'Access denied to this course'}), 403
+        elif user.is_teacher:
             # Teacher without course_id - only migrate their courses
             query = query.join(Course).filter(Course.teacher_id == user.id)
 
@@ -1033,4 +1133,221 @@ def migrate_from_documents():
     except Exception as e:
         db.session.rollback()
         logger.error(f"Migration failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Feature 3: Start & Submit exercise as quiz
+# ---------------------------------------------------------------------------
+
+@question_bank_api_bp.route('/exercises/<int:exercise_id>/start', methods=['POST'])
+@jwt_required()
+def start_exercise(exercise_id):
+    """
+    Start a QuestionBankExercise as a PracticeQuiz.
+    Creates a PracticeQuiz from the exercise's questions (in exercise_order).
+    Returns the quiz with questions (no answers for students).
+    """
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        exercise = QuestionBankExercise.query.get_or_404(exercise_id)
+
+        # Verify enrollment or teacher access
+        course = Course.query.get(exercise.course_id)
+        if not course:
+            return jsonify({'error': 'Course not found'}), 404
+
+        is_teacher = user.is_teacher and course.teacher_id == user.id
+        is_enrolled = bool(Enrollment.query.filter_by(
+            student_id=user.id, course_id=course.id
+        ).first())
+
+        if not is_teacher and not is_enrolled and not user.is_superuser:
+            return jsonify({'error': 'Access denied'}), 403
+
+        # Get exercise questions ordered by exercise_order
+        questions = QuestionBankQuestion.query.filter_by(
+            exercise_id=exercise_id
+        ).order_by(QuestionBankQuestion.exercise_order).all()
+
+        if not questions:
+            return jsonify({'error': 'Exercise has no questions'}), 400
+
+        # Determine chapter_id
+        chapter_id = exercise.chapter_id
+        if not chapter_id:
+            first_chapter = Chapter.query.filter_by(
+                course_id=exercise.course_id
+            ).order_by(Chapter.order).first()
+            chapter_id = first_chapter.id if first_chapter else None
+        if not chapter_id:
+            return jsonify({'error': 'No chapter found for this exercise'}), 400
+
+        # Create PracticeQuiz
+        practice_quiz = PracticeQuiz(
+            course_id=exercise.course_id,
+            chapter_id=chapter_id,
+            student_id=user.id,
+            num_questions=len(questions),
+        )
+        db.session.add(practice_quiz)
+        db.session.flush()
+
+        # Copy questions to PracticeQuizQuestion (respecting exercise_order)
+        for q in questions:
+            pq = PracticeQuizQuestion(
+                practice_quiz_id=practice_quiz.id,
+                question_text=q.question_text,
+                question_type=q.question_type,
+                choice_a=q.choice_a,
+                choice_b=q.choice_b,
+                choice_c=q.choice_c,
+                correct_choice=q.correct_choice,
+                explanation=q.explanation,
+                bloom_level=q.bloom_level,
+                difficulty=q.difficulty,
+                clo=q.clo,
+                source_question_id=q.id,
+            )
+            db.session.add(pq)
+
+        db.session.commit()
+
+        quiz_questions = PracticeQuizQuestion.query.filter_by(
+            practice_quiz_id=practice_quiz.id
+        ).all()
+
+        return jsonify({
+            'message': 'Exercise quiz started',
+            'quiz': {
+                'id': practice_quiz.id,
+                'course_id': practice_quiz.course_id,
+                'chapter_id': practice_quiz.chapter_id,
+                'exercise_id': exercise_id,
+                'exercise_title': exercise.title,
+                'num_questions': len(quiz_questions),
+                'created_at': practice_quiz.created_at.isoformat() if practice_quiz.created_at else None,
+            },
+            'questions': [
+                {
+                    'id': q.id,
+                    'question_text': q.question_text,
+                    'question_type': q.question_type,
+                    'choice_a': q.choice_a if q.question_type in ('mcq', 'true_false') else None,
+                    'choice_b': q.choice_b if q.question_type in ('mcq', 'true_false') else None,
+                    'choice_c': q.choice_c if q.question_type in ('mcq', 'true_false') else None,
+                    'bloom_level': q.bloom_level,
+                    'difficulty': q.difficulty,
+                }
+                for q in quiz_questions
+            ],
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error starting exercise: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@question_bank_api_bp.route('/exercises/<int:exercise_id>/submit', methods=['POST'])
+@jwt_required()
+def submit_exercise(exercise_id):
+    """
+    Submit answers for an exercise quiz.
+    Accepts answers, grades them.
+    For TP exercises: records score for gradebook integration.
+
+    Request Body:
+        {
+            "quiz_id": 123,
+            "answers": {
+                "<question_id>": "A" | "B" | "C" | "<open_ended_text>"
+            }
+        }
+    """
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        exercise = QuestionBankExercise.query.get_or_404(exercise_id)
+        data = request.get_json()
+        quiz_id = data.get('quiz_id')
+        answers = data.get('answers', {})
+
+        if not quiz_id:
+            return jsonify({'error': 'quiz_id is required'}), 400
+
+        practice_quiz = PracticeQuiz.query.get_or_404(quiz_id)
+
+        # Verify ownership
+        if practice_quiz.student_id != user.id:
+            return jsonify({'error': 'Access denied'}), 403
+
+        if practice_quiz.completed_at:
+            return jsonify({'error': 'Quiz already submitted'}), 400
+
+        # Grade the questions
+        quiz_questions = PracticeQuizQuestion.query.filter_by(
+            practice_quiz_id=practice_quiz.id
+        ).all()
+
+        correct_count = 0
+        total = len(quiz_questions)
+        results = []
+
+        for q in quiz_questions:
+            student_answer = answers.get(str(q.id), '')
+            q.student_choice = student_answer
+
+            if q.question_type in ('mcq', 'true_false'):
+                is_correct = (
+                    student_answer.strip().upper() == (q.correct_choice or '').strip().upper()
+                )
+                q.is_correct = is_correct
+                if is_correct:
+                    correct_count += 1
+            else:
+                # Open-ended: mark as pending (teacher grades manually)
+                q.is_correct = None
+
+            results.append({
+                'id': q.id,
+                'question_text': q.question_text,
+                'question_type': q.question_type,
+                'student_choice': student_answer,
+                'correct_choice': q.correct_choice,
+                'is_correct': q.is_correct,
+                'explanation': q.explanation,
+            })
+
+        # Calculate score
+        mcq_questions = [q for q in quiz_questions if q.question_type in ('mcq', 'true_false')]
+        if mcq_questions:
+            score = round((correct_count / len(mcq_questions)) * 100, 2)
+        else:
+            score = 0.0
+
+        practice_quiz.score = score
+        practice_quiz.completed_at = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Exercise submitted',
+            'quiz_id': practice_quiz.id,
+            'exercise_id': exercise_id,
+            'exercise_type': exercise.exercise_type,
+            'score': score,
+            'correct': correct_count,
+            'total': total,
+            'is_tp': exercise.exercise_type == 'tp',
+            'results': results,
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error submitting exercise: {e}")
         return jsonify({'error': str(e)}), 500

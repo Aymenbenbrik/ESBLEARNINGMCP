@@ -17,19 +17,27 @@ export function Navbar() {
 
   if (!isAuthenticated) return null;
 
-  const navLinks = [
-    { href: '/dashboard', label: 'Home', roles: ['all'] },
-    { href: '/courses', label: 'Modules', roles: ['all'] },
-    { href: '/question-bank', label: 'Question Bank', roles: ['all'] },
-    { href: '/classes', label: 'Classes', roles: ['all'] },
-    {
-      href: user?.is_teacher ? '/teacher-dashboard' : '/student-dashboard',
-      label: 'My Dashboard',
-      roles: ['all'],
-    },
-    { href: '/students', label: 'Students', roles: ['teacher'] },
-    { href: '/admin/programs', label: 'Admin', roles: ['superuser'] },
-  ];
+  const isAdmin = !!user?.is_superuser;
+  const isTeacher = !!user?.is_teacher;
+
+  const navLinks = isAdmin && !isTeacher
+    ? [
+        { href: '/dashboard', label: 'Accueil', roles: ['all'] as string[] },
+        { href: '/admin/programs', label: 'Administration', roles: ['all'] as string[] },
+      ]
+    : [
+        { href: '/dashboard', label: 'Accueil', roles: ['all'] as string[] },
+        { href: '/courses', label: 'Modules', roles: ['all'] as string[] },
+        { href: '/question-bank', label: 'Banque de questions', roles: ['all'] as string[] },
+        { href: '/classes', label: 'Classes', roles: ['all'] as string[] },
+        {
+          href: isTeacher ? '/teacher-dashboard' : '/student-dashboard',
+          label: 'Mon Dashboard',
+          roles: ['all'] as string[],
+        },
+        { href: '/students', label: 'Étudiants', roles: ['teacher'] as string[] },
+        { href: '/admin/programs', label: 'Admin', roles: ['superuser'] as string[] },
+      ];
 
   const filteredLinks = navLinks.filter((link) => {
     if (link.roles.includes('all')) return true;
@@ -79,7 +87,7 @@ export function Navbar() {
 
           {/* Right Side */}
           <div className="flex items-center gap-2">
-            {/* New Module Button (Teachers only) */}
+            {/* New Module Button (Teachers only, not admin-only) */}
             {user?.is_teacher && (
               <Button
                 asChild

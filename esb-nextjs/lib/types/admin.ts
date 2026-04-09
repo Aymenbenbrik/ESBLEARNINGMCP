@@ -7,22 +7,101 @@ import { User } from './course';
 export interface Program {
   id: number;
   name: string;
+  code?: string | null;
   description: string | null;
+  program_type?: string;
   created_at: string;
   courses_count: number;
   classes_count: number;
+  aaps_count?: number;
+  competences_count?: number;
+}
+
+export interface ProgramAAP {
+  id: number;
+  program_id: number;
+  code: string;
+  description: string;
+  order: number;
+  competence_ids: number[];
+}
+
+export interface ProgramCompetence {
+  id: number;
+  program_id: number;
+  code: string;
+  description: string;
+  aap_ids: number[];
+}
+
+export interface AAPCompetenceMatrix {
+  aaps: ProgramAAP[];
+  competences: ProgramCompetence[];
+  matrix: {
+    competence: ProgramCompetence;
+    aap_links: boolean[];
+  }[];
+}
+
+export interface ExtractDescriptorResult {
+  message: string;
+  result: { aaps_count: number; competences_count: number; links_count: number; courses_linked?: number };
+  extracted: {
+    aaps: { code: string; denomination: string; description: string }[];
+    competences: { code: string; description: string; nature: string }[];
+    matrix: { competence_code: string; aap_codes: string[] }[];
+    study_plan?: { name: string; semester: number; ue: string }[];
+  };
+}
+
+export interface PipelineStep {
+  agent: string;
+  status: string;
+  details: Record<string, unknown>;
+}
+
+export interface PipelineTeacher {
+  name: string;
+  username: string;
+  password?: string;
+  email: string;
+  id: number;
+}
+
+export interface PipelineModule {
+  course_id: number;
+  title: string;
+  code: string;
+  semester: number;
+  ue: string;
+  teacher_id: number;
+  teacher_name: string;
+  course_link: string;
+}
+
+export interface ProcessDescriptorResult {
+  message: string;
+  steps: PipelineStep[];
+  modules_table: PipelineModule[];
+  teachers_created: PipelineTeacher[];
 }
 
 export interface ProgramDetails {
   program: {
     id: number;
     name: string;
+    code?: string | null;
     description: string | null;
+    program_type?: string;
+    descriptor_file?: string;
+    descriptor_uploaded_at?: string;
     created_at: string;
     courses_count: number;
     classes_count: number;
     courses: ProgramCourse[];
     classes: ProgramClass[];
+    aaps: ProgramAAP[];
+    competences: ProgramCompetence[];
   };
 }
 
@@ -163,16 +242,65 @@ export interface AdminDashboardResponse {
 
 export interface CreateProgramData {
   name: string;
+  code?: string;
   description?: string;
+  program_type?: string;
 }
 
 export interface UpdateProgramData {
   name?: string;
+  code?: string;
   description?: string;
+  program_type?: string;
 }
 
 export interface CreateClassData {
   name: string;
+}
+
+// ============================================================================
+// ADMIN CLASS MANAGEMENT TYPES
+// ============================================================================
+
+export interface AdminClassListItem {
+  id: number;
+  name: string;
+  description: string | null;
+  academic_year: string | null;
+  program_id: number | null;
+  program_name: string | null;
+  students_count: number;
+  courses_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AdminClassesListResponse {
+  classes: AdminClassListItem[];
+  total: number;
+}
+
+export interface AdminCreateClassData {
+  name: string;
+  description?: string;
+  academic_year?: string;
+  program_id?: number | null;
+}
+
+export interface AdminUpdateClassData {
+  name?: string;
+  description?: string;
+  academic_year?: string;
+  program_id?: number | null;
+}
+
+export interface AdminClassMutationResponse {
+  message: string;
+  class: AdminClassListItem;
+}
+
+export interface AdminDeleteClassResponse {
+  message: string;
 }
 
 export interface TeacherAssignment {
@@ -186,6 +314,52 @@ export interface AssignTeachersData {
 
 export interface UpdateClassStudentsData {
   student_ids: number[];
+}
+
+// ============================================================================
+// TEACHER MANAGEMENT TYPES
+// ============================================================================
+
+export interface AdminTeacher {
+  id: number;
+  username: string;
+  email: string;
+  is_superuser: boolean;
+  created_at: string | null;
+  courses_count: number;
+  students_count: number;
+}
+
+export interface TeachersListResponse {
+  teachers: AdminTeacher[];
+  total: number;
+}
+
+export interface CreateTeacherData {
+  username: string;
+  email: string;
+  password?: string;
+}
+
+export interface CreateTeacherResponse {
+  message: string;
+  teacher: AdminTeacher & { password: string };
+}
+
+export interface UpdateTeacherData {
+  username?: string;
+  email?: string;
+  is_superuser?: boolean;
+}
+
+export interface UpdateTeacherResponse {
+  message: string;
+  teacher: AdminTeacher;
+}
+
+export interface ResetTeacherPasswordResponse {
+  message: string;
+  password: string;
 }
 
 export interface AddCourseToProgramData {

@@ -146,6 +146,9 @@ function ActivityCard({
   canEdit: boolean;
   onDelete: (id: number) => void;
 }) {
+  // Virtual exercise activities (string IDs) are not editable/deletable here
+  const numericId = typeof activity.id === 'number' ? activity.id : null;
+
   return (
     <div className="group flex items-center gap-2 rounded-xl border border-bolt-line bg-white px-3 py-2.5 hover:border-gray-300 hover:shadow-sm transition-all">
       <span className="shrink-0">{activityIcon(activity.activity_type)}</span>
@@ -158,15 +161,15 @@ function ActivityCard({
         </p>
         <p className="text-xs text-muted-foreground">{activityLabel(activity.activity_type)}</p>
       </Link>
-      {canEdit && (
+      {canEdit && numericId && (
         <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <EditableTitle
-            activityId={activity.id}
+            activityId={numericId}
             sectionId={sectionId}
             currentTitle={activity.title || ''}
           />
           <button
-            onClick={() => onDelete(activity.id)}
+            onClick={() => onDelete(numericId)}
             className="rounded-full p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
             title="Supprimer"
           >

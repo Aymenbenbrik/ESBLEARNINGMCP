@@ -273,21 +273,25 @@ export const sectionQuizApi = {
     await apiClient.delete(`/api/v1/sections/${sectionId}/quiz`);
   },
 
-  take: async (sectionId: number, password?: string): Promise<TakeQuizResponse> => {
-    const params = password ? `?password=${encodeURIComponent(password)}` : '';
+  take: async (sectionId: number, password?: string, isPreview?: boolean): Promise<TakeQuizResponse> => {
+    const params = new URLSearchParams();
+    if (password) params.set('password', password);
+    if (isPreview) params.set('is_preview', '1');
+    const qs = params.toString() ? `?${params.toString()}` : '';
     const res = await apiClient.get<TakeQuizResponse>(
-      `/api/v1/sections/${sectionId}/quiz/take${params}`
+      `/api/v1/sections/${sectionId}/quiz/take${qs}`
     );
     return res.data;
   },
 
   submit: async (
     sectionId: number,
-    answers: Record<string, string>
+    answers: Record<string, string>,
+    isPreview?: boolean
   ): Promise<SubmitQuizResponse> => {
     const res = await apiClient.post<SubmitQuizResponse>(
       `/api/v1/sections/${sectionId}/quiz/submit`,
-      { answers }
+      { answers, ...(isPreview ? { is_preview: true } : {}) }
     );
     return res.data;
   },

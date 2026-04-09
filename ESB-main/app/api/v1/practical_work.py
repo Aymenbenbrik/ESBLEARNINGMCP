@@ -237,6 +237,9 @@ def generate_tp_statement_endpoint(tp_id):
         from app.services.mcp_tools import get_section_context, generate_tp_statement
 
         ctx = get_section_context(tp.section_id)
+        if not ctx.get('context'):
+            return jsonify({'error': 'Aucun contenu trouvé pour cette section. Ajoutez du contenu avant de générer.'}), 400
+
         result = generate_tp_statement(
             context=ctx.get('context', ''),
             language=tp.language,
@@ -245,8 +248,9 @@ def generate_tp_statement_endpoint(tp_id):
 
         tp.statement = result.get('statement', '')
         tp.statement_source = 'ai'
-        if result.get('title') and tp.title == tp.title:
-            tp.title = result.get('title', tp.title)
+        title = result.get('title', '')
+        if title and len(title) > 2:
+            tp.title = title
         tp.updated_at = datetime.utcnow()
         db.session.commit()
 
@@ -257,7 +261,8 @@ def generate_tp_statement_endpoint(tp_id):
         })
     except Exception as e:
         logger.error(f"generate_statement error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        db.session.rollback()
+        return jsonify({'error': f'Erreur de génération AI: {str(e)}'}), 500
 
 
 @api_v1_bp.route('/practical-work/<int:tp_id>/suggest-aa', methods=['POST'])

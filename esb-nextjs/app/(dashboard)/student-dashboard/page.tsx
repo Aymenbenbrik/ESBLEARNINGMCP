@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useStudentDashboard } from '@/lib/hooks/useDashboards';
+import { useMyProgress } from '@/lib/hooks/useProgress';
 import { DashboardCharts } from '@/components/courses/DashboardCharts';
+import { CourseProgressBar } from '@/components/courses/CourseProgressBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquare, BarChart3 } from 'lucide-react';
+import { Loader2, MessageSquare, BarChart3, Sparkles, Award, Calendar } from 'lucide-react';
 
 function StatCard({ label, value, subText }: { label: string; value: string; subText?: string }) {
   return (
@@ -26,7 +28,17 @@ export default function StudentDashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   const studentId = user?.id ?? 0;
 
+  const { data: progressData } = useMyProgress();
+
   const { data, isLoading } = useStudentDashboard(studentId);
+
+  // Build progress map
+  const progressMap = new Map<number, number>();
+  if (progressData?.progress) {
+    for (const p of progressData.progress) {
+      progressMap.set(p.course_id, p.overall_progress);
+    }
+  }
 
   if (authLoading || isLoading) {
     return (
@@ -66,6 +78,24 @@ export default function StudentDashboardPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/student-dashboard/recommendations">
+              <Sparkles className="h-4 w-4 mr-2" />
+              Coach IA
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/grades">
+              <Award className="h-4 w-4 mr-2" />
+              Notes
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/absences">
+              <Calendar className="h-4 w-4 mr-2" />
+              Absences
+            </Link>
+          </Button>
           <Button asChild variant="outline">
             <Link href="/classes">
               <BarChart3 className="h-4 w-4 mr-2" />
@@ -109,6 +139,7 @@ export default function StudentDashboardPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left py-2 px-3 text-sm text-muted-foreground">Course</th>
+                    <th className="text-left py-2 px-3 text-sm text-muted-foreground">Progression</th>
                     <th className="text-right py-2 px-3 text-sm text-muted-foreground">Quizzes</th>
                     <th className="text-right py-2 px-3 text-sm text-muted-foreground">Completion</th>
                     <th className="text-right py-2 px-3 text-sm text-muted-foreground">Avg score</th>
@@ -119,6 +150,12 @@ export default function StudentDashboardPage() {
                   {data.courses.map((c) => (
                     <tr key={c.id} className="border-b last:border-b-0">
                       <td className="py-2 px-3 font-medium">{c.title}</td>
+                      <td className="py-2 px-3 w-36">
+                        <CourseProgressBar
+                          progress={progressMap.get(c.id) ?? c.completion_rate}
+                          size="sm"
+                        />
+                      </td>
                       <td className="py-2 px-3 text-right">{c.quizzes_completed}/{c.total_quizzes}</td>
                       <td className="py-2 px-3 text-right">{c.completion_rate.toFixed(1)}%</td>
                       <td className="py-2 px-3 text-right">{c.avg_score.toFixed(1)}%</td>

@@ -26,6 +26,7 @@ import {
 const SurveyQuizBuilder = dynamic(() => import('./SurveyQuizBuilder'), { ssr: false });
 const SurveyQuizPlayer = dynamic(() => import('./SurveyQuizPlayer'), { ssr: false });
 import { SectionActivity, SectionQuiz, SectionQuizQuestion, SectionQuizSubmissionDetailed, GradedAnswer, SubmitQuizResponse } from '@/lib/types/references';
+import { useStartExercise, useSubmitExercise } from '@/lib/hooks/useQuestionBank';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -58,6 +59,8 @@ import {
   FileCode2,
   GripVertical,
   ArrowRightLeft,
+  Eye,
+  Dumbbell,
 } from 'lucide-react';
 import {
   DndContext,
@@ -89,6 +92,11 @@ interface SectionActivitiesProps {
   sectionId: number;
   canEdit: boolean;
   allSections?: Array<{ id: number; title: string; index: number | string }>;
+}
+
+// Helper to ensure activity IDs are numbers
+function numId(id: number | string): number {
+  return typeof id === 'string' ? parseInt(id, 10) : id;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -580,11 +588,17 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
   const deleteMutation = useDeleteSectionQuiz(sectionId);
   const [activeTab, setActiveTab] = useState<'questions' | 'results' | 'config' | 'builder'>('questions');
   const [showBankForm, setShowBankForm] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
 
   const questions = quiz.questions ?? [];
   const approvedCount = questions.filter((q) => q.status === 'approved').length;
   const isPublished = quiz.status === 'published';
   const totalPoints = questions.filter(q => q.status === 'approved').reduce((s, q) => s + (q.points ?? 1), 0);
+
+  // If teacher activated preview mode, show the quiz taker
+  if (previewMode && isPublished) {
+    return <SectionQuizTaker sectionId={sectionId} quiz={quiz} isPreview onExitPreview={() => setPreviewMode(false)} />;
+  }
 
   return (
     <div className="mt-2 rounded-[14px] border border-bolt-line bg-white overflow-hidden">
@@ -598,6 +612,13 @@ function SectionQuizManager({ quiz, sectionId }: { quiz: SectionQuiz; sectionId:
           </Badge>
         </div>
         <div className="flex gap-1.5 flex-wrap">
+          {isPublished && approvedCount > 0 && (
+            <Button size="sm" variant="outline" className="h-7 rounded-full px-3 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+              onClick={() => setPreviewMode(true)}>
+              <Eye className="mr-1 h-3 w-3" />
+              Vérifier le quiz
+            </Button>
+          )}
           {!isPublished && approvedCount > 0 && (
             <Button size="sm" className="h-7 rounded-full px-3 text-xs"
               onClick={() => publishMutation.mutate()} disabled={publishMutation.isPending}>
@@ -1165,11 +1186,11 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: SectionQuiz }) {
+function SectionQuizTaker({ sectionId, quiz, isPreview = false, onExitPreview }: { sectionId: number; quiz: SectionQuiz; isPreview?: boolean; onExitPreview?: () => void }) {
   // Password state
   const [passwordInput, setPasswordInput] = useState('');
   const [activePassword, setActivePassword] = useState<string | undefined>(
-    quiz.password_protected ? undefined : ''
+    (quiz.password_protected && !isPreview) ? undefined : ''
   );
   // Quiz UI state
   const [taking, setTaking]         = useState(false);
@@ -1184,13 +1205,14 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
   const answersRef = useRef(answers);
   answersRef.current = answers;
 
-  const submitMutation = useSubmitSectionQuiz(sectionId);
+  const submitMutation = useSubmitSectionQuiz(sectionId, isPreview);
 
-  // Fetch quiz data (enabled only once we have a password token — or immediately for unprotected)
+  // Fetch quiz data (enabled only once we have a password token — or immediately for unprotected/preview)
   const { data: takeData, isLoading, isError } = useTakeQuiz(
     sectionId,
     activePassword || undefined,
-    activePassword !== undefined
+    activePassword !== undefined,
+    isPreview
   );
 
   // Fetch survey JSON for SurveyJS player path
@@ -1295,8 +1317,8 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
 
   /* ── Submitted this session ───────────────────────────────────────────────── */
   if (submitted && result) {
-    const showFeedback = quiz.show_feedback !== false;
-    const attemptsRemaining = result.attempts_remaining ?? 0;
+    const showFeedback = quiz.show_feedback !== false || isPreview;
+    const attemptsRemaining = isPreview ? 0 : (result.attempts_remaining ?? 0);
 
     if (!showFeedback) {
       return (
@@ -1324,6 +1346,15 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
 
     return (
       <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-5">
+        {isPreview && (
+          <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm mb-4">
+            <AlertTriangle className="h-5 w-5 flex-shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">MODE VÉRIFICATION</p>
+              <p className="text-xs text-amber-700">Les résultats ne seront pas comptabilisés</p>
+            </div>
+          </div>
+        )}
         <div className="text-center mb-5">
           <div className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full ${
             color === 'emerald' ? 'bg-emerald-100' : color === 'amber' ? 'bg-amber-100' : 'bg-red-100'
@@ -1333,7 +1364,7 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
               : <BookOpen className="h-7 w-7 text-amber-600" />
             }
           </div>
-          <p className="font-bold text-lg text-bolt-ink">Quiz soumis !</p>
+          <p className="font-bold text-lg text-bolt-ink">{isPreview ? 'Vérification terminée' : 'Quiz soumis !'}</p>
           <p className={`text-2xl font-bold mt-1 ${color === 'emerald' ? 'text-emerald-600' : color === 'amber' ? 'text-amber-500' : 'text-red-500'}`}>
             {score.toFixed(1)} / {maxScore}
           </p>
@@ -1379,7 +1410,12 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
             })}
           </div>
         )}
-        {attemptsRemaining > 0 && (
+        {isPreview && onExitPreview && (
+          <Button className="mt-4 w-full rounded-full" variant="outline" onClick={onExitPreview}>
+            ← Retour à la gestion du quiz
+          </Button>
+        )}
+        {!isPreview && attemptsRemaining > 0 && (
           <Button className="mt-4 w-full rounded-full" variant="outline"
             onClick={() => { setAnswers({}); setCurrentQ(0); setSubmitted(false); setResult(null); }}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -1432,14 +1468,23 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
 
     return (
       <div className="fixed inset-0 z-50 bg-white flex flex-col">
+        {/* Preview banner */}
+        {isPreview && (
+          <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2.5 shrink-0">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-600" />
+            <p className="text-xs font-semibold text-amber-800">MODE VÉRIFICATION — Les résultats ne seront pas comptabilisés</p>
+          </div>
+        )}
         {/* Header bar */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-bolt-line bg-white shadow-sm shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <BookOpen className="h-5 w-5 shrink-0 text-bolt-accent" />
             <span className="font-semibold text-bolt-ink text-sm truncate">{quiz.title}</span>
-            <span className="hidden sm:block text-[11px] text-muted-foreground shrink-0">
-              Tentative {(takeData.attempts_used ?? 0) + 1}/{quiz.max_attempts ?? 1}
-            </span>
+            {!isPreview && (
+              <span className="hidden sm:block text-[11px] text-muted-foreground shrink-0">
+                Tentative {(takeData.attempts_used ?? 0) + 1}/{quiz.max_attempts ?? 1}
+              </span>
+            )}
           </div>
           {/* Timer */}
           {timeLeft !== null && (
@@ -1478,7 +1523,7 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
                   Continuer
                 </Button>
                 <Button variant="destructive" className="flex-1 rounded-full"
-                  onClick={() => { setTaking(false); setShowExitConfirm(false); }}>
+                  onClick={() => { setTaking(false); setShowExitConfirm(false); if (isPreview && onExitPreview) onExitPreview(); }}>
                   Quitter
                 </Button>
               </div>
@@ -1619,13 +1664,22 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
 
   return (
     <div className="mt-2 rounded-[14px] border border-bolt-line bg-white p-6 text-center">
+      {isPreview && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm mb-4 text-left">
+          <AlertTriangle className="h-5 w-5 flex-shrink-0 text-amber-600" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">MODE VÉRIFICATION</p>
+            <p className="text-xs text-amber-700">Les résultats ne seront pas comptabilisés</p>
+          </div>
+        </div>
+      )}
       <BookOpen className="mx-auto mb-3 h-10 w-10 text-bolt-accent" />
       <p className="text-base font-semibold text-bolt-ink">{takeData.quiz.title}</p>
       <p className="mt-1 text-sm text-muted-foreground">
         {total} question{total > 1 ? 's' : ''} · {takeData.quiz.max_score} point{takeData.quiz.max_score > 1 ? 's' : ''}
         {quiz.duration_minutes && ` · ${quiz.duration_minutes} min`}
       </p>
-      {maxAttempts > 1 && (
+      {!isPreview && maxAttempts > 1 && (
         <p className="mt-1 text-xs text-muted-foreground">
           Tentatives : {attemptsUsed}/{maxAttempts}
         </p>
@@ -1635,7 +1689,9 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
       ) : (
         <>
           <p className="mt-2 text-xs text-muted-foreground">
-            Répondez à chaque question puis soumettez. La soumission est définitive.
+            {isPreview
+              ? 'Vérifiez le quiz tel que les étudiants le verront.'
+              : 'Répondez à chaque question puis soumettez. La soumission est définitive.'}
           </p>
           <Button
             className="mt-5 rounded-full px-8"
@@ -1644,8 +1700,13 @@ function SectionQuizTaker({ sectionId, quiz }: { sectionId: number; quiz: Sectio
               if (quiz.duration_minutes) setTimeLeft(quiz.duration_minutes * 60);
             }}
           >
-            Commencer le quiz
+            {isPreview ? 'Commencer la vérification' : 'Commencer le quiz'}
           </Button>
+          {isPreview && onExitPreview && (
+            <Button className="mt-2 rounded-full px-8" variant="ghost" onClick={onExitPreview}>
+              ← Retour
+            </Button>
+          )}
         </>
       )}
     </div>
@@ -1794,6 +1855,169 @@ function SortableActivityItem({
     </div>
   );
 }
+
+// ─── Exercise Taker (Feature 3) ──────────────────────────────────────────────
+
+function ExerciseTaker({
+  exerciseId,
+  exerciseTitle,
+  onClose,
+}: {
+  exerciseId: number;
+  exerciseTitle: string;
+  onClose: () => void;
+}) {
+  const startMutation = useStartExercise();
+  const submitMutation = useSubmitExercise();
+  const [quizData, setQuizData] = useState<{
+    quizId: number;
+    questions: Array<{
+      id: number;
+      question_text: string;
+      question_type: string;
+      choice_a: string | null;
+      choice_b: string | null;
+      choice_c: string | null;
+    }>;
+  } | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [results, setResults] = useState<any>(null);
+
+  useEffect(() => {
+    startMutation.mutate(exerciseId, {
+      onSuccess: (data) => {
+        setQuizData({ quizId: data.quiz.id, questions: data.questions });
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exerciseId]);
+
+  if (startMutation.isPending) {
+    return (
+      <div className="rounded-[12px] border border-bolt-line bg-white p-6 text-center">
+        <RefreshCw className="mx-auto h-5 w-5 animate-spin text-bolt-accent" />
+        <p className="mt-2 text-sm text-muted-foreground">Préparation de l'exercice…</p>
+      </div>
+    );
+  }
+
+  if (results) {
+    return (
+      <div className="rounded-[12px] border border-bolt-line bg-white p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-bolt-ink">{exerciseTitle} — Résultats</h4>
+          <Button size="sm" variant="outline" onClick={onClose}>Fermer</Button>
+        </div>
+        <div className="flex items-center gap-4">
+          <Badge className="bg-bolt-accent/10 text-bolt-accent text-lg px-3 py-1">
+            {results.score}%
+          </Badge>
+          <span className="text-sm text-muted-foreground">
+            {results.correct}/{results.total} correctes
+          </span>
+          {results.is_tp && (
+            <Badge variant="outline" className="text-violet-600 border-violet-300">TP — noté</Badge>
+          )}
+        </div>
+        <div className="space-y-3">
+          {results.results?.map((r: any) => (
+            <div key={r.id} className="rounded-lg border p-3">
+              <p className="text-sm font-medium">{r.question_text}</p>
+              <div className="mt-1 flex items-center gap-2 text-xs">
+                {r.is_correct === true && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                {r.is_correct === false && <XCircle className="h-4 w-4 text-red-500" />}
+                {r.is_correct === null && <Clock className="h-4 w-4 text-amber-500" />}
+                <span className="text-muted-foreground">Réponse: {r.student_choice || '—'}</span>
+                {r.correct_choice && (
+                  <span className="text-muted-foreground">• Correcte: {r.correct_choice}</span>
+                )}
+              </div>
+              {r.explanation && (
+                <p className="mt-1 text-xs text-muted-foreground italic">{r.explanation}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!quizData) {
+    return (
+      <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-center">
+        <p className="text-sm text-red-600">Impossible de démarrer l'exercice.</p>
+        <Button size="sm" variant="outline" className="mt-2" onClick={onClose}>Fermer</Button>
+      </div>
+    );
+  }
+
+  const handleSubmit = () => {
+    submitMutation.mutate(
+      { exerciseId, quizId: quizData.quizId, answers },
+      { onSuccess: (data) => setResults(data) }
+    );
+  };
+
+  return (
+    <div className="rounded-[12px] border border-bolt-line bg-white p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-bolt-ink">{exerciseTitle}</h4>
+        <Button size="sm" variant="ghost" onClick={onClose}><X className="h-4 w-4" /></Button>
+      </div>
+      <div className="space-y-4">
+        {quizData.questions.map((q, idx) => (
+          <div key={q.id} className="rounded-lg border p-4">
+            <p className="text-sm font-medium text-bolt-ink">
+              <span className="text-muted-foreground mr-1">Q{idx + 1}.</span>
+              {q.question_text}
+            </p>
+            {(q.question_type === 'mcq' || q.question_type === 'true_false') ? (
+              <div className="mt-2 space-y-1.5">
+                {(['a', 'b', 'c'] as const).map((letter) => {
+                  const choiceText = q[`choice_${letter}` as keyof typeof q] as string | null;
+                  if (!choiceText) return null;
+                  const isSelected = answers[String(q.id)]?.toUpperCase() === letter.toUpperCase();
+                  return (
+                    <button
+                      key={letter}
+                      onClick={() => setAnswers((prev) => ({ ...prev, [String(q.id)]: letter.toUpperCase() }))}
+                      className={`w-full text-left rounded-lg border px-3 py-2 text-sm transition-colors ${
+                        isSelected
+                          ? 'border-bolt-accent bg-bolt-accent/10 text-bolt-accent font-medium'
+                          : 'border-bolt-line hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="font-semibold mr-2">{letter.toUpperCase()}.</span>
+                      {choiceText}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <textarea
+                className="mt-2 w-full rounded-lg border border-bolt-line p-2 text-sm"
+                rows={3}
+                placeholder="Votre réponse…"
+                value={answers[String(q.id)] || ''}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [String(q.id)]: e.target.value }))}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <Button onClick={handleSubmit} disabled={submitMutation.isPending}>
+          {submitMutation.isPending ? (
+            <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Envoi…</>
+          ) : (
+            <><Send className="mr-2 h-4 w-4" /> Soumettre</>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function SectionActivities({ sectionId, canEdit, allSections = [] }: SectionActivitiesProps) {
@@ -1809,7 +2033,12 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
 
   const [activityOrder, setActivityOrder] = useState<number[]>([]);
   useEffect(() => {
-    setActivityOrder(activities.map((a: any) => a.id));
+    // Exclude virtual exercise activities (string IDs) from DnD ordering
+    setActivityOrder(
+      activities
+        .filter((a) => typeof a.id === 'number')
+        .map((a) => a.id as number)
+    );
   }, [activities]);
 
   const activitySensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -1842,8 +2071,11 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
   const imageActivities = activities.filter((a) => a.activity_type === 'image');
   const textDocActivities = activities.filter((a) => a.activity_type === 'text_doc');
   const pdfExtractActivities = activities.filter((a) => a.activity_type === 'pdf_extract');
+  const exerciseActivities = activities.filter((a) => a.activity_type === 'exercise');
 
-  const hasAnyActivity = youtubeActivities.length > 0 || imageActivities.length > 0 || textDocActivities.length > 0 || pdfExtractActivities.length > 0 || !!quiz || !!assignment;
+  const [activeExerciseId, setActiveExerciseId] = useState<number | null>(null);
+
+  const hasAnyActivity = youtubeActivities.length > 0 || imageActivities.length > 0 || textDocActivities.length > 0 || pdfExtractActivities.length > 0 || exerciseActivities.length > 0 || !!quiz || !!assignment;
 
   if (isLoading) return <Skeleton className="mt-3 h-12 rounded-[12px]" />;
 
@@ -1928,7 +2160,7 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
       {youtubeActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {youtubeActivities.map((activity) => (
-            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id as number, sectionId: targetSectionId, position: 0 })}>
               <div className="group relative">
               <YoutubeEmbed
                 embedId={activity.youtube_embed_id!}
@@ -1937,7 +2169,7 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
               />
               {canEdit && (
                 <button
-                  onClick={() => deleteMutation.mutate(activity.id)}
+                  onClick={() => deleteMutation.mutate(activity.id as number)}
                   className="absolute right-2 top-2 hidden rounded-full bg-red-500/80 p-1 text-white backdrop-blur-sm group-hover:flex"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -1953,7 +2185,7 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
       {imageActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {imageActivities.map((activity) => (
-            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id as number, sectionId: targetSectionId, position: 0 })}>
               <div className="group relative rounded-[12px] border border-bolt-line overflow-hidden bg-white">
               {activity.image_url && (
                 <img
@@ -1965,7 +2197,7 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
               <p className="px-3 py-2 text-xs text-muted-foreground">{activity.title}</p>
               {canEdit && (
                 <button
-                  onClick={() => deleteMutation.mutate(activity.id)}
+                  onClick={() => deleteMutation.mutate(activity.id as number)}
                   className="absolute right-2 top-2 hidden rounded-full bg-red-500/80 p-1 text-white backdrop-blur-sm group-hover:flex"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -1981,13 +2213,13 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
       {textDocActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {textDocActivities.map((activity) => (
-            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id as number, sectionId: targetSectionId, position: 0 })}>
               <div className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
                 {canEdit && (
                   <button
-                    onClick={() => deleteMutation.mutate(activity.id)}
+                    onClick={() => deleteMutation.mutate(activity.id as number)}
                     className="rounded-full p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -2007,13 +2239,13 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
       {pdfExtractActivities.length > 0 && (
         <div className="mt-3 space-y-3">
           {pdfExtractActivities.map((activity) => (
-            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: activity.id, sectionId: targetSectionId, position: 0 })}>
+            <SortableActivityItem key={activity.id} activity={activity} canEdit={canEdit} allSections={allSections} sectionId={sectionId} onMove={(targetSectionId) => moveActivityMutation.mutate({ activityId: numId(activity.id), sectionId: targetSectionId, position: 0 })}>
               <div className="group relative rounded-[12px] border border-bolt-line bg-white p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
                 {canEdit && (
                   <button
-                    onClick={() => deleteMutation.mutate(activity.id)}
+                    onClick={() => deleteMutation.mutate(numId(activity.id))}
                     className="rounded-full p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -2040,6 +2272,77 @@ export function SectionActivities({ sectionId, canEdit, allSections = [] }: Sect
 
       </SortableContext>
       </DndContext>
+
+      {/* Exercise activities (Feature 2) */}
+      {exerciseActivities.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {exerciseActivities.map((activity) => {
+            const exId = activity.exercise_id;
+            const isActive = activeExerciseId === exId;
+            return (
+              <div key={activity.id} className="rounded-[12px] border border-bolt-line bg-white p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Dumbbell className="h-4 w-4 text-violet-500 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-bolt-ink">{activity.title}</p>
+                      {activity.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{activity.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {activity.exercise_type && (
+                      <Badge variant="outline" className="text-[10px] h-5">
+                        {activity.exercise_type === 'tp' ? 'TP' : activity.exercise_type === 'consolidation' ? 'Consolidation' : activity.exercise_type}
+                      </Badge>
+                    )}
+                    {activity.question_count != null && (
+                      <Badge variant="secondary" className="text-[10px] h-5">
+                        {activity.question_count} Q
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                {/* Bloom levels */}
+                {activity.bloom_levels && activity.bloom_levels.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {activity.bloom_levels.map((bl: string) => {
+                      const cfg = BLOOM_CONFIG[bl];
+                      return cfg ? (
+                        <Badge key={bl} className={`text-[10px] h-5 ${cfg.className}`}>{cfg.label}</Badge>
+                      ) : (
+                        <Badge key={bl} variant="outline" className="text-[10px] h-5">{bl}</Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Action button for students */}
+                {!canEdit && exId && (
+                  <div className="mt-3">
+                    {isActive ? (
+                      <ExerciseTaker
+                        exerciseId={exId}
+                        exerciseTitle={activity.title}
+                        onClose={() => setActiveExerciseId(null)}
+                      />
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="rounded-full text-xs"
+                        onClick={() => setActiveExerciseId(exId)}
+                      >
+                        <Dumbbell className="mr-1.5 h-3.5 w-3.5" />
+                        Faire cet exercice
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Quiz section */}
       {(showQuizSection || quiz) && (

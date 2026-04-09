@@ -54,7 +54,7 @@ def _get_teacher(chapter_id: int):
         return None, None, (jsonify({'error': 'Utilisateur introuvable'}), 404)
     chapter = Chapter.query.get_or_404(chapter_id)
     course = Course.query.get(chapter.course_id)
-    if not (user.is_superuser or (user.is_teacher and course and course.teacher_id == user.id)):
+    if not ((user.is_superuser and not user.is_teacher) or (user.is_teacher and course and course.teacher_id == user.id)):
         return user, chapter, (jsonify({'error': 'Accès refusé'}), 403)
     return user, chapter, None
 

@@ -35,7 +35,11 @@ class Program(db.Model):
     __tablename__ = 'program'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), unique=True, nullable=False)
+    code = db.Column(db.String(50), unique=True, nullable=True)  # e.g. "LMA", "MDS"
     description = db.Column(db.Text, nullable=True)
+    program_type = db.Column(db.String(20), nullable=True)  # licence / master
+    descriptor_file = db.Column(db.String(255), nullable=True)  # uploaded .docx path
+    descriptor_uploaded_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     courses = db.relationship('Course', secondary=program_course, backref=db.backref('programs', lazy='dynamic'))

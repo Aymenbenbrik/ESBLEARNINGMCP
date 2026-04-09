@@ -81,6 +81,7 @@ export interface ExamSession {
   feedback_published?: boolean;
   graded_at?: string;
   violation_count: number;
+  is_preview?: boolean;
   answers?: ExamSessionAnswer[];
   exam?: ValidatedExam;
 }

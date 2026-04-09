@@ -103,6 +103,24 @@ from app.models.exam_bank import (
     StudentPhoto,
 )
 
+from app.models.progress import (
+    ChapterProgress,
+    CourseProgressSnapshot,
+)
+
+from app.models.feedback import (
+    EvaluationFeedback,
+)
+
+from app.models.program_learning import (
+    aap_competence_link,
+    ProgramAAP,
+    ProgramCompetence,
+    AAAapLink,
+    StudentAAScore,
+    StudentAAPScore,
+)
+
 __all__ = [
     # users
     'UserSession', 'TeacherStudent', 'User', 'load_user', 'create_superuser',
@@ -134,4 +152,11 @@ __all__ = [
     # exam_bank
     'ValidatedExam', 'ExamBankQuestion', 'ExamSession', 'ExamSessionAnswer',
     'ExamViolation', 'StudentPhoto',
+    # progress
+    'ChapterProgress', 'CourseProgressSnapshot',
+    # feedback
+    'EvaluationFeedback',
+    # program_learning
+    'aap_competence_link', 'ProgramAAP', 'ProgramCompetence',
+    'AAAapLink', 'StudentAAScore', 'StudentAAPScore',
 ]

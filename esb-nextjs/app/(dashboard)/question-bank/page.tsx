@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useCourses } from '@/lib/hooks/useCourses';
-import { useQuestionBank, useApproveQuestions } from '@/lib/hooks/useQuestionBank';
+import { useQuestionBank, useApproveQuestions, useExercises } from '@/lib/hooks/useQuestionBank';
 import { useExams, useCreateExam, useUpdateExam, useGenerateAnswers } from '@/lib/hooks/useExamBank';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { QuestionBankFilters } from '@/lib/types/question-bank';
@@ -16,7 +16,7 @@ import type { ValidatedExam, CreateExamData } from '@/lib/types/exam-bank';
 import { questionBankApi } from '@/lib/api/question-bank';
 import {
   AlertCircle, CheckCircle, XCircle, Loader2, Plus, Zap, ToggleLeft, ToggleRight,
-  Clock, BookOpen, FileText, ChevronDown, ChevronUp, Settings
+  Clock, BookOpen, FileText, ChevronDown, ChevronUp, Settings, Code, Layers, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -264,6 +264,130 @@ function ExamFormDialog({ open, onOpenChange, exam, courseId, onSave, isSaving }
   );
 }
 
+// ── ExercisesTab ──────────────────────────────────────────────────────────────
+
+interface ExercisesTabProps {
+  courseId: number | null;
+  courses: any[];
+  onCourseChange: (courseId: number) => void;
+}
+
+function ExercisesTab({ courseId, courses, onCourseChange }: ExercisesTabProps) {
+  const { data: exercisesData, isLoading } = useExercises(courseId || 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Course selector */}
+      <div className="flex items-center gap-3">
+        <Select
+          value={courseId?.toString() || ''}
+          onValueChange={(v) => onCourseChange(parseInt(v))}
+        >
+          <SelectTrigger className="w-full max-w-xs">
+            <SelectValue placeholder="Sélectionner un cours..." />
+          </SelectTrigger>
+          <SelectContent>
+            {courses.map((c: any) => (
+              <SelectItem key={c.id} value={c.id.toString()}>{c.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {!courseId ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-lg font-semibold">Sélectionner un cours</h3>
+            <p className="text-muted-foreground text-sm mt-1">
+              Choisissez un cours pour voir les exercices (questions dépendantes)
+            </p>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : !exercisesData || exercisesData.exercises.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-lg font-semibold">Aucun exercice</h3>
+            <p className="text-muted-foreground text-sm mt-1">
+              Les exercices sont générés automatiquement par le pipeline de chapitres.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {exercisesData.exercises.map(ex => (
+            <Card key={ex.id} className="rounded-2xl">
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                  <CardTitle className="text-base">{ex.title}</CardTitle>
+                  <Badge className={
+                    ex.status === 'approved'
+                      ? 'bg-green-100 text-green-700 border-green-200'
+                      : 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                  }>
+                    {ex.status === 'approved' ? 'Approuvé' : 'Brouillon'}
+                  </Badge>
+                </div>
+                {ex.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">{ex.description}</p>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline">
+                    <Layers className="h-3 w-3 mr-1" />
+                    {ex.question_count} questions
+                  </Badge>
+                  <Badge variant="outline" className={
+                    ex.exercise_type === 'tp' ? 'border-purple-300 text-purple-700' :
+                    ex.exercise_type === 'exam' ? 'border-red-300 text-red-700' :
+                    'border-blue-300 text-blue-700'
+                  }>
+                    {ex.exercise_type === 'tp' ? 'TP' : ex.exercise_type === 'exam' ? 'Examen' : 'Consolidation'}
+                  </Badge>
+                  {ex.estimated_duration_min && (
+                    <Badge variant="outline">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {ex.estimated_duration_min} min
+                    </Badge>
+                  )}
+                  {ex.total_points && (
+                    <Badge variant="outline">{ex.total_points} pts</Badge>
+                  )}
+                </div>
+                {ex.chapter_title && (
+                  <p className="text-xs text-muted-foreground">
+                    📖 {ex.chapter_title}
+                  </p>
+                )}
+                {ex.bloom_levels && ex.bloom_levels.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {ex.bloom_levels.map(bl => (
+                      <Badge key={bl} variant="secondary" className="text-xs">{bl}</Badge>
+                    ))}
+                  </div>
+                )}
+                {ex.aa_codes && ex.aa_codes.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {ex.aa_codes.map(aa => (
+                      <Badge key={aa} variant="outline" className="text-xs border-blue-200 text-blue-600">{aa}</Badge>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── EpreuvesTab ───────────────────────────────────────────────────────────────
 
 interface EpreuvesTabProps {
@@ -419,7 +543,7 @@ function QuestionBankContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
 
-  const [activeMainTab, setActiveMainTab] = useState<'questions' | 'epreuves'>('questions');
+  const [activeMainTab, setActiveMainTab] = useState<'questions' | 'exercises' | 'practical' | 'epreuves'>('questions');
   const [selectedQuestions, setSelectedQuestions] = useState<number[]>([]);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationResult, setMigrationResult] = useState<{
@@ -441,6 +565,23 @@ function QuestionBankContent() {
   const { data: coursesData, isLoading: coursesLoading, error: coursesError } = useCourses();
   const isTeacher = user?.is_teacher || user?.is_superuser;
 
+  // Students cannot access the question bank management page
+  if (user && !isTeacher) {
+    return (
+      <div className="container mx-auto p-6">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <ShieldCheck className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-lg font-semibold">Accès réservé aux enseignants</h3>
+            <p className="text-muted-foreground text-sm mt-1">
+              La gestion de la banque de questions est réservée aux enseignants.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const filters: QuestionBankFilters = {
     course_id: courseId ? parseInt(courseId, 10) : 0,
     chapter_id: chapterIds || undefined,
@@ -448,6 +589,7 @@ function QuestionBankContent() {
     bloom_level: bloomLevel || undefined,
     difficulty: difficulty || undefined,
     approved: (approved as 'true' | 'false' | 'all') || undefined,
+    category: activeMainTab === 'practical' ? 'practical' : activeMainTab === 'questions' ? 'independent' : undefined,
     limit,
     offset,
   };
@@ -538,22 +680,22 @@ function QuestionBankContent() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Banque de Questions & Épreuves</h1>
         <p className="text-muted-foreground">
-          {isTeacher
-            ? 'Gérez vos questions et créez des épreuves sécurisées pour vos cours'
-            : 'Consultez les questions et épreuves disponibles'}
+          Gérez vos questions et créez des épreuves sécurisées pour vos cours
         </p>
       </div>
 
-      {/* Main Tab Switcher */}
-      <div className="flex gap-1 border-b border-gray-200">
+      {/* Main Tab Switcher — 4 tabs */}
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {[
-          { id: 'questions', label: '📚 Questions' },
-          { id: 'epreuves', label: '🎯 Épreuves Validées' },
+          { id: 'questions', label: '📚 Questions', icon: BookOpen },
+          { id: 'exercises', label: '🧩 Exercices', icon: Layers },
+          { id: 'practical', label: '💻 Activités Pratiques', icon: Code },
+          { id: 'epreuves', label: '🎯 Épreuves', icon: ShieldCheck },
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveMainTab(tab.id as 'questions' | 'epreuves')}
-            className={`px-5 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
+            onClick={() => setActiveMainTab(tab.id as typeof activeMainTab)}
+            className={`px-5 py-2.5 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
               activeMainTab === tab.id
                 ? 'bg-white border border-b-white border-gray-200 text-blue-600 -mb-px'
                 : 'text-muted-foreground hover:text-gray-700'
@@ -564,8 +706,8 @@ function QuestionBankContent() {
         ))}
       </div>
 
-      {/* Questions Tab */}
-      {activeMainTab === 'questions' && (
+      {/* Questions Tab & Practical Tab (same layout, different category filter) */}
+      {(activeMainTab === 'questions' || activeMainTab === 'practical') && (
         <>
           {/* Debug Info Panel */}
           {showDebugInfo && courseId && (
@@ -575,6 +717,7 @@ function QuestionBankContent() {
               </CardHeader>
               <CardContent className="text-xs font-mono space-y-1">
                 <div>Course ID: {courseId}</div>
+                <div>Category: {activeMainTab}</div>
                 <div>Loading: {questionsLoading ? 'Yes' : 'No'}</div>
                 <div>Questions Fetched: {questionsData?.questions?.length || 0}</div>
                 <div>Total in DB: {questionsData?.total || 0}</div>
@@ -645,8 +788,12 @@ function QuestionBankContent() {
                 <Card>
                   <CardContent className="p-12">
                     <div className="text-center space-y-2">
-                      <h3 className="text-lg font-semibold">Select a Course</h3>
-                      <p className="text-muted-foreground">Choose a course from the filters to view questions</p>
+                      <h3 className="text-lg font-semibold">Sélectionner un cours</h3>
+                      <p className="text-muted-foreground">
+                        {activeMainTab === 'practical'
+                          ? 'Choisissez un cours pour voir les activités pratiques (code)'
+                          : 'Choisissez un cours pour voir les questions indépendantes'}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -673,6 +820,15 @@ function QuestionBankContent() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Exercises Tab */}
+      {activeMainTab === 'exercises' && (
+        <ExercisesTab
+          courseId={courseId ? parseInt(courseId, 10) : null}
+          courses={courses}
+          onCourseChange={handleCourseChange}
+        />
       )}
 
       {/* Épreuves Tab */}

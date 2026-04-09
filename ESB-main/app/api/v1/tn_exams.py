@@ -29,7 +29,7 @@ def _get_teacher_course(course_id: int):
         return None, None, (jsonify({'error': 'User not found'}), 404)
 
     course = Course.query.get_or_404(course_id)
-    if not (user.is_superuser or (user.is_teacher and course.teacher_id == user.id)):
+    if not ((user.is_superuser and not user.is_teacher) or (user.is_teacher and course.teacher_id == user.id)):
         return user, course, (jsonify({'error': 'Access denied'}), 403)
 
     return user, course, None

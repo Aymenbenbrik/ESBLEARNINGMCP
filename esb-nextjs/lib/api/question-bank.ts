@@ -22,6 +22,9 @@ import {
   CourseQBankQuestion,
   UpdateCourseQBankData,
   CourseAAListResponse,
+  ExercisesListResponse,
+  StartExerciseResponse,
+  SubmitExerciseResponse,
 } from '../types/question-bank';
 
 const BASE_URL = '/api/v1/question-bank';
@@ -44,6 +47,7 @@ export const questionBankApi = {
     if (filters.bloom_level) params.append('bloom_level', filters.bloom_level);
     if (filters.difficulty) params.append('difficulty', filters.difficulty);
     if (filters.approved) params.append('approved', filters.approved);
+    if (filters.category) params.append('category', filters.category);
     if (filters.limit) params.append('limit', filters.limit.toString());
     if (filters.offset) params.append('offset', filters.offset.toString());
 
@@ -171,6 +175,49 @@ export const questionBankApi = {
     const response = await apiClient.get(
       `${BASE_URL}/debug/stats`,
       { params: { course_id: courseId } }
+    );
+    return response.data;
+  },
+
+  /**
+   * List exercises (grouped dependent questions) for a course (teacher only)
+   */
+  listExercises: async (courseId: number, filters?: {
+    exercise_type?: string;
+    status?: string;
+    chapter_id?: number;
+  }): Promise<ExercisesListResponse> => {
+    const params = new URLSearchParams({ course_id: courseId.toString() });
+    if (filters?.exercise_type) params.append('exercise_type', filters.exercise_type);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.chapter_id) params.append('chapter_id', filters.chapter_id.toString());
+    const response = await apiClient.get<ExercisesListResponse>(
+      `${BASE_URL}/exercises?${params.toString()}`
+    );
+    return response.data;
+  },
+
+  /**
+   * Start an exercise as a quiz (Feature 3)
+   */
+  startExercise: async (exerciseId: number): Promise<StartExerciseResponse> => {
+    const response = await apiClient.post<StartExerciseResponse>(
+      `${BASE_URL}/exercises/${exerciseId}/start`
+    );
+    return response.data;
+  },
+
+  /**
+   * Submit answers for an exercise quiz (Feature 3)
+   */
+  submitExercise: async (
+    exerciseId: number,
+    quizId: number,
+    answers: Record<string, string>
+  ): Promise<SubmitExerciseResponse> => {
+    const response = await apiClient.post<SubmitExerciseResponse>(
+      `${BASE_URL}/exercises/${exerciseId}/submit`,
+      { quiz_id: quizId, answers }
     );
     return response.data;
   },

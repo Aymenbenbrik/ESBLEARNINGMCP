@@ -440,30 +440,42 @@ def start_session(exam_id):
 
     exam = ValidatedExam.query.get_or_404(exam_id)
 
+    data = request.get_json() or {}
+    is_preview = bool(data.get('is_preview', False))
+
+    # Only teachers/superusers can start preview sessions
+    if is_preview and not (user.is_teacher or user.is_superuser):
+        return jsonify({'error': 'Seuls les enseignants peuvent vérifier une épreuve'}), 403
+
     if not exam.is_available and not user.is_teacher and not user.is_superuser:
         return jsonify({'error': 'Cette épreuve n\'est pas disponible'}), 403
 
-    # Vérifier le nombre de tentatives
-    existing_sessions = ExamSession.query.filter_by(
-        exam_id=exam_id, student_id=user.id
-    ).filter(ExamSession.status != 'started').count()
+    if not is_preview:
+        # Vérifier le nombre de tentatives (skip for preview)
+        existing_sessions = ExamSession.query.filter_by(
+            exam_id=exam_id, student_id=user.id
+        ).filter(ExamSession.status != 'started', ExamSession.is_preview == False).count()
 
-    if existing_sessions >= exam.max_attempts and not exam.allow_retake:
-        return jsonify({'error': 'Nombre maximum de tentatives atteint'}), 400
+        if existing_sessions >= exam.max_attempts and not exam.allow_retake:
+            return jsonify({'error': 'Nombre maximum de tentatives atteint'}), 400
 
-    # Vérifier session en cours
-    active_session = ExamSession.query.filter_by(
-        exam_id=exam_id, student_id=user.id, status='started'
-    ).first()
+        # Vérifier session en cours (skip for preview)
+        active_session = ExamSession.query.filter_by(
+            exam_id=exam_id, student_id=user.id, status='started', is_preview=False
+        ).first()
 
-    if active_session:
-        return jsonify(active_session.to_dict()), 200
+        if active_session:
+            return jsonify(active_session.to_dict()), 200
 
     session = ExamSession(
         exam_id=exam_id,
         student_id=user.id,
-        attempt_number=existing_sessions + 1,
+        attempt_number=0 if is_preview else (
+            ExamSession.query.filter_by(exam_id=exam_id, student_id=user.id)
+            .filter(ExamSession.status != 'started', ExamSession.is_preview == False).count() + 1
+        ),
         status='started',
+        is_preview=is_preview,
     )
     db.session.add(session)
     db.session.commit()
@@ -557,6 +569,16 @@ def submit_session(session_id):
     data = request.get_json() or {}
     time_spent = data.get('time_spent_seconds', 0)
 
+    # Preview mode: skip score counting and AI grading
+    if session.is_preview:
+        session.status = 'submitted'
+        session.submitted_at = datetime.utcnow()
+        session.time_spent_seconds = time_spent
+        session.score = 0
+        session.max_score = sum(q.points for q in session.exam.questions)
+        db.session.commit()
+        return jsonify(session.to_dict(include_answers=True))
+
     exam = session.exam
     questions = {q.id: q for q in exam.questions}
     answers = {a.question_id: a for a in session.answers}
@@ -639,6 +661,14 @@ def record_violation(session_id):
     session = ExamSession.query.get_or_404(session_id)
     if session.student_id != user.id:
         return jsonify({'error': 'Accès non autorisé'}), 403
+
+    # Skip violation tracking for preview sessions
+    if session.is_preview:
+        return jsonify({
+            'violation': None,
+            'is_disqualified': False,
+            'total_violations': 0,
+        })
 
     data = request.get_json() or {}
     violation_type = data.get('violation_type', 'unknown')

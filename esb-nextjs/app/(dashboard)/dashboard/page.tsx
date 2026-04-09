@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DashboardStats } from '@/components/courses/DashboardStats';
+import { ActivityCalendar } from '@/components/courses/ActivityCalendar';
 import { safeNumber, safePercent } from '@/lib/format';
 import {
   ArrowRight,
@@ -25,6 +26,7 @@ import {
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const isAdminOnly = !!(user?.is_superuser && !user?.is_teacher);
   const isTeacher = !!(user?.is_teacher || user?.is_superuser);
 
   const teacherDashboard = useMyDashboard();
@@ -40,7 +42,14 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  const quickLinks = isTeacher
+  const quickLinks = isAdminOnly
+    ? [
+        { href: '/admin/programs', label: 'Programmes', icon: Layers3, desc: 'Gérer les formations et les plans d\'étude' },
+        { href: '/admin/teachers', label: 'Enseignants', icon: BookOpen, desc: 'Ajouter, modifier et gérer les enseignants' },
+        { href: '/admin/students', label: 'Étudiants', icon: Users, desc: 'Gérer les comptes étudiants' },
+        { href: '/admin/classes', label: 'Classes', icon: GraduationCap, desc: 'Gérer les classes et les affectations' },
+      ]
+    : isTeacher
     ? [
         { href: '/courses', label: 'Modules', icon: BookOpen, desc: 'Gérer les cours, chapitres et fichiers' },
         { href: '/courses/new', label: 'Nouveau module', icon: Plus, desc: 'Créer rapidement un nouveau module' },
@@ -65,7 +74,7 @@ export default function DashboardPage() {
           <div className="space-y-5">
             <Badge variant="secondary" className="inline-flex rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-medium text-red-600">
               <Sparkles className="mr-1 h-3.5 w-3.5" />
-              Accueil enseignant
+              {isAdminOnly ? 'Administration' : isTeacher ? 'Accueil enseignant' : 'Accueil étudiant'}
             </Badge>
 
             <div className="space-y-3">
@@ -73,7 +82,9 @@ export default function DashboardPage() {
                 Bienvenue, {user.username}
               </h1>
               <p className="max-w-2xl text-base leading-7 text-slate-600">
-                {isTeacher
+                {isAdminOnly
+                  ? "Gérez les formations, les enseignants, les étudiants et les classes depuis cette interface d'administration."
+                  : isTeacher
                   ? 'Une home page plus claire avec les KPI du dashboard, les accès rapides et un aperçu direct de l’activité pédagogique.'
                   : 'Retrouve rapidement tes indicateurs, tes cours et ta progression globale depuis cette page d’accueil.'}
               </p>
@@ -163,6 +174,12 @@ export default function DashboardPage() {
           );
         })}
       </section>
+
+      {!isTeacher && (
+        <section>
+          <ActivityCalendar />
+        </section>
+      )}
 
       {isTeacher && teacherData ? (
         <section className="grid gap-4 lg:grid-cols-[1.2fr,0.8fr]">

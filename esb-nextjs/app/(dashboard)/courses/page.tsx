@@ -1,6 +1,7 @@
 'use client';
 
 import { useCourses, useEnrollCourse } from '@/lib/hooks/useCourses';
+import { useMyProgress } from '@/lib/hooks/useProgress';
 import { CourseCard } from '@/components/courses/CourseCard';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 export default function CoursesPage() {
   const { data, isLoading, error } = useCourses();
   const enrollMutation = useEnrollCourse();
+  const { data: progressData } = useMyProgress();
+
+  // Build a map courseId -> overall_progress
+  const progressMap = new Map<number, number>();
+  if (progressData?.progress) {
+    for (const p of progressData.progress) {
+      progressMap.set(p.course_id, p.overall_progress);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -101,6 +111,7 @@ export default function CoursesPage() {
                 key={course.id}
                 course={course}
                 userRole={user_role}
+                progress={progressMap.get(course.id)}
               />
             ))}
           </div>

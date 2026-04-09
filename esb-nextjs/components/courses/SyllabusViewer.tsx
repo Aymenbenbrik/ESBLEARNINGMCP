@@ -12,6 +12,9 @@ import { useSyllabus } from '@/lib/hooks/useSyllabus';
 import { TNChapter, TNStructured } from '@/lib/api/syllabus';
 import { SyllabusVersionHistory } from '@/components/syllabus/SyllabusVersionHistory';
 import { ProposeRevisionDialog } from '@/components/syllabus/ProposeRevisionDialog';
+import { AAMappingTable } from '@/components/syllabus/AAMappingTable';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown } from 'lucide-react';
 import { syllabusVersionsApi } from '@/lib/api/syllabusVersions';
 import type { SyllabusSnapshot } from '@/lib/types/syllabusVersions';
 
@@ -22,7 +25,7 @@ interface SyllabusViewerProps {
   canEdit?: boolean;
 }
 
-function TNSyllabusView({ tn }: { tn: TNStructured }) {
+function TNSyllabusView({ tn, courseId }: { tn: TNStructured; courseId?: number }) {
   const adm = tn.administrative;
   const defaultTab = tn.aa?.length > 0 ? 'aa' : tn.chapters?.length > 0 ? 'chapters' : 'eval';
 
@@ -187,6 +190,19 @@ function TNSyllabusView({ tn }: { tn: TNStructured }) {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* AA ↔ AAP Mapping (collapsible) */}
+      {tn.aa?.length > 0 && tn.aap?.some(a => a.selected) && (
+        <Collapsible>
+          <CollapsibleTrigger className="flex items-center gap-2 w-full mt-4 py-2 px-3 rounded-lg border bg-muted/50 hover:bg-muted transition-colors text-sm font-medium group cursor-pointer">
+            <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+            Correspondance AA ↔ AAP de la formation
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <AAMappingTable aas={tn.aa} aaps={tn.aap} courseId={courseId} />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
     </div>
   );
 }
@@ -322,7 +338,7 @@ export function SyllabusViewer({ syllabus, syllabusType, courseId, canEdit = fal
             {/* ── Content tab ── */}
             <TabsContent value="content">
               {isTN && hasTNStructure ? (
-                <TNSyllabusView tn={tnStructured!} />
+                <TNSyllabusView tn={tnStructured!} courseId={courseId} />
               ) : !isTN && hasBGAStructure ? (
           <Tabs defaultValue={weeklyPlan.length > 0 ? 'weekly' : cloData.length > 0 ? 'clo' : 'plo'}>
             <TabsList className="mb-4">

@@ -5,6 +5,7 @@ import { useExam, useStartSession } from '@/lib/hooks/useExamBank';
 import { examBankApi } from '@/lib/api/exam-bank';
 import { FaceVerification } from '@/components/exam/FaceVerification';
 import { FaceMonitor } from '@/components/exam/FaceMonitor';
+import { TeacherPreviewBanner } from '@/components/exam/TeacherPreviewBanner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -140,7 +141,7 @@ export default function SafeExamPage() {
   const handleStartExam = useCallback(async () => {
     if (!exam) return;
     try {
-      const s = await startSessionMut.mutateAsync(examId);
+      const s = await startSessionMut.mutateAsync({ examId });
       setSession(s);
       if (exam.fullscreen_required) await requestFullscreen();
       setPhase('in-progress');
@@ -296,6 +297,12 @@ export default function SafeExamPage() {
           </Button>
         </div>
       </div>
+
+      {session?.is_preview && (
+        <div className="px-4 py-2 border-b">
+          <TeacherPreviewBanner />
+        </div>
+      )}
 
       <div className="px-4 py-2 bg-white border-b">
         <div className="flex justify-between text-xs text-muted-foreground mb-1">

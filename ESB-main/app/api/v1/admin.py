@@ -83,6 +83,216 @@ def get_dashboard():
         return jsonify({'error': str(e)}), 500
 
 
+@admin_api_bp.route('/classes', methods=['GET'])
+@jwt_required()
+@superuser_required
+def list_classes():
+    """
+    List all classes with student count, program name, course count.
+
+    Returns:
+        200: List of classes
+        403: If user is not a superuser
+    """
+    try:
+        classes = Classe.query.order_by(Classe.created_at.desc()).all()
+
+        classes_data = []
+        for c in classes:
+            courses_count = ClassCourseAssignment.query.filter_by(class_id=c.id).count()
+            classes_data.append({
+                'id': c.id,
+                'name': c.name,
+                'description': c.description,
+                'academic_year': c.academic_year,
+                'program_id': c.program_id,
+                'program_name': c.program.name if c.program else None,
+                'students_count': c.students.count(),
+                'courses_count': courses_count,
+                'created_at': c.created_at.isoformat() if c.created_at else None,
+                'updated_at': c.updated_at.isoformat() if c.updated_at else None,
+            })
+
+        return jsonify({
+            'classes': classes_data,
+            'total': len(classes_data),
+        }), 200
+    except Exception as e:
+        logger.error(f"Error listing classes: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/classes', methods=['POST'])
+@jwt_required()
+@superuser_required
+def create_class():
+    """
+    Create a new class.
+
+    Request Body:
+        {
+            "name": "Class A",
+            "description": "Optional description",
+            "academic_year": "2025-2026",
+            "program_id": 1
+        }
+
+    Returns:
+        201: Class created
+        400: Validation error
+        403: If user is not a superuser
+    """
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+
+        if not name:
+            return jsonify({'error': 'Class name is required'}), 400
+
+        program_id = data.get('program_id')
+        if program_id:
+            program = Program.query.get(program_id)
+            if not program:
+                return jsonify({'error': f'Program {program_id} not found'}), 400
+
+        classe = Classe(
+            name=name,
+            description=data.get('description', '').strip() or None,
+            academic_year=data.get('academic_year', '').strip() or None,
+            program_id=program_id,
+        )
+        db.session.add(classe)
+        db.session.commit()
+
+        courses_count = ClassCourseAssignment.query.filter_by(class_id=classe.id).count()
+
+        return jsonify({
+            'message': f'Class "{classe.name}" created successfully',
+            'class': {
+                'id': classe.id,
+                'name': classe.name,
+                'description': classe.description,
+                'academic_year': classe.academic_year,
+                'program_id': classe.program_id,
+                'program_name': classe.program.name if classe.program else None,
+                'students_count': 0,
+                'courses_count': courses_count,
+                'created_at': classe.created_at.isoformat() if classe.created_at else None,
+                'updated_at': classe.updated_at.isoformat() if classe.updated_at else None,
+            },
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creating class: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/classes/<int:class_id>', methods=['PUT'])
+@jwt_required()
+@superuser_required
+def update_class(class_id):
+    """
+    Update class metadata.
+
+    Request Body:
+        {
+            "name": "Updated Name",
+            "description": "Updated description",
+            "academic_year": "2025-2026",
+            "program_id": 1
+        }
+
+    Returns:
+        200: Class updated
+        400: Validation error
+        403: If user is not a superuser
+        404: Class not found
+    """
+    try:
+        classe = Classe.query.get_or_404(class_id)
+        data = request.get_json()
+
+        if 'name' in data:
+            name = data['name'].strip()
+            if not name:
+                return jsonify({'error': 'Class name cannot be empty'}), 400
+            classe.name = name
+
+        if 'description' in data:
+            classe.description = data['description'].strip() or None if data['description'] else None
+
+        if 'academic_year' in data:
+            classe.academic_year = data['academic_year'].strip() or None if data['academic_year'] else None
+
+        if 'program_id' in data:
+            program_id = data['program_id']
+            if program_id is not None:
+                program = Program.query.get(program_id)
+                if not program:
+                    return jsonify({'error': f'Program {program_id} not found'}), 400
+            classe.program_id = program_id
+
+        db.session.commit()
+
+        courses_count = ClassCourseAssignment.query.filter_by(class_id=classe.id).count()
+
+        return jsonify({
+            'message': f'Class "{classe.name}" updated successfully',
+            'class': {
+                'id': classe.id,
+                'name': classe.name,
+                'description': classe.description,
+                'academic_year': classe.academic_year,
+                'program_id': classe.program_id,
+                'program_name': classe.program.name if classe.program else None,
+                'students_count': classe.students.count(),
+                'courses_count': courses_count,
+                'created_at': classe.created_at.isoformat() if classe.created_at else None,
+                'updated_at': classe.updated_at.isoformat() if classe.updated_at else None,
+            },
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error updating class {class_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/classes/<int:class_id>', methods=['DELETE'])
+@jwt_required()
+@superuser_required
+def delete_class(class_id):
+    """
+    Delete a class. Students are reassigned to no class.
+
+    Returns:
+        200: Class deleted
+        403: If user is not a superuser
+        404: Class not found
+    """
+    try:
+        classe = Classe.query.get_or_404(class_id)
+        class_name = classe.name
+
+        # Reassign students to no class
+        students = classe.students.all()
+        for student in students:
+            student.class_id = None
+
+        # Delete course assignments (cascade handles this, but be explicit)
+        ClassCourseAssignment.query.filter_by(class_id=class_id).delete()
+
+        db.session.delete(classe)
+        db.session.commit()
+
+        return jsonify({
+            'message': f'Class "{class_name}" deleted successfully',
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error deleting class {class_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @admin_api_bp.route('/classes/<int:class_id>', methods=['GET'])
 @jwt_required()
 @superuser_required

@@ -27,6 +27,8 @@ import {
   ProposedQuestion,
   ExerciseGenConfig,
   TnExamCorrection,
+  CourseClass,
+  ClassStats,
 } from '../types/course';
 
 const BASE_URL = '/api/v1/courses';
@@ -109,17 +111,49 @@ export const coursesApi = {
   },
 };
 
+export interface CourseStudent {
+  id: number;
+  username: string;
+  email: string;
+  class_name: string | null;
+  enrolled_at?: string | null;
+}
+
+export const courseStudentsApi = {
+  list: async (courseId: number): Promise<{ students: CourseStudent[]; total: number }> => {
+    const response = await apiClient.get(`${BASE_URL}/${courseId}/students`);
+    return response.data;
+  },
+  enroll: async (courseId: number, studentIds: number[]): Promise<{ enrolled: number; skipped: number }> => {
+    const response = await apiClient.post(`${BASE_URL}/${courseId}/students`, { student_ids: studentIds });
+    return response.data;
+  },
+  remove: async (courseId: number, studentId: number): Promise<{ message: string }> => {
+    const response = await apiClient.delete(`${BASE_URL}/${courseId}/students/${studentId}`);
+    return response.data;
+  },
+  available: async (courseId: number, search?: string): Promise<{ students: CourseStudent[]; total: number }> => {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await apiClient.get(`${BASE_URL}/${courseId}/available-students${params}`);
+    return response.data;
+  },
+};
+
 export const attendanceApi = {
-  getSessions: (courseId: number) =>
-    apiClient.get<{ sessions: AttendanceSession[]; total_students: number }>(`/api/v1/courses/${courseId}/attendance/sessions`),
-  createSession: (courseId: number, data: { title: string; date: string; activities_covered?: CourseActivity[] }) =>
+  getSessions: (courseId: number, classId?: number) =>
+    apiClient.get<{ sessions: AttendanceSession[]; total_students: number }>(`/api/v1/courses/${courseId}/attendance/sessions`, {
+      params: classId ? { class_id: classId } : undefined,
+    }),
+  createSession: (courseId: number, data: { title: string; date: string; activities_covered?: CourseActivity[]; class_id?: number }) =>
     apiClient.post<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions`, data),
   updateSession: (courseId: number, sessionId: number, data: { title?: string; date?: string }) =>
     apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}`, data),
   deleteSession: (courseId: number, sessionId: number) =>
     apiClient.delete(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}`),
-  getRecords: (courseId: number, sessionId: number) =>
-    apiClient.get<{ records: AttendanceRecord[]; session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}/records`),
+  getRecords: (courseId: number, sessionId: number, classId?: number) =>
+    apiClient.get<{ records: AttendanceRecord[]; session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}/records`, {
+      params: classId ? { class_id: classId } : undefined,
+    }),
   saveRecords: (courseId: number, sessionId: number, records: { student_id: number; status: string }[]) =>
     apiClient.put<{ session: AttendanceSession }>(`/api/v1/courses/${courseId}/attendance/sessions/${sessionId}/records`, { records }),
   myAttendance: (courseId: number) =>
@@ -135,10 +169,16 @@ export const gradesApi = {
     apiClient.get<{ weights: GradeWeight }>(`/api/v1/courses/${courseId}/grade-weights`),
   updateWeights: (courseId: number, data: Partial<GradeWeight>) =>
     apiClient.put<{ weights: GradeWeight }>(`/api/v1/courses/${courseId}/grade-weights`, data),
-  getAllGrades: (courseId: number) =>
-    apiClient.get<{ grades: StudentGrade[]; weights: GradeWeight }>(`/api/v1/courses/${courseId}/grades`),
+  getAllGrades: (courseId: number, classId?: number) =>
+    apiClient.get<{ grades: StudentGrade[]; weights: GradeWeight }>(`/api/v1/courses/${courseId}/grades`, {
+      params: classId ? { class_id: classId } : undefined,
+    }),
   getMyGrade: (courseId: number) =>
     apiClient.get<StudentGrade & { weights: GradeWeight }>(`/api/v1/courses/${courseId}/grades/me`),
+  getCourseClasses: (courseId: number) =>
+    apiClient.get<{ classes: CourseClass[] }>(`/api/v1/courses/${courseId}/classes`),
+  getClassStats: (courseId: number, classId: number) =>
+    apiClient.get<ClassStats>(`/api/v1/courses/${courseId}/classes/${classId}/stats`),
 };
 
 export interface ExamUploadConfig {

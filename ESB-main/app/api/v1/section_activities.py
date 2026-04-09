@@ -41,6 +41,8 @@ from app.models import (
     User, TNSection, SectionContent, SectionActivity, SectionQuiz,
     SectionQuizQuestion, SectionQuizSubmission, Enrollment, Document
 )
+from app.models.pipeline import QuestionBankExercise
+from app.models.assessments import QuestionBankQuestion
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +113,39 @@ def list_section_activities(section_id):
         if a.activity_type == 'quiz' and a.section_quiz_rel:
             d['quiz'] = a.section_quiz_rel.to_dict()
         result.append(d)
+
+    # Feature 2: include QuestionBankExercise items linked to this section's chapter
+    try:
+        chapter = section.chapter
+        if chapter:
+            exercises = QuestionBankExercise.query.filter_by(
+                chapter_id=chapter.id
+            ).all()
+            for ex in exercises:
+                question_count = QuestionBankQuestion.query.filter_by(
+                    exercise_id=ex.id
+                ).count()
+                result.append({
+                    'id': f'exercise-{ex.id}',
+                    'section_id': section_id,
+                    'activity_type': 'exercise',
+                    'title': ex.title,
+                    'position': 9999,
+                    'created_at': ex.created_at.isoformat() if ex.created_at else None,
+                    'exercise_id': ex.id,
+                    'exercise_type': ex.exercise_type,
+                    'exercise_status': ex.status,
+                    'description': ex.description,
+                    'question_count': question_count,
+                    'bloom_levels': ex.bloom_levels or [],
+                    'aa_codes': ex.aa_codes or [],
+                    'total_points': ex.total_points,
+                    'estimated_duration_min': ex.estimated_duration_min,
+                    'is_approved': ex.is_approved,
+                })
+    except Exception as e:
+        logger.warning(f"Could not load exercises for section {section_id}: {e}")
+
     return jsonify({'activities': result}), 200
 
 
@@ -769,6 +804,15 @@ def save_quiz_survey_json(section_id):
         'boolean': 'true_false',
     }
 
+    def _extract_choice_text(choice):
+        """Extract text from a SurveyJS choice (can be a string or dict)."""
+        if isinstance(choice, dict):
+            return choice.get('text') or choice.get('value') or ''
+        return str(choice) if choice else ''
+
+    # Track mapping from old element name → new SQQ id for survey_json rewrite
+    name_to_sqq_id = {}
+
     for pos, el in enumerate(elements):
         bq_id = el.get('_bankQuestionId')
         if bq_id:
@@ -793,6 +837,8 @@ def save_quiz_survey_json(section_id):
                 position=pos,
             )
             db.session.add(sq)
+            db.session.flush()  # get sq.id
+            name_to_sqq_id[el.get('name', '')] = sq.id
         else:
             # Custom question added directly in SurveyJS Creator
             q_type = type_map.get(el.get('type', 'text'), 'open_ended')
@@ -801,10 +847,10 @@ def save_quiz_survey_json(section_id):
                 quiz_id=quiz.id,
                 question_text=el.get('title') or el.get('name', 'Question'),
                 question_type=q_type,
-                choice_a=choices[0]['text'] if len(choices) > 0 else None,
-                choice_b=choices[1]['text'] if len(choices) > 1 else None,
-                choice_c=choices[2]['text'] if len(choices) > 2 else None,
-                choice_d=choices[3]['text'] if len(choices) > 3 else None,
+                choice_a=_extract_choice_text(choices[0]) if len(choices) > 0 else None,
+                choice_b=_extract_choice_text(choices[1]) if len(choices) > 1 else None,
+                choice_c=_extract_choice_text(choices[2]) if len(choices) > 2 else None,
+                choice_d=_extract_choice_text(choices[3]) if len(choices) > 3 else None,
                 correct_choice=el.get('correctAnswer'),
                 explanation=el.get('description'),
                 points=float(el.get('points', 1.0)),
@@ -812,6 +858,21 @@ def save_quiz_survey_json(section_id):
                 position=pos,
             )
             db.session.add(sq)
+            db.session.flush()
+            name_to_sqq_id[el.get('name', '')] = sq.id
+
+    # Rewrite survey_json element names so they reference SectionQuizQuestion IDs
+    # (students submit answers keyed by these names, grading looks up by SQQ id)
+    if name_to_sqq_id:
+        def _rewrite_elements(elems):
+            for el in elems:
+                old_name = el.get('name', '')
+                if old_name in name_to_sqq_id:
+                    el['name'] = f'q_{name_to_sqq_id[old_name]}'
+        for page in survey_data.get('pages', []):
+            _rewrite_elements(page.get('elements', []))
+        _rewrite_elements(survey_data.get('elements', []))
+        quiz.survey_json = json.dumps(survey_data, ensure_ascii=False)
 
     quiz.max_score = sum(float(el.get('points', 1.0)) for el in elements)
     db.session.commit()
@@ -912,7 +973,7 @@ def update_quiz_config(section_id):
 @api_v1_bp.route('/sections/<int:section_id>/quiz/take', methods=['GET'])
 @jwt_required()
 def take_section_quiz(section_id):
-    """Student fetches the quiz without correct answers."""
+    """Student (or teacher in preview mode) fetches the quiz without correct answers."""
     from datetime import timezone
     user = _get_user()
     section = TNSection.query.get_or_404(section_id)
@@ -920,21 +981,29 @@ def take_section_quiz(section_id):
     if not is_enrolled and not is_teacher:
         return jsonify({'error': 'Access denied'}), 403
 
+    is_preview = bool(request.args.get('is_preview', False))
+    if is_preview and not (user.is_teacher or user.is_superuser):
+        return jsonify({'error': 'Preview mode is for teachers only'}), 403
+
     quiz = SectionQuiz.query.filter_by(section_id=section_id, status='published').first()
     if not quiz:
         return jsonify({'error': 'No published quiz for this section'}), 404
 
     now = datetime.utcnow()
-    # Check availability window
-    if quiz.start_date and now < quiz.start_date:
-        return jsonify({'error': 'Quiz not yet available', 'start_date': quiz.start_date.isoformat()}), 403
-    if quiz.end_date and now > quiz.end_date:
-        return jsonify({'error': 'Quiz deadline passed', 'end_date': quiz.end_date.isoformat()}), 403
+    # Skip availability checks for preview mode
+    if not is_preview:
+        # Check availability window
+        if quiz.start_date and now < quiz.start_date:
+            return jsonify({'error': 'Quiz not yet available', 'start_date': quiz.start_date.isoformat()}), 403
+        if quiz.end_date and now > quiz.end_date:
+            return jsonify({'error': 'Quiz deadline passed', 'end_date': quiz.end_date.isoformat()}), 403
 
-    # Count existing attempts
-    attempts = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).all()
+    # Count existing attempts (exclude preview submissions)
+    attempts = SectionQuizSubmission.query.filter_by(
+        quiz_id=quiz.id, student_id=user.id
+    ).filter(SectionQuizSubmission.is_preview == False).all()
     max_attempts = quiz.max_attempts or 1
-    if len(attempts) >= max_attempts:
+    if not is_preview and len(attempts) >= max_attempts:
         latest = max(attempts, key=lambda s: s.submitted_at or datetime.min)
         return jsonify({
             'already_submitted': True,
@@ -943,8 +1012,8 @@ def take_section_quiz(section_id):
             'result': latest.to_dict(),
         }), 200
 
-    # Password check (via query param or header)
-    if quiz.password:
+    # Password check (skip for preview)
+    if not is_preview and quiz.password:
         provided = request.args.get('password') or request.headers.get('X-Quiz-Password', '')
         if provided != quiz.password:
             return jsonify({'error': 'Password required', 'password_protected': True}), 401
@@ -958,40 +1027,53 @@ def take_section_quiz(section_id):
         'already_submitted': False,
         'attempts_used': len(attempts),
         'max_attempts': max_attempts,
+        'is_preview': is_preview,
     }), 200
 
 
 @api_v1_bp.route('/sections/<int:section_id>/quiz/submit', methods=['POST'])
 @jwt_required()
 def submit_section_quiz(section_id):
-    """Student submits answers; auto-graded for MCQ, AI-proposed for open_ended."""
+    """Student submits answers; auto-graded for MCQ, AI-proposed for open_ended.
+    Teachers can submit in preview mode (is_preview=true) — results won't count."""
     user = _get_user()
-    if user.is_teacher:
+
+    body = request.get_json(silent=True) or {}
+    is_preview = bool(body.get('is_preview', False))
+
+    if is_preview and not (user.is_teacher or user.is_superuser):
+        return jsonify({'error': 'Preview mode is for teachers only'}), 403
+
+    if not is_preview and user.is_teacher:
         return jsonify({'error': 'Students only'}), 403
 
     section = TNSection.query.get_or_404(section_id)
-    _, is_enrolled = _section_access(section, user)
-    if not is_enrolled:
+    is_teacher, is_enrolled = _section_access(section, user)
+    if not is_preview and not is_enrolled:
         return jsonify({'error': 'Not enrolled'}), 403
 
     quiz = SectionQuiz.query.filter_by(section_id=section_id, status='published').first()
     if not quiz:
         return jsonify({'error': 'No published quiz'}), 404
 
-    # Check deadline
     now = datetime.utcnow()
-    if quiz.end_date and now > quiz.end_date:
-        return jsonify({'error': 'Quiz deadline passed'}), 403
+    # Skip deadline & attempt checks for preview mode
+    if not is_preview:
+        # Check deadline
+        if quiz.end_date and now > quiz.end_date:
+            return jsonify({'error': 'Quiz deadline passed'}), 403
 
-    # Check attempts
-    existing_attempts = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).all()
-    max_attempts = quiz.max_attempts or 1
-    if len(existing_attempts) >= max_attempts:
-        return jsonify({'error': f'Maximum attempts reached ({max_attempts})'}), 409
+        # Check attempts (exclude preview submissions)
+        existing_attempts = SectionQuizSubmission.query.filter_by(
+            quiz_id=quiz.id, student_id=user.id
+        ).filter(SectionQuizSubmission.is_preview == False).all()
+        max_attempts = quiz.max_attempts or 1
+        if len(existing_attempts) >= max_attempts:
+            return jsonify({'error': f'Maximum attempts reached ({max_attempts})'}), 409
+        attempt_number = len(existing_attempts) + 1
+    else:
+        attempt_number = 0
 
-    attempt_number = len(existing_attempts) + 1
-
-    body = request.get_json(silent=True) or {}
     answers = body.get('answers', {})   # {str(question_id): answer_string}
 
     approved_questions = [q for q in quiz.questions if q.status == 'approved']
@@ -1075,17 +1157,23 @@ def submit_section_quiz(section_id):
         max_score=max_score,
         grading_status=grading_status,
         submitted_at=datetime.utcnow(),
+        is_preview=is_preview,
     )
     db.session.add(submission)
     db.session.commit()
 
     show_feedback = quiz.show_feedback if quiz.show_feedback is not None else True
+    # Always show feedback for preview mode
+    if is_preview:
+        show_feedback = True
+    max_attempts = quiz.max_attempts or 1
     response = {
         'message': 'Submitted successfully',
         'attempt_number': attempt_number,
-        'attempts_remaining': max(0, max_attempts - attempt_number),
+        'attempts_remaining': 0 if is_preview else max(0, max_attempts - attempt_number),
         'grading_status': grading_status,
         'result': submission.to_dict(),
+        'is_preview': is_preview,
     }
     if show_feedback:
         response['score'] = score
@@ -1243,10 +1331,18 @@ def get_quiz_result(section_id):
             'questions': q_map,
         }), 200
     else:
-        sub = SectionQuizSubmission.query.filter_by(quiz_id=quiz.id, student_id=user.id).first()
-        if not sub:
+        subs = (SectionQuizSubmission.query
+                .filter_by(quiz_id=quiz.id, student_id=user.id)
+                .order_by(SectionQuizSubmission.submitted_at.desc())
+                .all())
+        if not subs:
             return jsonify({'submitted': False}), 200
-        return jsonify({'submitted': True, 'result': sub.to_dict(), 'questions': q_map}), 200
+        return jsonify({
+            'submitted': True,
+            'result': subs[0].to_dict(),
+            'all_attempts': [s.to_dict() for s in subs],
+            'questions': q_map,
+        }), 200
 
 
 @api_v1_bp.route('/sections/<int:section_id>/quiz/submissions/<int:submission_id>/grade', methods=['PUT'])

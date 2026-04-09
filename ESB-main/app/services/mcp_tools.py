@@ -312,25 +312,40 @@ Génère un TP {lang_label} complet et structuré basé sur ce contexte. L'énon
         response = llm.invoke([SystemMessage(content=system), HumanMessage(content=user_msg)])
         raw = response.content.strip()
 
-        # Extract JSON
+        # Extract JSON — try multiple strategies
+        json_str = raw
         if '```json' in raw:
-            raw = raw.split('```json')[1].split('```')[0].strip()
+            json_str = raw.split('```json')[1].split('```')[0].strip()
         elif '```' in raw:
-            raw = raw.split('```')[1].split('```')[0].strip()
+            json_str = raw.split('```')[1].split('```')[0].strip()
 
-        result = json.loads(raw)
-        return {
-            "title": result.get("title", "TP"),
-            "statement": result.get("statement", raw),
-            "question_count": result.get("question_count", 3),
-        }
-    except json.JSONDecodeError:
-        lines = raw.split('\n')
-        title = lines[0].strip('#').strip() if lines else "TP"
-        return {"title": title, "statement": raw, "question_count": 3}
+        # Fallback: find JSON object boundaries
+        if not json_str.startswith('{'):
+            start = json_str.find('{')
+            end = json_str.rfind('}')
+            if start != -1 and end != -1:
+                json_str = json_str[start:end + 1]
+
+        try:
+            result = json.loads(json_str)
+            return {
+                "title": result.get("title", "TP"),
+                "statement": result.get("statement", raw),
+                "question_count": result.get("question_count", 3),
+            }
+        except json.JSONDecodeError:
+            # Use raw response as statement, extract title from first heading
+            lines = raw.split('\n')
+            title = "TP"
+            for line in lines:
+                stripped = line.strip('#').strip()
+                if stripped and not stripped.startswith('{'):
+                    title = stripped[:70]
+                    break
+            return {"title": title, "statement": raw, "question_count": 3}
     except Exception as e:
-        logger.error(f"generate_tp_statement error: {e}")
-        return {"error": str(e), "title": "TP", "statement": ""}
+        logger.error(f"generate_tp_statement error: {e}", exc_info=True)
+        raise  # Let caller handle with proper HTTP error
 
 
 # ─── Tool 3 : suggest_aa_codes ────────────────────────────────────────────────

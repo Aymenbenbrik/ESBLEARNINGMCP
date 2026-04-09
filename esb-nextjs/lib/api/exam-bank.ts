@@ -69,8 +69,8 @@ export const examBankApi = {
 
   // ── Sessions ─────────────────────────────────────────────────────────────
 
-  startSession: (examId: number) =>
-    apiClient.post<ExamSession>(`/api/v1/exam-bank/${examId}/sessions`),
+  startSession: (examId: number, isPreview?: boolean) =>
+    apiClient.post<ExamSession>(`/api/v1/exam-bank/${examId}/sessions`, isPreview ? { is_preview: true } : {}),
 
   getSession: (sessionId: number) =>
     apiClient.get<ExamSession>(`/api/v1/exam-bank/sessions/${sessionId}`),

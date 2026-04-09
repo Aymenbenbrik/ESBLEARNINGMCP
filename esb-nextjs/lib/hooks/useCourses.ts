@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { coursesApi, attendanceApi, gradesApi, examApi, tnExamsApi } from '../api/courses';
+import { coursesApi, attendanceApi, gradesApi, examApi, tnExamsApi, courseStudentsApi } from '../api/courses';
 import {
   CoursesListResponse,
   CourseDetails,
@@ -17,6 +17,8 @@ import {
   GeneratedQuestion,
   TnExamValidationResponse,
   TnExamCorrection,
+  CourseClass,
+  ClassStats,
 } from '../types/course';
 import { toast } from 'sonner';
 
@@ -168,22 +170,72 @@ export function useCourseDashboard(id: number) {
 
 // ─── Attendance Hooks ────────────────────────────────────────────────────────
 
-export function useAttendanceSessions(courseId: number) {
+// ─── Course Students Hooks ───────────────────────────────────────────────────
+
+export function useCourseStudents(courseId: number) {
   return useQuery({
-    queryKey: ['attendance-sessions', courseId],
+    queryKey: ['course-students', courseId],
+    queryFn: () => courseStudentsApi.list(courseId),
+    enabled: !!courseId,
+  });
+}
+
+export function useAvailableStudents(courseId: number, search: string) {
+  return useQuery({
+    queryKey: ['available-students', courseId, search],
+    queryFn: () => courseStudentsApi.available(courseId, search || undefined),
+    enabled: !!courseId,
+  });
+}
+
+export function useEnrollStudents(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (studentIds: number[]) => courseStudentsApi.enroll(courseId, studentIds),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['course-students', courseId] });
+      qc.invalidateQueries({ queryKey: ['available-students', courseId] });
+      toast.success(`${data.enrolled} étudiant(s) ajouté(s)`);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors de l'ajout des étudiants");
+    },
+  });
+}
+
+export function useRemoveStudent(courseId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (studentId: number) => courseStudentsApi.remove(courseId, studentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['course-students', courseId] });
+      qc.invalidateQueries({ queryKey: ['available-students', courseId] });
+      toast.success('Étudiant retiré du cours');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Erreur lors du retrait de l'étudiant");
+    },
+  });
+}
+
+// ─── Attendance Hooks ────────────────────────────────────────────────────────
+
+export function useAttendanceSessions(courseId: number, classId?: number) {
+  return useQuery({
+    queryKey: ['attendance-sessions', courseId, classId ?? null],
     queryFn: async () => {
-      const r = await attendanceApi.getSessions(courseId);
+      const r = await attendanceApi.getSessions(courseId, classId);
       return r.data;
     },
     enabled: !!courseId,
   });
 }
 
-export function useSessionRecords(courseId: number, sessionId: number | null) {
+export function useSessionRecords(courseId: number, sessionId: number | null, classId?: number) {
   return useQuery({
-    queryKey: ['attendance-records', courseId, sessionId],
+    queryKey: ['attendance-records', courseId, sessionId, classId ?? null],
     queryFn: async () => {
-      const r = await attendanceApi.getRecords(courseId, sessionId!);
+      const r = await attendanceApi.getRecords(courseId, sessionId!, classId);
       return r.data;
     },
     enabled: !!courseId && !!sessionId,
@@ -193,7 +245,7 @@ export function useSessionRecords(courseId: number, sessionId: number | null) {
 export function useCreateSession(courseId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { title: string; date: string; activities_covered?: CourseActivity[] }) =>
+    mutationFn: (data: { title: string; date: string; activities_covered?: CourseActivity[]; class_id?: number }) =>
       attendanceApi.createSession(courseId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['attendance-sessions', courseId] });
@@ -303,11 +355,11 @@ export function useUpdateGradeWeights(courseId: number) {
   });
 }
 
-export function useAllGrades(courseId: number, enabled = true) {
+export function useAllGrades(courseId: number, classId?: number, enabled = true) {
   return useQuery({
-    queryKey: ['all-grades', courseId],
+    queryKey: ['all-grades', courseId, classId ?? null],
     queryFn: async () => {
-      const r = await gradesApi.getAllGrades(courseId);
+      const r = await gradesApi.getAllGrades(courseId, classId);
       return r.data;
     },
     enabled: enabled && !!courseId,
@@ -322,6 +374,30 @@ export function useMyGrade(courseId: number, enabled = true) {
       return r.data;
     },
     enabled: enabled && !!courseId,
+  });
+}
+
+// ─── Course Classes Hooks ────────────────────────────────────────────────────
+
+export function useCourseClasses(courseId: number) {
+  return useQuery<CourseClass[]>({
+    queryKey: ['course-classes', courseId],
+    queryFn: async () => {
+      const r = await gradesApi.getCourseClasses(courseId);
+      return r.data.classes;
+    },
+    enabled: !!courseId,
+  });
+}
+
+export function useClassStats(courseId: number, classId: number | undefined) {
+  return useQuery<ClassStats>({
+    queryKey: ['class-stats', courseId, classId],
+    queryFn: async () => {
+      const r = await gradesApi.getClassStats(courseId, classId!);
+      return r.data;
+    },
+    enabled: !!courseId && !!classId,
   });
 }
 

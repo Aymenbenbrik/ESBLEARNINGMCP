@@ -118,6 +118,7 @@ class SectionQuizSubmission(db.Model):
     max_score = db.Column(db.Float)
     grading_status = db.Column(db.String(20), default='auto')  # auto | pending | graded
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_preview = db.Column(db.Boolean, default=False)
 
     student = db.relationship('User', backref=db.backref('section_quiz_submissions', lazy='dynamic'))
 
@@ -135,6 +136,7 @@ class SectionQuizSubmission(db.Model):
             'max_score': self.max_score,
             'grading_status': self.grading_status or 'auto',
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
+            'is_preview': self.is_preview or False,
         }
 
 
