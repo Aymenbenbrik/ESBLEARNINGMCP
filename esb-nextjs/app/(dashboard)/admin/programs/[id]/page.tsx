@@ -11,6 +11,9 @@ import {
   useUploadDescriptor,
   useExtractDescriptor,
   useProcessDescriptor,
+  useUploadStudyPlan,
+  useExtractSyllabi,
+  useDeleteProgram,
   useAAPs,
   useCreateAAP,
   useUpdateAAP,
@@ -730,10 +733,17 @@ export default function ProgramDetailPage() {
   const uploadDescriptor = useUploadDescriptor();
   const extractDescriptor = useExtractDescriptor();
   const processDescriptor = useProcessDescriptor();
+  const uploadStudyPlan = useUploadStudyPlan();
+  const extractSyllabi = useExtractSyllabi();
+  const deleteProgram = useDeleteProgram();
 
   const [pipelineResult, setPipelineResult] = useState<ProcessDescriptorResult | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', code: '', description: '', program_type: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const studyPlanInputRef = useRef<HTMLInputElement>(null);
 
   const handleAddCourse = (courseId: number) => {
     addCourse.mutate({ programId, data: { course_id: courseId } });
@@ -766,6 +776,44 @@ export default function ProgramDetailPage() {
     processDescriptor.mutate(programId, {
       onSuccess: (data) => {
         setPipelineResult(data);
+      },
+    });
+  };
+
+  const handleStudyPlanUpload = () => {
+    const file = studyPlanInputRef.current?.files?.[0];
+    if (file) {
+      uploadStudyPlan.mutate({ programId, file });
+    }
+  };
+
+  const handleExtractSyllabi = () => {
+    extractSyllabi.mutate(programId);
+  };
+
+  const handleEditOpen = () => {
+    if (program) {
+      setEditForm({
+        name: program.name,
+        code: program.code || '',
+        description: program.description || '',
+        program_type: program.program_type || '',
+      });
+      setShowEditDialog(true);
+    }
+  };
+
+  const handleEditSave = () => {
+    updateProgram.mutate(
+      { id: programId, data: editForm },
+      { onSuccess: () => setShowEditDialog(false) }
+    );
+  };
+
+  const handleDeleteConfirm = () => {
+    deleteProgram.mutate(programId, {
+      onSuccess: () => {
+        window.location.href = '/admin/programs';
       },
     });
   };
@@ -845,21 +893,28 @@ export default function ProgramDetailPage() {
           </div>
         </div>
 
-        {/* Program type selector */}
+        {/* Actions */}
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium whitespace-nowrap">Type :</label>
           <Select
             value={program.program_type || ''}
             onValueChange={handleTypeChange}
           >
             <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Sélectionner" />
+              <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="Licence">Licence</SelectItem>
               <SelectItem value="Master">Master</SelectItem>
             </SelectContent>
           </Select>
+          <Button variant="outline" size="sm" onClick={handleEditOpen}>
+            <Pencil className="h-4 w-4 mr-1" />
+            Modifier
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 className="h-4 w-4 mr-1" />
+            Supprimer
+          </Button>
         </div>
       </div>
 
@@ -920,6 +975,106 @@ export default function ProgramDetailPage() {
               {processDescriptor.isPending
                 ? 'Traitement en cours...'
                 : 'Traiter le descripteur (Pipeline AI)'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Study Plan upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-5 w-5" />
+            Plan d&apos;étude
+          </CardTitle>
+          {program.study_plan_file && (
+            <CardDescription>
+              Fichier : {program.study_plan_file}
+              {program.study_plan_uploaded_at &&
+                ` — Uploadé le ${new Date(program.study_plan_uploaded_at).toLocaleDateString('fr-FR')}`}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              ref={studyPlanInputRef}
+              type="file"
+              accept=".zip,.pdf,.docx"
+              className="max-w-xs"
+            />
+            <Button
+              size="sm"
+              onClick={handleStudyPlanUpload}
+              disabled={uploadStudyPlan.isPending}
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              {uploadStudyPlan.isPending ? 'Téléchargement...' : 'Télécharger le plan'}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleExtractSyllabi}
+              disabled={extractSyllabi.isPending || program.courses_count === 0}
+            >
+              {extractSyllabi.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4 mr-1" />
+              )}
+              {extractSyllabi.isPending
+                ? 'Extraction en cours...'
+                : 'Extraire les syllabus'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Study plan upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-5 w-5" />
+            Plan d&apos;étude
+          </CardTitle>
+          {program.study_plan_file && (
+            <CardDescription>
+              Fichier : {program.study_plan_file}
+              {program.study_plan_uploaded_at &&
+                ` — Uploadé le ${new Date(program.study_plan_uploaded_at).toLocaleDateString('fr-FR')}`}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              ref={studyPlanInputRef}
+              type="file"
+              accept=".zip,.pdf,.docx"
+              className="max-w-xs"
+            />
+            <Button
+              size="sm"
+              onClick={handleStudyPlanUpload}
+              disabled={uploadStudyPlan.isPending}
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              {uploadStudyPlan.isPending ? 'Téléchargement...' : 'Télécharger le plan'}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleExtractSyllabi}
+              disabled={extractSyllabi.isPending || program.courses_count === 0}
+            >
+              {extractSyllabi.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4 mr-1" />
+              )}
+              {extractSyllabi.isPending
+                ? 'Extraction en cours...'
+                : 'Extraire les syllabus'}
             </Button>
           </div>
         </CardContent>
@@ -1084,6 +1239,80 @@ export default function ProgramDetailPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier le programme</DialogTitle>
+            <DialogDescription>Modifier les informations du programme</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Nom</label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Code</label>
+              <Input
+                value={editForm.code}
+                onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Type</label>
+              <Select
+                value={editForm.program_type}
+                onValueChange={(v) => setEditForm({ ...editForm, program_type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Licence">Licence</SelectItem>
+                  <SelectItem value="Master">Master</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Textarea
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Annuler</Button>
+            <Button onClick={handleEditSave} disabled={updateProgram.isPending}>
+              {updateProgram.isPending ? 'Enregistrement...' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer le programme</DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir supprimer le programme &quot;{program.name}&quot; ?
+              Cette action est irréversible et supprimera tous les AAP, compétences et liens associés.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Annuler</Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteProgram.isPending}>
+              {deleteProgram.isPending ? 'Suppression...' : 'Supprimer définitivement'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

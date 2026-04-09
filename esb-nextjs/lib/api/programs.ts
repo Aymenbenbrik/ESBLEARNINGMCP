@@ -17,6 +17,7 @@ import {
   AAPCompetenceMatrix,
   ExtractDescriptorResult,
   ProcessDescriptorResult,
+  ExtractSyllabiResult,
 } from '../types/admin';
 
 const BASE_URL = '/api/v1/programs';
@@ -140,6 +141,35 @@ export const programsApi = {
   processDescriptor: async (programId: number): Promise<ProcessDescriptorResult> => {
     const { data } = await apiClient.post<ProcessDescriptorResult>(
       `${BASE_URL}/${programId}/process-descriptor`
+    );
+    return data;
+  },
+
+  // =========================================================================
+  // STUDY PLAN
+  // =========================================================================
+
+  /**
+   * Upload a study plan file (.zip, .pdf, .docx) for a program
+   */
+  uploadStudyPlan: async (programId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post(
+      `${BASE_URL}/${programId}/upload-study-plan`,
+      formData,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { headers: { 'Content-Type': undefined as any } }
+    );
+    return data;
+  },
+
+  /**
+   * Extract syllabi from course PDFs for all courses in program
+   */
+  extractSyllabi: async (programId: number): Promise<ExtractSyllabiResult> => {
+    const { data } = await apiClient.post<ExtractSyllabiResult>(
+      `${BASE_URL}/${programId}/extract-syllabi`
     );
     return data;
   },

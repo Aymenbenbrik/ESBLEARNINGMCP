@@ -45,6 +45,7 @@ def list_programs():
                     'description': p.description,
                     'program_type': p.program_type,
                     'descriptor_file': p.descriptor_file,
+                    'study_plan_file': p.study_plan_file,
                     'created_at': p.created_at.isoformat() if p.created_at else None,
                     'courses_count': p.courses_count,
                     'classes_count': p.classes.count(),
@@ -186,6 +187,8 @@ def get_program(program_id):
                 'program_type': program.program_type,
                 'descriptor_file': program.descriptor_file,
                 'descriptor_uploaded_at': program.descriptor_uploaded_at.isoformat() if program.descriptor_uploaded_at else None,
+                'study_plan_file': program.study_plan_file,
+                'study_plan_uploaded_at': program.study_plan_uploaded_at.isoformat() if program.study_plan_uploaded_at else None,
                 'created_at': program.created_at.isoformat() if program.created_at else None,
                 'courses_count': len(courses_data),
                 'classes_count': len(classes_data),
@@ -312,6 +315,24 @@ def delete_program(program_id):
 
         # Clear course associations
         program.courses.clear()
+
+        # Clean up AAP/competence data
+        AAAapLink.query.filter(
+            AAAapLink.aap_id.in_(
+                db.session.query(ProgramAAP.id).filter_by(program_id=program_id)
+            )
+        ).delete(synchronize_session='fetch')
+
+        db.session.execute(
+            aap_competence_link.delete().where(
+                aap_competence_link.c.aap_id.in_(
+                    db.session.query(ProgramAAP.id).filter_by(program_id=program_id)
+                )
+            )
+        )
+
+        ProgramAAP.query.filter_by(program_id=program_id).delete()
+        ProgramCompetence.query.filter_by(program_id=program_id).delete()
 
         # Delete program
         db.session.delete(program)
@@ -527,6 +548,130 @@ def upload_descriptor(program_id):
         db.session.rollback()
         logger.error(f"Error uploading descriptor: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+ALLOWED_STUDY_PLAN_EXTENSIONS = {'.zip', '.pdf', '.docx'}
+
+
+@programs_api_bp.route('/<int:program_id>/upload-study-plan', methods=['POST'])
+@jwt_required()
+@superuser_required
+def upload_study_plan(program_id):
+    """Upload a study plan file (.zip, .pdf, or .docx)."""
+    program = Program.query.get_or_404(program_id)
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'No file selected'}), 400
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_STUDY_PLAN_EXTENSIONS:
+        return jsonify({'error': 'Only .zip, .pdf, or .docx files are accepted'}), 400
+
+    try:
+        uploads_dir = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+        study_plan_dir = os.path.join(uploads_dir, 'programs', str(program_id), 'study-plan')
+        os.makedirs(study_plan_dir, exist_ok=True)
+
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(study_plan_dir, filename)
+        file.save(file_path)
+
+        rel_path = os.path.join('programs', str(program_id), 'study-plan', filename)
+        program.study_plan_file = rel_path
+        program.study_plan_uploaded_at = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Study plan uploaded successfully',
+            'study_plan_file': rel_path,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error uploading study plan: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@programs_api_bp.route('/<int:program_id>/extract-syllabi', methods=['POST'])
+@jwt_required()
+@superuser_required
+def extract_syllabi(program_id):
+    """Extract syllabi for all courses in this program using uploaded course documents."""
+    program = Program.query.get_or_404(program_id)
+
+    results = []
+    for course in program.courses:
+        try:
+            from app.models.syllabus import Syllabus
+            existing = Syllabus.query.filter_by(course_id=course.id).first()
+
+            from app.models.documents import Document
+            docs = Document.query.filter_by(course_id=course.id).all()
+            pdf_docs = [d for d in docs if d.file_path and d.file_path.lower().endswith('.pdf')]
+
+            if not pdf_docs:
+                results.append({
+                    'course_id': course.id,
+                    'course_title': course.title,
+                    'status': 'skipped',
+                    'reason': 'No PDF documents found'
+                })
+                continue
+
+            uploads_dir = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+            pdf_path = os.path.join(uploads_dir, pdf_docs[0].file_path)
+
+            if not os.path.exists(pdf_path):
+                results.append({
+                    'course_id': course.id,
+                    'course_title': course.title,
+                    'status': 'error',
+                    'reason': 'PDF file not found on disk'
+                })
+                continue
+
+            from app.services.syllabus_tn_service import SyllabusTNService
+            tn_service = SyllabusTNService()
+
+            if not existing:
+                existing = Syllabus(course_id=course.id, syllabus_type='tn')
+                db.session.add(existing)
+                db.session.flush()
+
+            from app.services.syllabus_tn_service import extract_aap_from_pdf
+            aap_data = extract_aap_from_pdf(pdf_path)
+
+            results.append({
+                'course_id': course.id,
+                'course_title': course.title,
+                'status': 'success',
+                'syllabus_id': existing.id,
+                'aap_extracted': len(aap_data) if aap_data else 0,
+            })
+        except Exception as e:
+            logger.error(f"Error extracting syllabus for course {course.id}: {e}")
+            results.append({
+                'course_id': course.id,
+                'course_title': course.title,
+                'status': 'error',
+                'reason': str(e)
+            })
+
+    db.session.commit()
+
+    return jsonify({
+        'message': f'Syllabus extraction completed for {len(results)} courses',
+        'results': results,
+        'summary': {
+            'total': len(results),
+            'success': len([r for r in results if r['status'] == 'success']),
+            'skipped': len([r for r in results if r['status'] == 'skipped']),
+            'error': len([r for r in results if r['status'] == 'error']),
+        }
+    }), 200
 
 
 @programs_api_bp.route('/<int:program_id>/extract-descriptor', methods=['POST'])

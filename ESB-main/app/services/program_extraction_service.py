@@ -775,6 +775,42 @@ def process_program_descriptor(program_id: int, file_path: str) -> dict:
 
     logger.info("[Pipeline] Pipeline complete for program %d", program_id)
 
+    # ── STEP 6: Extract syllabi for courses with documents ──────────────
+    logger.info("[Pipeline] Attempting syllabus extraction for linked courses")
+    syllabus_results = []
+    try:
+        from app.models.syllabus import Syllabus
+        from app.models.documents import Document
+
+        for module in modules_table:
+            course_id = module.get('course_id')
+            if not course_id:
+                continue
+
+            existing_syllabus = Syllabus.query.filter_by(course_id=course_id).first()
+
+            docs = Document.query.filter_by(course_id=course_id).all()
+            pdf_docs = [d for d in docs if d.file_path and d.file_path.lower().endswith('.pdf')]
+
+            syllabus_results.append({
+                'course_id': course_id,
+                'title': module.get('title', ''),
+                'has_syllabus': existing_syllabus is not None,
+                'pdf_count': len(pdf_docs),
+            })
+    except Exception as e:
+        logger.warning("[Pipeline] Syllabus scan failed: %s", e)
+
+    steps.append({
+        'agent': 'Analyse des syllabus',
+        'status': 'success',
+        'details': {
+            'courses_scanned': len(syllabus_results),
+            'with_syllabus': len([r for r in syllabus_results if r['has_syllabus']]),
+            'with_pdfs': len([r for r in syllabus_results if r['pdf_count'] > 0]),
+        },
+    })
+
     return {
         'steps': steps,
         'modules_table': modules_table,

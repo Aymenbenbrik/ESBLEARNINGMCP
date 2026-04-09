@@ -147,6 +147,10 @@ def _bootstrap_db(app: Flask):
                 db.session.execute(text("ALTER TABLE program ADD COLUMN descriptor_uploaded_at DATETIME"))
             if 'code' not in c:
                 db.session.execute(text("ALTER TABLE program ADD COLUMN code VARCHAR(50)"))
+            if 'study_plan_file' not in c:
+                db.session.execute(text("ALTER TABLE program ADD COLUMN study_plan_file VARCHAR(255)"))
+            if 'study_plan_uploaded_at' not in c:
+                db.session.execute(text("ALTER TABLE program ADD COLUMN study_plan_uploaded_at DATETIME"))
 
         db.session.commit()
 

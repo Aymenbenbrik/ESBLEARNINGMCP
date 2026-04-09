@@ -15,6 +15,9 @@ export interface Program {
   classes_count: number;
   aaps_count?: number;
   competences_count?: number;
+  study_plan_file?: string | null;
+  study_plan_uploaded_at?: string | null;
+  descriptor_file?: string | null;
 }
 
 export interface ProgramAAP {
@@ -51,6 +54,24 @@ export interface ExtractDescriptorResult {
     competences: { code: string; description: string; nature: string }[];
     matrix: { competence_code: string; aap_codes: string[] }[];
     study_plan?: { name: string; semester: number; ue: string }[];
+  };
+}
+
+export interface ExtractSyllabiResult {
+  message: string;
+  results: {
+    course_id: number;
+    course_title: string;
+    status: string;
+    reason?: string;
+    syllabus_id?: number;
+    aap_extracted?: number;
+  }[];
+  summary: {
+    total: number;
+    success: number;
+    skipped: number;
+    error: number;
   };
 }
 
@@ -95,6 +116,8 @@ export interface ProgramDetails {
     program_type?: string;
     descriptor_file?: string;
     descriptor_uploaded_at?: string;
+    study_plan_file?: string | null;
+    study_plan_uploaded_at?: string | null;
     created_at: string;
     courses_count: number;
     classes_count: number;

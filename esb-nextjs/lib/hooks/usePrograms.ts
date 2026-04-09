@@ -18,6 +18,7 @@ import {
   AAPCompetenceMatrix,
   ExtractDescriptorResult,
   ProcessDescriptorResult,
+  ExtractSyllabiResult,
 } from '../types/admin';
 import { toast } from 'sonner';
 
@@ -236,6 +237,40 @@ export function useProcessDescriptor() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || "Échec du pipeline de traitement");
+    },
+  });
+}
+
+// ===========================================================================
+// STUDY PLAN HOOKS
+// ===========================================================================
+
+export function useUploadStudyPlan() {
+  const queryClient = useQueryClient();
+  return useMutation<any, Error, { programId: number; file: File }>({
+    mutationFn: ({ programId, file }) => programsApi.uploadStudyPlan(programId, file),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(variables.programId) });
+      toast.success('Plan d\'étude téléchargé avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec du téléchargement du plan d\'étude');
+    },
+  });
+}
+
+export function useExtractSyllabi() {
+  const queryClient = useQueryClient();
+  return useMutation<ExtractSyllabiResult, Error, number>({
+    mutationFn: (programId) => programsApi.extractSyllabi(programId),
+    onSuccess: (data, programId) => {
+      queryClient.invalidateQueries({ queryKey: programKeys.detail(programId) });
+      toast.success(
+        `Extraction terminée : ${data.summary.success} réussis, ${data.summary.skipped} ignorés, ${data.summary.error} erreurs`
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Échec de l\'extraction des syllabus');
     },
   });
 }
