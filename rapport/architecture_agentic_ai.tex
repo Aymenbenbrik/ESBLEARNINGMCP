@@ -1,0 +1,421 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\definecolor{codeblue}{RGB}{0,102,204}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{backcolour}{RGB}{245,245,245}
+
+\lstset{
+    backgroundcolor=\color{backcolour},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{codegray},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codeblue},
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{ESB-Learning}
+\lhead{Architecture Agentic AI}
+\rfoot{\thepage}
+
+\title{\textbf{Architecture Agentic AI}\\[0.5em]
+\large Plateforme ESB-Learning\\[0.3em]
+\normalsize Description complète des agents, outils et pipelines}
+\author{Aymen Benbrik}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Vue d'ensemble}
+
+La plateforme ESB-Learning implémente une architecture \textbf{Agentic AI multi-agents} orchestrée par des modèles de langage (LLM). Le système comporte \textbf{9 agents/services AI} interconnectés, utilisant principalement \textbf{Google Gemini} comme LLM d'orchestration et \textbf{LangGraph} comme framework d'agents.
+
+\subsection{Technologies clés}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Technologie} & \textbf{Rôle} \\
+\midrule
+Google Gemini 2.5-Flash & LLM principal (orchestration, génération, analyse) \\
+Google Gemini 2.5-Pro & LLM avancé (examens, analyse approfondie) \\
+LangGraph & Framework d'agents (StateGraph, ReAct) \\
+TunBERT (tunis-ai/TunBERT) & Modèle BERT pré-entraîné sur le dialecte tunisien \\
+ChromaDB & Base vectorielle pour RAG \\
+gTTS & Synthèse vocale (Text-to-Speech) \\
+PyTorch + Transformers & Inférence TunBERT \\
+\bottomrule
+\end{tabular}
+\caption{Stack technologique IA}
+\end{table}
+
+% ============================================================================
+\section{Agent Conversationnel (Assistant Agent)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichier} : \texttt{app/services/assistant\_agent.py}
+    \item \textbf{API} : \texttt{POST /api/v1/assistant/chat}
+    \item \textbf{Pattern} : LangGraph ReAct Agent (function calling)
+    \item \textbf{LLM} : Gemini 2.5-Flash (temperature: 0.4)
+\end{itemize}
+
+\subsection{Description}
+Agent conversationnel intelligent qui s'adapte au rôle de l'utilisateur (étudiant, enseignant, administrateur) et communique en \textbf{français}, \textbf{anglais} et \textbf{dialecte tunisien}. Il utilise le pattern ReAct (Reasoning + Acting) pour décider quels outils appeler en fonction de la requête.
+
+\subsection{Outils communs (tous les rôles)}
+
+\begin{longtable}{@{}p{3.8cm}p{6cm}p{2cm}p{3cm}@{}}
+\toprule
+\textbf{Outil} & \textbf{Description} & \textbf{Entrée} & \textbf{Sortie} \\
+\midrule
+\endhead
+\texttt{get\_my\_courses} & Récupère les cours de l'utilisateur & user\_id & Liste JSON des cours \\
+\texttt{get\_calendar\_activities} & Calendrier des activités à venir & user\_id & Activités avec dates \\
+\texttt{get\_course\_details} & Informations détaillées d'un cours & course\_id & Métadonnées du cours \\
+\bottomrule
+\end{longtable}
+
+\subsection{Outils étudiants}
+
+\begin{longtable}{@{}p{4cm}p{6cm}p{2cm}p{3cm}@{}}
+\toprule
+\textbf{Outil} & \textbf{Description} & \textbf{Entrée} & \textbf{Sortie} \\
+\midrule
+\endhead
+\texttt{get\_my\_performance} & Scores quiz, moyennes, Bloom & student\_id & Performance par cours \\
+\texttt{get\_my\_grades\_summary} & Notes par module & student\_id & Résumé des notes \\
+\texttt{get\_recommendations} & Recommandations IA (Coach) & student\_id & Lacunes et plan d'étude \\
+\bottomrule
+\end{longtable}
+
+\subsection{Outils enseignants}
+
+\begin{longtable}{@{}p{4.5cm}p{5.5cm}p{2cm}p{3cm}@{}}
+\toprule
+\textbf{Outil} & \textbf{Description} & \textbf{Entrée} & \textbf{Sortie} \\
+\midrule
+\endhead
+\texttt{get\_at\_risk\_students} & Détection étudiants en difficulté & teacher\_id & Liste à risque \\
+\texttt{get\_class\_performance} & Statistiques globales classe & teacher\_id & Analytiques classe \\
+\texttt{suggest\_quiz\_for\_student} & Quiz adapté pour un étudiant & student\_id & Quiz personnalisé \\
+\bottomrule
+\end{longtable}
+
+\subsection{Flux d'exécution}
+
+\begin{lstlisting}[language={},caption={Pipeline de l'Assistant Agent}]
+Message utilisateur
+  |-> Detection de langue (keyword-based)
+  |-> [Si tunisien] Enrichissement TunBERT (intents semantiques)
+  |-> Construction du prompt systeme (role, nom, user_id)
+  |-> Selection des outils selon le role
+  |-> Agent ReAct (Gemini function calling)
+  |     |-> Raisonnement : analyse la requete
+  |     |-> Action : appel d'un ou plusieurs outils
+  |     |-> Observation : resultat de l'outil
+  |     '-> Reponse finale : synthese en langage naturel
+  '-> Retour : {response, language, tools_used, tunbert_intents}
+\end{lstlisting}
+
+\subsection{Endpoints associés}
+
+\begin{itemize}
+    \item \texttt{POST /api/v1/assistant/chat} --- Chat principal
+    \item \texttt{POST /api/v1/assistant/tts} --- Synthèse vocale (gTTS)
+    \item \texttt{POST /api/v1/assistant/stt} --- Reconnaissance vocale (Gemini audio)
+    \item \texttt{GET /api/v1/assistant/tunbert-status} --- État du modèle TunBERT
+\end{itemize}
+
+% ============================================================================
+\section{Service TunBERT (Dialecte tunisien)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichier} : \texttt{app/services/tunbert\_service.py}
+    \item \textbf{Pattern} : Singleton lazy-loaded + Classification par similarité cosinus
+    \item \textbf{Modèle} : tunis-ai/TunBERT (BERT-base, 768 dimensions, 440 Mo)
+\end{itemize}
+
+\subsection{Description}
+Service de compréhension du dialecte tunisien utilisant le modèle TunBERT pré-entraîné. Intégré comme \textbf{agent de preprocessing} dans le pipeline de l'assistant conversationnel. Quand un message en dialecte tunisien est détecté, TunBERT analyse l'intention éducative et enrichit le prompt envoyé à Gemini.
+
+\subsection{Intentions éducatives supportées (9)}
+
+\begin{longtable}{@{}p{4cm}p{5cm}p{5.5cm}@{}}
+\toprule
+\textbf{Intention} & \textbf{Description} & \textbf{Exemples tunisiens} \\
+\midrule
+\endhead
+\texttt{ask\_courses} & Informations sur les cours & ``chnou el cours mte3i'' \\
+\texttt{ask\_grades} & Notes et résultats & ``chnou el notes mte3i'' \\
+\texttt{ask\_schedule} & Calendrier et horaires & ``wakteh el exam'' \\
+\texttt{ask\_recommendations} & Conseils d'étude & ``chnou lazem na9ra'' \\
+\texttt{ask\_performance} & Niveau et progression & ``kif niveau mte3i'' \\
+\texttt{greeting} & Salutation tunisienne & ``ahla bik'', ``salam 3likom'' \\
+\texttt{ask\_help} & Aide sur l'utilisation & ``3awni'', ``ki nesta3mel'' \\
+\texttt{teacher\_at\_risk} & Étudiants en difficulté & ``chkoun el talaba fi danger'' \\
+\texttt{teacher\_class\_perf} & Performance de la classe & ``kif el classe'' \\
+\bottomrule
+\end{longtable}
+
+\subsection{Architecture technique}
+
+\begin{lstlisting}[language={},caption={Chargement et classification TunBERT}]
+Premiere requete tunisienne
+  |-> Chargement lazy du modele (440 Mo, une seule fois)
+  |-> Remapping des cles (strip "BertModel." prefix)
+  |-> Pre-calcul des embeddings d'ancrage (9 intentions x 5-7 phrases)
+  '-> Modele pret en memoire (singleton)
+
+Requete suivante
+  |-> Tokenisation du texte (BertTokenizer)
+  |-> Embedding CLS (768 dimensions)
+  |-> Similarite cosinus avec les ancrages
+  |-> Seuil de confiance (0.75)
+  '-> Enrichissement du prompt si confiance suffisante
+\end{lstlisting}
+
+% ============================================================================
+\section{Coach Agent (Analyse de performance)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichier} : \texttt{app/services/coach\_agent.py}
+    \item \textbf{API} : \texttt{GET /api/v1/coach/analyze}
+    \item \textbf{Pattern} : LangGraph StateGraph (pipeline 4 étapes)
+    \item \textbf{LLM} : Gemini 2.5-Flash (temperature: 0.3)
+\end{itemize}
+
+\subsection{Description}
+Agent d'analyse des performances étudiantes. Collecte les données de quiz et examens, identifie les lacunes par compétence et niveau de Bloom, puis génère des recommandations personnalisées et un plan d'étude.
+
+\subsection{Pipeline}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}clp{8cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Étape} & \textbf{Description} \\
+\midrule
+1 & Collecte des données & Agrégation des scores quiz par cours, calcul Bloom \\
+2 & Analyse LLM & Envoi des données à Gemini pour analyse approfondie \\
+3 & Génération recommandations & skill\_gaps, recommendations, study\_plan \\
+4 & Formatage sortie & JSON structuré avec niveaux de sévérité \\
+\bottomrule
+\end{tabular}
+\caption{Pipeline du Coach Agent}
+\end{table}
+
+\subsection{Sortie structurée}
+L'agent retourne un JSON contenant :
+\begin{itemize}
+    \item \textbf{performance} : scores par cours, moyenne globale, scores Bloom
+    \item \textbf{skill\_gaps} : lacunes identifiées avec sévérité (high/medium/low)
+    \item \textbf{recommendations} : exercices recommandés avec priorité (urgent/important/optional)
+    \item \textbf{study\_plan} : planning d'étude avec activités et durées
+\end{itemize}
+
+% ============================================================================
+\section{Exam Agent Graph (Évaluation multi-agents)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichier} : \texttt{app/services/exam\_agent\_graph.py}
+    \item \textbf{API} : \texttt{POST /courses/<id>/exam/analyze}
+    \item \textbf{Pattern} : LangGraph StateGraph (pipeline 10 étapes asynchrone)
+    \item \textbf{LLM} : Gemini 2.5-Flash / Pro
+\end{itemize}
+
+\subsection{Description}
+Système multi-agents pour l'analyse pédagogique complète d'un examen. Extrait les questions, les classifie par AA et taxonomie de Bloom, compare avec le syllabus, génère des feedbacks et compile un document \LaTeX.
+
+\subsection{Pipeline (10 étapes)}
+
+\begin{longtable}{@{}clp{4cm}p{6cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Étape} & \textbf{Fonction} & \textbf{Description} \\
+\midrule
+\endhead
+1 & Extraction texte & \texttt{extract\_text} & PDF/DOCX $\rightarrow$ texte brut \\
+2 & Extraction questions & \texttt{extract\_questions} & Parsing avec points \\
+3 & Classification AA & \texttt{classify\_aa} & Mapping Acquis d'Apprentissage \\
+4 & Classification Bloom & \texttt{classify\_bloom} & Niveau taxonomique \\
+5 & Difficulté & \texttt{assess\_difficulty} & Difficulté relative au cours \\
+6 & Comparaison contenu & \texttt{compare\_content} & Alignement Syllabus $\leftrightarrow$ Examen \\
+7 & Analyse feedback & \texttt{analyze\_feedback} & Feedback pédagogique \\
+8 & Suggestions & \texttt{suggest\_adjustments} & Améliorations par question \\
+9 & Génération \LaTeX & \texttt{generate\_latex} & Document + compilation PDF \\
+10 & Évaluation & \texttt{evaluate\_proposal} & Évaluation pédagogique finale \\
+\bottomrule
+\end{longtable}
+
+\subsection{Persistance}
+\begin{itemize}
+    \item Progression sauvegardée dans \texttt{ExamAnalysisSession.progress} (0-100\%)
+    \item Label de l'agent courant pour l'UI
+    \item Questions extraites persistées dans \texttt{ExamExtractedQuestion}
+    \item État complet sauvegardé en JSON dans \texttt{state\_json}
+\end{itemize}
+
+% ============================================================================
+\section{TP Agent Graph (Travaux Pratiques)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichier} : \texttt{app/services/tp\_agent\_graph.py}
+    \item \textbf{Pattern} : LangGraph StateGraph (2 workflows distincts)
+    \item \textbf{LLM} : Gemini 2.5-Flash
+\end{itemize}
+
+\subsection{Workflow Création (Enseignant --- 5 étapes)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}clp{8cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Étape} & \textbf{Description} \\
+\midrule
+1 & \texttt{get\_context} & Récupération du contexte de la section \\
+2 & \texttt{generate\_statement} & Génération IA de l'énoncé du TP \\
+3 & \texttt{parse\_questions} & Extraction des questions structurées \\
+4 & \texttt{suggest\_aa} & Suggestion des codes AA \\
+5 & \texttt{generate\_reference} & Solution de référence + critères \\
+\bottomrule
+\end{tabular}
+\caption{Workflow de création de TP}
+\end{table}
+
+\subsection{Workflow Correction (Automatique --- 2 étapes)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}clp{8cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Étape} & \textbf{Description} \\
+\midrule
+1 & \texttt{auto\_correct} & Analyse soumission vs référence \\
+2 & \texttt{propose\_grade} & Finalisation de la note numérique \\
+\bottomrule
+\end{tabular}
+\caption{Workflow de correction automatique}
+\end{table}
+
+\subsection{Outils}
+
+\begin{longtable}{@{}p{5cm}p{9cm}@{}}
+\toprule
+\textbf{Outil} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{get\_section\_context} & Récupération contenu éducatif \\
+\texttt{generate\_tp\_statement} & Génération d'énoncé \\
+\texttt{parse\_tp\_questions} & Extraction de questions \\
+\texttt{suggest\_aa\_codes} & Suggestion AA \\
+\texttt{generate\_reference\_solution} & Solution de référence \\
+\texttt{auto\_correct\_submission} & Correction automatique \\
+\texttt{propose\_grade} & Proposition de note \\
+\texttt{chat\_with\_student} & Tutorat socratique (TP formatifs) \\
+\bottomrule
+\end{longtable}
+
+\textbf{Langages supportés} : Python, SQL, R, Java, C, C++
+
+% ============================================================================
+\section{Service de Feedback (Post-Évaluation)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichier} : \texttt{app/services/feedback\_service.py}
+    \item \textbf{API} : \texttt{POST /api/v1/feedback/generate/<exam\_session\_id>}
+    \item \textbf{Pattern} : Appel LLM direct (JSON output)
+    \item \textbf{LLM} : Gemini 2.5-Flash (temperature: 0.4)
+\end{itemize}
+
+Génère automatiquement un feedback pédagogique personnalisé après chaque épreuve : forces, faiblesses, recommandations, et feedback formaté en Markdown.
+
+% ============================================================================
+\section{Services RAG (Chat documentaire)}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fichiers} : \texttt{chat\_service.py}, \texttt{vector\_store.py}, \texttt{document\_pipeline.py}
+    \item \textbf{API} : \texttt{POST /api/v1/ai/chat/<document\_id>}
+    \item \textbf{Pattern} : RAG (Retrieval-Augmented Generation) avec CAG
+    \item \textbf{Base vectorielle} : ChromaDB
+\end{itemize}
+
+Système de chat intelligent sur les documents de cours. Pipeline : CAG (recherche résumés) $\rightarrow$ RAG (recherche détaillée) $\rightarrow$ Génération LLM avec citations.
+
+% ============================================================================
+\section{Services d'Extraction et Traitement}
+
+\subsection{Smart Extraction Service}
+Extraction intelligente de contenu pour la génération de quiz, alignée sur les CLO et objectifs. Scoring par type de section (définitions: 2.0x, formules: 1.7x, exemples: 1.4x).
+
+\subsection{Program Extraction Service}
+Pipeline Agentic AI pour l'extraction automatique depuis le descriptif de formation : AAP, compétences, modules (par semestre), création automatique des enseignants, affectation aux cours.
+
+\subsection{Video Analysis Service}
+Analyse vidéo avec Gemini Vision : extraction de frames, transcription audio, analyse visuelle, timeline, rapport PDF.
+
+\subsection{Syllabus Service}
+Extraction des CLO, plan hebdomadaire, PLO, TNE depuis les PDF syllabus.
+
+% ============================================================================
+\section{Tableau récapitulatif des agents}
+
+\begin{longtable}{@{}p{2.5cm}p{2cm}p{2cm}p{2.5cm}cp{3cm}@{}}
+\toprule
+\textbf{Agent} & \textbf{Type} & \textbf{Modèle} & \textbf{Pattern} & \textbf{Étapes} & \textbf{Point d'entrée} \\
+\midrule
+\endhead
+Assistant & Conversationnel & Gemini Flash & ReAct & 1 & \texttt{/assistant/chat} \\
+TunBERT & Preprocessing & TunBERT & Cosine sim. & 1 & Appelé par Assistant \\
+Coach & Analytique & Gemini Flash & StateGraph & 4 & \texttt{/coach/analyze} \\
+Exam & Pipeline & Gemini Flash/Pro & StateGraph & 10 & \texttt{/exam/analyze} \\
+TP Création & Pipeline & Gemini Flash & StateGraph & 5 & \texttt{/practical-work/\{id\}} \\
+TP Correction & Pipeline & Gemini Flash & StateGraph & 2 & \texttt{/submissions/\{id\}/grade} \\
+Feedback & Génératif & Gemini Flash & Appel direct & 1 & \texttt{/feedback/generate/\{id\}} \\
+RAG/Chat & Retrieval & Gemini + ChromaDB & CAG$\rightarrow$RAG & 2 & \texttt{/ai/chat/\{doc\_id\}} \\
+Program Extract & Pipeline & Gemini Flash & Multi-agents & 5+ & \texttt{/programs/\{id\}/process} \\
+\bottomrule
+\end{longtable}
+
+% ============================================================================
+\section{Stratégie de sélection des modèles}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}p{4cm}p{5cm}p{5cm}@{}}
+\toprule
+\textbf{Modèle} & \textbf{Cas d'usage} & \textbf{Caractéristiques} \\
+\midrule
+Gemini 2.5-Flash & Chat, quiz, feedback (défaut) & Rapide, <3s, économique \\
+Gemini 2.5-Pro & Examens, analyse approfondie & Raisonnement profond \\
+TunBERT & Dialecte tunisien & 768 dim, classification d'intentions \\
+ChromaDB embeddings & RAG documentaire & Recherche sémantique vectorielle \\
+\bottomrule
+\end{tabular}
+\caption{Stratégie de sélection des modèles LLM}
+\end{table}
+
+\end{document}

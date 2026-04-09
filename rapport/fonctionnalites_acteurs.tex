@@ -1,0 +1,465 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{multirow}
+\usepackage{xcolor}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{ESB-Learning}
+\lhead{Fonctionnalités par Acteur}
+\rfoot{\thepage}
+
+\title{\textbf{Fonctionnalités par Acteur}\\[0.5em]
+\large Plateforme ESB-Learning\\[0.3em]
+\normalsize Description complète des fonctionnalités offertes à chaque rôle}
+\author{Aymen Benbrik}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Vue d'ensemble des rôles}
+
+La plateforme ESB-Learning définit \textbf{3 rôles principaux} avec héritage de permissions :
+
+\begin{center}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Rôle} & \textbf{is\_teacher} & \textbf{is\_superuser} & \textbf{Hérite de} \\
+\midrule
+Étudiant & false & false & --- \\
+Enseignant & true & false & Étudiant \\
+Administrateur (SuperAdmin) & true/false & true & Enseignant \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Détection du rôle} : \texttt{AuthContext.tsx} $\rightarrow$ \texttt{user.is\_teacher}, \texttt{user.is\_superuser}
+
+% ============================================================================
+\section{Acteur : Étudiant}
+
+\subsection{Pages accessibles}
+
+\begin{longtable}{@{}p{7cm}p{7.5cm}@{}}
+\toprule
+\textbf{Route} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{/dashboard} & Tableau de bord principal \\
+\texttt{/student-dashboard} & Dashboard analytique avec IA \\
+\texttt{/courses} & Liste des cours + inscription \\
+\texttt{/courses/[id]} & Détails d'un cours \\
+\texttt{/courses/[id]/chapters/[id]} & Navigation dans les chapitres \\
+\texttt{/.../documents/[docId]} & Visualisation de documents \\
+\texttt{/.../quiz/[quizId]} & Passage de quiz \\
+\texttt{/.../practice-quiz} & Quiz d'entraînement \\
+\texttt{/.../tp/[tpId]} & Travaux pratiques \\
+\texttt{/.../assignment/[sectionId]} & Devoirs \\
+\texttt{/courses/[id]/progress} & Suivi de progression \\
+\texttt{/courses/[id]/exams} & Examens du cours \\
+\texttt{/question-bank} & Banque de questions (approuvées) \\
+\texttt{/absences} & Suivi des absences \\
+\texttt{/grades} & Tableau des notes \\
+\texttt{/profile} & Paramètres du compte \\
+\texttt{/classes} & Mes classes \\
+\texttt{/classes/[id]/chat} & Chat de groupe \\
+\texttt{/classes/[id]/dashboard} & Analytiques de classe \\
+\bottomrule
+\end{longtable}
+
+\subsection{Apprentissage et contenu}
+
+\begin{itemize}
+    \item \textbf{Parcourir et s'inscrire aux cours} --- Liste avec barres de progression
+    \item \textbf{Navigation par chapitres} --- Contenu structuré avec documents
+    \item \textbf{Visualisation de documents} --- PDFs, métadonnées, téléchargement
+    \item \textbf{Activités interactives} --- YouTube, PDF, quiz, textes, devoirs
+    \item \textbf{Progression par chapitre} --- Suivi de complétion en temps réel
+\end{itemize}
+
+\subsection{Évaluations}
+
+\begin{longtable}{@{}p{4cm}p{10.5cm}@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Description} \\
+\midrule
+\endhead
+Quiz & Générés automatiquement depuis les documents, résultats immédiats \\
+Quiz d'entraînement & Depuis la banque de questions, tentatives limitées, feedback immédiat \\
+Banque de questions & Parcourir les questions approuvées, filtrer par Bloom/difficulté/CLO \\
+Examens & Examens chronométrés avec proctoring (caméra, détection de triche) \\
+Travaux pratiques & Soumission de code, aide IA (chatbot socratique), feedback \\
+Devoirs & Soumission de fichiers, date limite, notation \\
+\bottomrule
+\end{longtable}
+
+\subsection{Notes et progression}
+
+\begin{longtable}{@{}p{4cm}p{10.5cm}@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Description} \\
+\midrule
+\endhead
+Dashboard étudiant & KPI personnalisés, calendrier, recommandations IA, alertes lacunes \\
+Page des notes & Scores AA (par module), distribution Bloom, scores AAP (formation) \\
+Page des absences & Heatmap visuelle par cours, alertes taux de présence \\
+Progression & Par chapitre, par quiz, par TP, synthèse globale \\
+\bottomrule
+\end{longtable}
+
+\subsection{Fonctionnalités IA}
+
+\begin{longtable}{@{}p{3.5cm}p{11cm}@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Description} \\
+\midrule
+\endhead
+Assistant IA & Chat flottant bilingue (FR/TN), entrée/sortie vocale, historique \\
+Coach IA & Analyse de performance, identification des lacunes, plan d'étude personnalisé \\
+Chat documentaire & Q\&A sur les supports de cours via RAG (questions sur les PDFs) \\
+Chat chapitre & Aide contextuelle sur un chapitre complet \\
+Chat de classe & Discussions de groupe avec assistance IA \\
+Chatbot TP & Aide sur les travaux pratiques (indices, guidance socratique) \\
+\bottomrule
+\end{longtable}
+
+% ============================================================================
+\section{Acteur : Enseignant}
+
+\subsection{Pages accessibles}
+\textit{Toutes les pages étudiants + les suivantes :}
+
+\begin{longtable}{@{}p{7cm}p{7.5cm}@{}}
+\toprule
+\textbf{Route} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{/teacher-dashboard} & Dashboard analytique enseignant \\
+\texttt{/courses/new} & Création de cours \\
+\texttt{/courses/[id]/edit} & Édition de cours \\
+\texttt{/courses/[id]/dashboard} & Analytiques du cours \\
+\texttt{/courses/[id]/chapters/new} & Création de chapitre \\
+\texttt{/.../chapters/[id]/edit} & Édition de chapitre \\
+\texttt{/.../quiz/setup} & Configuration de quiz \\
+\texttt{/.../quiz/[id]/submissions} & Soumissions des étudiants \\
+\texttt{/.../quiz/[id]/results} & Analytiques du quiz \\
+\texttt{/.../quiz/[id]/disqualified} & Violations de triche \\
+\texttt{/.../documents/new} & Upload de documents \\
+\texttt{/.../tp/create} & Création de TP \\
+\texttt{/.../tp/[id]/edit} & Édition de TP \\
+\texttt{/courses/[id]/course-review} & Paramètres du cours \\
+\texttt{/courses/[id]/question-bank} & Gestion banque de questions \\
+\texttt{/courses/[id]/exam} & Création d'examen \\
+\texttt{/students} & Mes étudiants \\
+\texttt{/question-bank} & Accès complet + approbation \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des cours et chapitres}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Créer un cours & Titre, description, upload de modules \\
+Éditer un cours & Modification des métadonnées \\
+Créer un chapitre & Ordre, sections, métadonnées \\
+Éditer un chapitre & Mise à jour des propriétés et sections \\
+Générer un résumé & Résumé IA depuis les documents \\
+Suggérer mapping AA & Proposition IA des acquis d'apprentissage \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des quiz}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Générer un quiz & Auto-génération depuis un document + QA \\
+Configurer un quiz & Révision/édition des questions, paramètres \\
+Voir les soumissions & Toutes les tentatives étudiantes \\
+Analytiques & Stats par question, distribution de performance \\
+Détection de triche & Indicateurs de violations (copier/coller, changement d'onglet) \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion de la banque de questions}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Générer des questions & BGA (basé CLO) ou TN (basé document) \\
+Approuver/Rejeter & Approbation en masse des questions générées \\
+Parcourir tout & Accès à toutes les questions (pas seulement approuvées) \\
+Créer banque de cours & Regrouper les questions par cours \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des travaux pratiques}
+
+\begin{longtable}{@{}p{5cm}p{9.5cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Créer un TP & Énoncé + sections + questions \\
+Génération IA de l'énoncé & Auto-création depuis des indices \\
+Suggestion IA des AA & Proposition d'acquis d'apprentissage \\
+Génération IA solution & Solution de référence + critères \\
+Voir les soumissions & Liste des soumissions de code étudiantes \\
+Noter une soumission & Score + feedback (manuel ou IA) \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des examens}
+
+\begin{longtable}{@{}p{5cm}p{9.5cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Créer un examen & Q\&A manuelles ou IA depuis document \\
+Éditer un examen & Ajout/suppression de questions, paramètres \\
+Configurer le proctoring & Face ID, caméra, plein écran, mot de passe \\
+Publier/Dépublier & Rendre disponible aux étudiants \\
+Génération IA réponses & Auto-génération des réponses de référence \\
+Auto-correction & Correction automatique des QCM \\
+Révision des sessions & Voir tous les étudiants, violations \\
+Valider les scores & Révision manuelle des réponses subjectives \\
+Passer en mode preview & Vérifier le quiz sans noter \\
+\bottomrule
+\end{longtable}
+
+\subsection{Suivi des étudiants}
+
+\begin{itemize}
+    \item \textbf{Liste des étudiants} --- Tous les étudiants des cours de l'enseignant
+    \item \textbf{Dashboard individuel} --- Analytiques, progression, scores AA
+    \item \textbf{Coach IA étudiant} --- Analyse IA d'un étudiant spécifique
+    \item \textbf{Heatmap AA} --- Visualisation des acquis par étudiant
+    \item \textbf{Calcul des scores AA} --- Déclenchement du calcul depuis quiz/TP
+\end{itemize}
+
+\subsection{Dashboard enseignant}
+
+\begin{itemize}
+    \item KPIs : quiz total, complétés, score moyen
+    \item Distribution Bloom et difficulté
+    \item Stats examens (total, analysés)
+    \item Cartes par cours (étudiants, quiz, score moyen, score IA examen)
+\end{itemize}
+
+\subsection{Fonctionnalités IA (enseignant)}
+
+\begin{longtable}{@{}p{4cm}p{10.5cm}@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Description} \\
+\midrule
+\endhead
+Génération de quiz & Auto-génération depuis les documents \\
+Génération de questions & BGA ou TN \\
+Génération d'examens & TN depuis documents \\
+Génération de TP & Énoncés, solutions, suggestions AA \\
+Résumé de chapitre & Auto-résumé d'apprentissage \\
+Détection de TP & Suggestion d'endroits pour ajouter des TP \\
+Coach IA & Analyse de performance des étudiants \\
+Chat documentaire & Q\&A sur les supports de cours \\
+Assistant IA & Chat avec outils enseignant (at-risk, performance classe) \\
+\bottomrule
+\end{longtable}
+
+% ============================================================================
+\section{Acteur : Administrateur (SuperAdmin)}
+
+\subsection{Pages accessibles}
+\textit{Toutes les pages enseignant + les suivantes :}
+
+\begin{longtable}{@{}p{6.5cm}p{8cm}@{}}
+\toprule
+\textbf{Route} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{/admin/programs} & Liste et création de programmes \\
+\texttt{/admin/programs/[id]} & Détails du programme \\
+\texttt{/admin/programs/[id]/dashboard} & Analytiques du programme \\
+\texttt{/admin/classes} & Liste et création de classes \\
+\texttt{/admin/classes/[id]} & Détails de la classe et étudiants \\
+\texttt{/admin/students} & Gestion de tous les étudiants \\
+\texttt{/admin/teachers} & Gestion de tous les enseignants \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des programmes (formations)}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Créer un programme & Titre, code, description, type (Licence/Master) \\
+Lister les programmes & Tous les programmes du système \\
+Détails du programme & Cours, classes, AAP, compétences \\
+Ajouter/Retirer un cours & Lier/délier un cours au programme \\
+Créer une classe & Dans le cadre d'un programme \\
+Upload descripteur & Fiche descriptive (.docx) \\
+Extraction AAP & Pipeline IA $\rightarrow$ acquis d'apprentissage professionnels \\
+Traitement complet & Pipeline IA (AAP, compétences, modules, enseignants) \\
+Extraction syllabi & Depuis les PDFs des cours \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des AAP et compétences}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Créer/Modifier/Supprimer AAP & Acquis d'apprentissage professionnel \\
+Créer/Modifier compétence & Compétence/skill \\
+Construire matrice & Lien compétences $\leftrightarrow$ AAP \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des classes}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Créer une classe & Dans un programme \\
+Lister les classes & Toutes les classes \\
+Détails de classe & Étudiants, cours, enseignants \\
+Ajouter/Retirer étudiants & Affectation en masse \\
+Affecter enseignants & Lier enseignants aux cours de la classe \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des étudiants}
+
+\begin{longtable}{@{}p{5cm}p{9.5cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Lister tous les étudiants & Avec filtres (classe, recherche) \\
+Générer des étudiants & Création en masse avec credentials automatiques \\
+Réinitialiser mot de passe & Nouveau mot de passe pour un étudiant \\
+Modifier un étudiant & Changer classe, statut, email \\
+Exporter CSV & Télécharger la liste avec credentials \\
+Changer le statut & Actif/Inactif \\
+\bottomrule
+\end{longtable}
+
+\subsection{Gestion des enseignants}
+
+\begin{longtable}{@{}p{5cm}p{9.5cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Description} \\
+\midrule
+\endhead
+Lister les enseignants & Tous les enseignants \\
+Créer un enseignant & Ajout d'un nouveau \\
+Modifier un enseignant & Édition des détails \\
+Supprimer un enseignant & Suppression \\
+Réinitialiser mot de passe & Nouveau mot de passe \\
+\bottomrule
+\end{longtable}
+
+\subsection{Fonctionnalités IA (admin)}
+
+\textit{Toutes les fonctionnalités IA enseignant + :}
+
+\begin{longtable}{@{}p{4.5cm}p{10cm}@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Description} \\
+\midrule
+\endhead
+Traitement de descripteur & IA extrait la structure du programme depuis les documents \\
+Extraction de syllabi & IA construit le curriculum depuis les supports de cours \\
+Coach programme & Analyse de performance au niveau programme \\
+Assistant IA & Accès à tous les outils (étudiant + enseignant) \\
+\bottomrule
+\end{longtable}
+
+% ============================================================================
+\section{Matrice des fonctionnalités}
+
+\begin{longtable}{@{}p{5.5cm}ccc@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Étudiant} & \textbf{Enseignant} & \textbf{Admin} \\
+\midrule
+\endhead
+Cours (voir) & \checkmark & \checkmark & \checkmark \\
+Cours (créer/éditer) & --- & \checkmark & \checkmark \\
+Chapitres (voir) & \checkmark & \checkmark & \checkmark \\
+Chapitres (créer/éditer) & --- & \checkmark & \checkmark \\
+Documents (upload) & --- & \checkmark & \checkmark \\
+Quiz (passer) & \checkmark & \checkmark (preview) & \checkmark \\
+Quiz (créer) & --- & \checkmark & \checkmark \\
+Banque de questions (parcourir) & \checkmark (appr.) & \checkmark (tout) & \checkmark (tout) \\
+Banque de questions (générer) & --- & \checkmark & \checkmark \\
+Travaux pratiques (soumettre) & \checkmark & \checkmark & \checkmark \\
+Travaux pratiques (créer/noter) & --- & \checkmark & \checkmark \\
+Examens (passer) & \checkmark & \checkmark (preview) & \checkmark \\
+Examens (créer/gérer) & --- & \checkmark & \checkmark \\
+Notes (voir les siennes) & \checkmark & \checkmark & \checkmark \\
+Notes (voir les autres) & --- & \checkmark (ses étu.) & \checkmark (tous) \\
+Progression (suivre) & \checkmark (soi) & \checkmark (ses étu.) & \checkmark (tous) \\
+Assistant IA & \checkmark & \checkmark & \checkmark \\
+Coach IA & \checkmark (soi) & \checkmark (ses étu.) & \checkmark (tous) \\
+Programmes (gérer) & --- & --- & \checkmark \\
+Classes (gérer) & --- & --- & \checkmark \\
+Étudiants (gérer) & --- & --- & \checkmark \\
+Enseignants (gérer) & --- & --- & \checkmark \\
+AAP/Compétences (gérer) & --- & --- & \checkmark \\
+Descripteur (upload/parse) & --- & --- & \checkmark \\
+\bottomrule
+\end{longtable}
+
+% ============================================================================
+\section{Fonctionnalités transversales IA}
+
+\begin{longtable}{@{}p{3.5cm}ccc p{4cm}@{}}
+\toprule
+\textbf{Fonctionnalité} & \textbf{Étu.} & \textbf{Ens.} & \textbf{Admin} & \textbf{API} \\
+\midrule
+\endhead
+Assistant IA & \checkmark & \checkmark & \checkmark & \texttt{/assistant/chat} \\
+Coach IA & \checkmark & \checkmark & \checkmark & \texttt{/coach/analyze} \\
+Chat documentaire & \checkmark & \checkmark & \checkmark & \texttt{/ai/chat/*} \\
+Chat chapitre & \checkmark & \checkmark & \checkmark & \texttt{/ai/chapter-chat/*} \\
+Chat de classe & \checkmark & \checkmark & \checkmark & \texttt{/ai/class-chat/*} \\
+Génération quiz & --- & \checkmark & \checkmark & \texttt{/quiz/setup/*} \\
+Génération questions & --- & \checkmark & \checkmark & \texttt{/question-bank/gen*} \\
+Génération examens & --- & \checkmark & \checkmark & \texttt{/exam-bank/gen*} \\
+Génération TP & --- & \checkmark & \checkmark & \texttt{/practical-work/gen*} \\
+Traitement descripteur & --- & --- & \checkmark & \texttt{/programs/[id]/extract*} \\
+\bottomrule
+\end{longtable}
+
+\end{document}
