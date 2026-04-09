@@ -52,7 +52,15 @@
 % ============================================================================
 \section{Vue d'ensemble}
 
-La plateforme ESB-Learning implémente une architecture \textbf{Agentic AI multi-agents} orchestrée par des modèles de langage (LLM). Le système comporte \textbf{9 agents/services AI} interconnectés, utilisant principalement \textbf{Google Gemini} comme LLM d'orchestration et \textbf{LangGraph} comme framework d'agents.
+La plateforme ESB-Learning implémente une architecture \textbf{Agentic AI multi-agents} orchestrée par des modèles de langage (LLM). Le système comporte \textbf{37 composants IA distincts} répartis en :
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{5 agents autonomes} (LangGraph StateGraph / ReAct avec prise de décision autonome)
+    \item \textbf{13 services LLM} (appels directs à Gemini pour des tâches spécifiques)
+    \item \textbf{12 API avec IA intégrée} (dont 1 pipeline de 10 sous-agents)
+    \item \textbf{2 modèles ML spécialisés} (TunBERT + SentenceTransformer)
+    \item \textbf{5 services d'infrastructure IA} (vectorisation, chunking, extraction)
+\end{itemize}
 
 \subsection{Technologies clés}
 
@@ -64,11 +72,14 @@ La plateforme ESB-Learning implémente une architecture \textbf{Agentic AI multi
 \midrule
 Google Gemini 2.5-Flash & LLM principal (orchestration, génération, analyse) \\
 Google Gemini 2.5-Pro & LLM avancé (examens, analyse approfondie) \\
+Google Gemini 2.0+ Vision & Analyse vidéo native (vision + audio + YouTube) \\
 LangGraph & Framework d'agents (StateGraph, ReAct) \\
 TunBERT (tunis-ai/TunBERT) & Modèle BERT pré-entraîné sur le dialecte tunisien \\
-ChromaDB & Base vectorielle pour RAG \\
+SentenceTransformer (all-MiniLM-L6-v2) & Embeddings vectoriels pour RAG \\
+ChromaDB & Base vectorielle persistante pour RAG \\
 gTTS & Synthèse vocale (Text-to-Speech) \\
 PyTorch + Transformers & Inférence TunBERT \\
+Piston & Sandbox d'exécution de code (Python, SQL, R, Java, C, C++) \\
 \bottomrule
 \end{tabular}
 \caption{Stack technologique IA}
@@ -366,39 +377,197 @@ Génère automatiquement un feedback pédagogique personnalisé après chaque é
 Système de chat intelligent sur les documents de cours. Pipeline : CAG (recherche résumés) $\rightarrow$ RAG (recherche détaillée) $\rightarrow$ Génération LLM avec citations.
 
 % ============================================================================
-\section{Services d'Extraction et Traitement}
+\section{Services IA --- Appels LLM directs}
 
-\subsection{Smart Extraction Service}
-Extraction intelligente de contenu pour la génération de quiz, alignée sur les CLO et objectifs. Scoring par type de section (définitions: 2.0x, formules: 1.7x, exemples: 1.4x).
+\subsection{AI Service (Génération de quiz et évaluation)}
+\textbf{Fichier} : \texttt{app/services/ai\_service.py} ($\sim$2500 lignes) \\
+\textbf{LLM} : Gemini 2.5-Flash \\
+Service central massif avec \textbf{31+ fonctions IA} : génération de quiz (5 types : QCM, vrai/faux, drag-drop, ouvertes, code), évaluation de réponses (simple, améliorée, avec contexte, batch), génération de réponses modèles, rubrics de correction, extraction de concepts clés.
 
-\subsection{Program Extraction Service}
-Pipeline Agentic AI pour l'extraction automatique depuis le descriptif de formation : AAP, compétences, modules (par semestre), création automatique des enseignants, affectation aux cours.
+\subsection{Feedback Service}
+\textbf{Fichier} : \texttt{app/services/feedback\_service.py} \\
+Génération automatique de feedback pédagogique personnalisé après chaque épreuve. Analyse les réponses, identifie forces/faiblesses, propose des recommandations.
+
+\subsection{Chat RAG Service}
+\textbf{Fichier} : \texttt{app/services/chat\_service.py} + \texttt{vector\_store.py} \\
+Pipeline CAG$\rightarrow$RAG pour chat documentaire avec citations. Support multi-documents et par chapitre.
+
+\subsection{Summarizer Service (Index CAG)}
+\textbf{Fichier} : \texttt{app/services/summarizer.py} \\
+Résumés de sections et vues d'ensemble de documents pour l'indexation CAG dans ChromaDB.
+
+\subsection{Evaluate Service (Classification)}
+\textbf{Fichier} : \texttt{app/services/evaluate\_service.py} \\
+Extraction et classification de questions d'examens par taxonomie de Bloom, CLO et type de question.
+
+\subsection{MCP Tools --- Outils TP (8 outils)}
+\textbf{Fichier} : \texttt{app/services/mcp\_tools.py} \\
+\texttt{get\_section\_context()}, \texttt{generate\_tp\_statement()}, \texttt{parse\_tp\_questions()}, \texttt{suggest\_aa\_codes()}, \texttt{generate\_reference\_solution()}, \texttt{auto\_correct\_submission()}, \texttt{propose\_grade()}, \texttt{chat\_with\_student()} (tutorat socratique).
+
+\subsection{Exam MCP Tools --- Outils Examen (11 outils)}
+\textbf{Fichier} : \texttt{app/services/exam\_mcp\_tools.py} \\
+\texttt{extract\_exam\_text()}, \texttt{extract\_exam\_questions()}, \texttt{classify\_questions\_aa()}, \texttt{classify\_questions\_bloom()}, \texttt{assess\_question\_difficulty()}, \texttt{compare\_module\_vs\_exam()}, \texttt{generate\_exam\_feedback()}, \texttt{suggest\_exam\_adjustments()}, \texttt{generate\_exam\_latex()}, \texttt{evaluate\_exam\_proposal()}.
+
+\subsection{TN Exam Evaluation Service}
+\textbf{Fichier} : \texttt{app/services/tn\_exam\_evaluation\_service.py} \\
+\textbf{LLM} : Gemini 2.5-Pro \\
+Analyse des examens tunisiens : extraction de métadonnées, questions, classification par AA, évaluation de difficulté, génération de rapports pédagogiques.
 
 \subsection{Video Analysis Service}
-Analyse vidéo avec Gemini Vision : extraction de frames, transcription audio, analyse visuelle, timeline, rapport PDF.
+\textbf{Fichier} : \texttt{app/services/video\_service.py} \\
+\textbf{LLM} : Gemini 2.0+ (Vision + Audio) \\
+Analyse vidéo multimodale : extraction de frames, analyse visuelle, transcription audio, timeline, rapport PDF.
 
-\subsection{Syllabus Service}
-Extraction des CLO, plan hebdomadaire, PLO, TNE depuis les PDF syllabus.
+\subsection{YouTube RAG Service}
+\textbf{Fichier} : \texttt{app/services/youtube\_rag\_service.py} \\
+Enrichissement de vidéos YouTube pour RAG : transcriptions, analyse visuelle/audio, chunking pour ChromaDB.
+
+\subsection{Syllabus Services}
+\textbf{Fichiers} : \texttt{syllabus\_service.py} (CLO/PLO/TNE) + \texttt{syllabus\_tn\_service.py} (AAP/AA tunisiens via OCR + Gemini Vision).
+
+\subsection{Smart Extraction et Program Extraction}
+\textbf{Smart Extraction} (\texttt{smart\_extraction\_service.py}) : heuristique de scoring de pertinence. \\
+\textbf{Program Extraction} (\texttt{program\_extraction\_service.py}) : parsing structurel DOCX pour AAP, compétences, modules.
 
 % ============================================================================
-\section{Tableau récapitulatif des agents}
+\section{Services IA intégrés dans les API}
 
-\begin{longtable}{@{}p{2.5cm}p{2cm}p{2cm}p{2.5cm}cp{3cm}@{}}
+\subsection{Chapters API (4 fonctions IA)}
+\texttt{chapters.py} : génération de résumé, matching AA, détection TP, génération de description.
+
+\subsection{Chapter Pipeline API (10 sous-agents)}
+\texttt{chapter\_pipeline.py} : orchestrateur de \textbf{10 sous-agents} pour l'analyse de chapitres : \texttt{content\_detector}, \texttt{exercise\_detector}, \texttt{aa\_mapper}, \texttt{difficulty\_assessor}, \texttt{bloom\_classifier}, \texttt{practice\_scorer}, \texttt{coherence\_checker}, \texttt{retrieval\_validator}, \texttt{exercise\_generator}, \texttt{refinement\_agent}.
+
+\subsection{Code Execution API}
+\texttt{code\_execution.py} : exécution de code via sandbox Piston + génération IA de réponses modèles.
+
+\subsection{Course Question Bank API}
+\texttt{course\_question\_bank.py} : génération de 5 types de questions (QCM, vrai/faux, drag-drop, ouvertes, code).
+
+\subsection{Class Chat API (@bot)}
+\texttt{class\_chat.py} : chatbot de classe activé par @bot/@assistant/@chatbot, détection de langue (FR/AR/EN), rédaction PII.
+
+\subsection{Exams et Exam Bank API}
+\texttt{exams.py} : analyse pédagogique d'examens (dual-model Flash+Pro). \\
+\texttt{exam\_bank.py} : auto-correction, Safe Exam, proctoring intégré.
+
+\subsection{Section Content et Activities API}
+\texttt{section\_content.py} : génération de contenu éducatif Markdown. \\
+\texttt{section\_activities.py} : génération IA de quiz, gestion YouTube.
+
+\subsection{TN Exams API}
+\texttt{tn\_exams.py} : upload, analyse multi-agents, rapports LaTeX, correction automatique des examens tunisiens.
+
+\subsection{Assistant STT et Syllabus Versions API}
+\texttt{assistant.py} : Speech-to-Text via compréhension audio native Gemini. \\
+\texttt{syllabus\_versions.py} : comparaison IA entre versions de syllabus.
+
+% ============================================================================
+\section{Modèles ML spécialisés}
+
+\subsection{TunBERT (Dialecte tunisien)}
+\textbf{Fichier} : \texttt{app/services/tunbert\_service.py} \\
+\textbf{Modèle} : tunis-ai/TunBERT (BERT-base, 768 dim, 440 Mo) \\
+Classification d'intentions tunisiennes par similarité cosinus avec 9 intentions éducatives.
+
+\subsection{SentenceTransformer (Embeddings vectoriels)}
+\textbf{Fichier} : \texttt{app/services/vector\_store.py} \\
+\textbf{Modèle} : all-MiniLM-L6-v2 (384 dim) \\
+Embeddings pour la base vectorielle ChromaDB (RAG documentaire).
+
+% ============================================================================
+\section{Infrastructure IA}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Vector Store} (\texttt{vector\_store.py}) : Base vectorielle ChromaDB persistante
+    \item \textbf{Document Processor} (\texttt{document\_processor.py}) : Chunking + vectorisation NLTK
+    \item \textbf{Document Pipeline} (\texttt{document\_pipeline.py}) : Orchestrateur d'ingestion de documents
+    \item \textbf{Document Manager} (\texttt{document\_manager.py}) : CRUD documents + index
+    \item \textbf{File Service} (\texttt{file\_service.py}) : Extraction texte multi-format (PDF, DOCX, OCR, vidéo)
+\end{itemize}
+
+% ============================================================================
+\section{Tableau récapitulatif complet}
+
+\subsection{Agents autonomes (LangGraph / ReAct)}
+
+\begin{longtable}{@{}clp{3cm}p{2.5cm}p{2cm}cp{3cm}@{}}
 \toprule
-\textbf{Agent} & \textbf{Type} & \textbf{Modèle} & \textbf{Pattern} & \textbf{Étapes} & \textbf{Point d'entrée} \\
+\textbf{\#} & \textbf{Agent} & \textbf{Fichier} & \textbf{Pattern} & \textbf{Modèle} & \textbf{Ét.} & \textbf{Endpoint} \\
 \midrule
 \endhead
-Assistant & Conversationnel & Gemini Flash & ReAct & 1 & \texttt{/assistant/chat} \\
-TunBERT & Preprocessing & TunBERT & Cosine sim. & 1 & Appelé par Assistant \\
-Coach & Analytique & Gemini Flash & StateGraph & 4 & \texttt{/coach/analyze} \\
-Exam & Pipeline & Gemini Flash/Pro & StateGraph & 10 & \texttt{/exam/analyze} \\
-TP Création & Pipeline & Gemini Flash & StateGraph & 5 & \texttt{/practical-work/\{id\}} \\
-TP Correction & Pipeline & Gemini Flash & StateGraph & 2 & \texttt{/submissions/\{id\}/grade} \\
-Feedback & Génératif & Gemini Flash & Appel direct & 1 & \texttt{/feedback/generate/\{id\}} \\
-RAG/Chat & Retrieval & Gemini + ChromaDB & CAG$\rightarrow$RAG & 2 & \texttt{/ai/chat/\{doc\_id\}} \\
-Program Extract & Pipeline & Gemini Flash & Multi-agents & 5+ & \texttt{/programs/\{id\}/process} \\
+1 & Assistant & \texttt{assistant\_agent.py} & ReAct (LangGraph) & Gemini Flash & 1 & \texttt{/assistant/chat} \\
+2 & Coach & \texttt{coach\_agent.py} & StateGraph 4 nœuds & Gemini Flash & 4 & \texttt{/coach/analyze} \\
+3 & Exam & \texttt{exam\_agent\_graph.py} & StateGraph async & Flash+Pro & 10 & \texttt{/exam/analyze} \\
+4 & TP Création & \texttt{tp\_agent\_graph.py} & StateGraph & Gemini Flash & 5 & \texttt{/practical-work/\{id\}} \\
+5 & TP Correction & \texttt{tp\_agent\_graph.py} & StateGraph & Gemini Flash & 2 & \texttt{/submissions/\{id\}/grade} \\
 \bottomrule
 \end{longtable}
+
+\subsection{Services IA (appels LLM directs)}
+
+\begin{longtable}{@{}clp{3cm}p{2cm}p{5cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Service} & \textbf{Fichier} & \textbf{Modèle} & \textbf{Description} \\
+\midrule
+\endhead
+6 & AI Service & \texttt{ai\_service.py} & Flash & 31+ fonctions (quiz, éval, rubrics) \\
+7 & Feedback & \texttt{feedback\_service.py} & Flash & Feedback post-évaluation \\
+8 & Chat RAG & \texttt{chat\_service.py} & Flash & Chat documentaire + citations \\
+9 & Summarizer & \texttt{summarizer.py} & Flash & Résumés pour CAG \\
+10 & Evaluate & \texttt{evaluate\_service.py} & Flash & Classification Bloom + CLO \\
+11 & MCP Tools TP & \texttt{mcp\_tools.py} & Flash+Pro & 8 outils TP \\
+12 & Exam MCP & \texttt{exam\_mcp\_tools.py} & Flash+Pro & 11 outils examen \\
+13 & TN Exam Eval & \texttt{tn\_exam\_eval...py} & Pro & Examens tunisiens \\
+14 & Video & \texttt{video\_service.py} & Gemini 2.0+ & Analyse vidéo multimodale \\
+15 & YouTube RAG & \texttt{youtube\_rag...py} & Gemini 2.0+ & Enrichissement YouTube \\
+16 & Syllabus & \texttt{syllabus\_service.py} & Flash & CLO, PLO, TNE \\
+17 & Syllabus TN & \texttt{syllabus\_tn...py} & Flash+OCR & AAP tunisiens (vision) \\
+18 & Program Extract & \texttt{program\_extract...py} & Parsing & AAP, compétences, modules \\
+\bottomrule
+\end{longtable}
+
+\subsection{API avec IA intégrée}
+
+\begin{longtable}{@{}clp{3cm}p{2cm}p{5cm}@{}}
+\toprule
+\textbf{\#} & \textbf{API} & \textbf{Fichier} & \textbf{Modèle} & \textbf{Description} \\
+\midrule
+\endhead
+19 & Chapters & \texttt{chapters.py} & Flash & 4 fonctions inline \\
+20 & Chapter Pipeline & \texttt{chapter\_pipeline.py} & Flash & \textbf{10 sous-agents} \\
+21 & Code Execution & \texttt{code\_execution.py} & Flash & Sandbox Piston + IA \\
+22 & Question Bank & \texttt{course\_question...py} & Flash & 5 types de questions \\
+23 & Class Chat & \texttt{class\_chat.py} & Flash & @bot chatbot multilingue \\
+24 & Exams & \texttt{exams.py} & Flash+Pro & Analyse pédagogique \\
+25 & Exam Bank & \texttt{exam\_bank.py} & Pro/Flash & Auto-correction + proctoring \\
+26 & Section Content & \texttt{section\_content.py} & Flash & Contenu Markdown \\
+27 & Section Activities & \texttt{section\_activities.py} & Flash & Quiz + YouTube \\
+28 & TN Exams & \texttt{tn\_exams.py} & Flash+Pro & Multi-agents + LaTeX \\
+29 & Assistant STT & \texttt{assistant.py} & Gemini Audio & Speech-to-Text natif \\
+30 & Syllabus Versions & \texttt{syllabus\_versions.py} & Flash & Comparaison IA \\
+\bottomrule
+\end{longtable}
+
+\subsection{Modèles ML et Infrastructure}
+
+\begin{longtable}{@{}clp{3cm}p{2cm}p{5cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Composant} & \textbf{Fichier} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\endhead
+31 & TunBERT & \texttt{tunbert\_service.py} & BERT 768d & Intentions tunisiennes \\
+32 & SentenceTransformer & \texttt{vector\_store.py} & MiniLM 384d & Embeddings RAG \\
+33 & Vector Store & \texttt{vector\_store.py} & ChromaDB & Base vectorielle \\
+34 & Document Processor & \texttt{document\_processor.py} & NLTK & Chunking + vectorisation \\
+35 & Document Pipeline & \texttt{document\_pipeline.py} & Orchestrateur & Ingestion documents \\
+36 & Document Manager & \texttt{document\_manager.py} & CRUD & Gestion index \\
+37 & File Service & \texttt{file\_service.py} & Multi-format & Extraction texte \\
+\bottomrule
+\end{longtable}
+
+\vspace{1em}
+\noindent\textbf{Total : 37 composants IA} dont 5 agents autonomes, 13 services LLM, 12 API avec IA intégrée (dont 1 pipeline de 10 sous-agents), 2 modèles ML spécialisés, et 5 services d'infrastructure.
 
 % ============================================================================
 \section{Stratégie de sélection des modèles}
@@ -411,11 +580,14 @@ Program Extract & Pipeline & Gemini Flash & Multi-agents & 5+ & \texttt{/program
 \midrule
 Gemini 2.5-Flash & Chat, quiz, feedback (défaut) & Rapide, <3s, économique \\
 Gemini 2.5-Pro & Examens, analyse approfondie & Raisonnement profond \\
-TunBERT & Dialecte tunisien & 768 dim, classification d'intentions \\
-ChromaDB embeddings & RAG documentaire & Recherche sémantique vectorielle \\
+Gemini 2.0+ Vision & Vidéos, images, YouTube & Multimodal (vision + audio) \\
+Gemini Audio & Speech-to-Text & Compréhension audio native \\
+TunBERT & Dialecte tunisien & 768 dim, cosine similarity \\
+SentenceTransformer & Embeddings RAG & all-MiniLM-L6-v2, 384 dim \\
+ChromaDB & Stockage vectoriel & Recherche sémantique persistante \\
 \bottomrule
 \end{tabular}
-\caption{Stratégie de sélection des modèles LLM}
+\caption{Stratégie de sélection des modèles}
 \end{table}
 
 \end{document}
