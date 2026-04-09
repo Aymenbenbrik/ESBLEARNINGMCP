@@ -892,6 +892,7 @@ def list_all_students():
                 'class_id': s.class_id,
                 'class_name': s.classe.name if s.classe else None,
                 'is_first_login': s.is_first_login,
+                'is_active': getattr(s, 'is_active', True),
                 'created_at': s.created_at.isoformat() if s.created_at else None,
                 'last_login': last_session.login_time.isoformat() if last_session else None,
             })
@@ -906,4 +907,100 @@ def list_all_students():
         }), 200
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ===========================================================================
+# ADMIN STUDENT MANAGEMENT
+# ===========================================================================
+
+@users_api_bp.route('/students/<int:student_id>/admin-update', methods=['PUT'])
+@jwt_required()
+def admin_update_student(student_id):
+    """
+    Admin-only: update student class_id, is_active status, username, email.
+    Accepts: { class_id?: int|null, is_active?: bool, username?: str, email?: str }
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        admin = User.query.get(user_id)
+        if not admin or not admin.is_superuser:
+            return jsonify({'error': 'Superuser access required'}), 403
+
+        student = User.query.get(student_id)
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+        if student.is_teacher or student.is_superuser:
+            return jsonify({'error': 'Target user is not a student'}), 400
+
+        data = request.get_json()
+
+        if 'class_id' in data:
+            new_class_id = data['class_id']
+            if new_class_id is not None:
+                classe = Classe.query.get(new_class_id)
+                if not classe:
+                    return jsonify({'error': 'Class not found'}), 404
+            student.class_id = new_class_id
+
+        if 'is_active' in data:
+            student.is_active = bool(data['is_active'])
+
+        if 'username' in data and data['username'] != student.username:
+            existing = User.query.filter_by(username=data['username']).first()
+            if existing:
+                return jsonify({'error': 'Username already exists'}), 400
+            student.username = data['username']
+
+        if 'email' in data and data['email'] != student.email:
+            existing = User.query.filter_by(email=data['email']).first()
+            if existing:
+                return jsonify({'error': 'Email already exists'}), 400
+            student.email = data['email']
+
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Student updated successfully',
+            'student': {
+                'id': student.id,
+                'username': student.username,
+                'email': student.email,
+                'class_id': student.class_id,
+                'class_name': student.classe.name if student.classe else None,
+                'is_active': getattr(student, 'is_active', True),
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@users_api_bp.route('/students/<int:student_id>/admin-reset-password', methods=['POST'])
+@jwt_required()
+def admin_reset_student_password(student_id):
+    """Admin-only: reset student password and return the new one."""
+    try:
+        user_id = int(get_jwt_identity())
+        admin = User.query.get(user_id)
+        if not admin or not admin.is_superuser:
+            return jsonify({'error': 'Superuser access required'}), 403
+
+        student = User.query.get(student_id)
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+
+        new_password = _generate_secure_password(10)
+        student.set_password(new_password)
+        student.is_first_login = True
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Password reset successfully',
+            'new_password': new_password,
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500

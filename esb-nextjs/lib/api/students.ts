@@ -27,6 +27,7 @@ export interface StudentListItem {
   class_id: number | null;
   class_name: string | null;
   is_first_login: boolean;
+  is_active: boolean;
   created_at: string | null;
   last_login: string | null;
 }
@@ -74,7 +75,16 @@ export const studentsApi = {
   /** Reset a student's password */
   resetPassword: async (studentId: number) => {
     const r = await apiClient.post<{ message: string; new_password: string }>(
-      `${BASE}/students/${studentId}/reset-password`,
+      `${BASE}/students/${studentId}/admin-reset-password`,
+    );
+    return r.data;
+  },
+
+  /** Admin update student (class, status, etc.) */
+  adminUpdate: async (studentId: number, data: { class_id?: number | null; is_active?: boolean; username?: string; email?: string }) => {
+    const r = await apiClient.put<{ message: string; student: StudentListItem }>(
+      `${BASE}/students/${studentId}/admin-update`,
+      data,
     );
     return r.data;
   },

@@ -38,6 +38,16 @@ def _bootstrap_db(app: Flask):
         # Create missing tables (works for both PostgreSQL and SQLite)
         db.create_all()
 
+        # ── User table migrations (must run BEFORE any User query) ──
+        try:
+            result = db.session.execute(text("PRAGMA table_info(user)"))
+            user_cols = {row[1] for row in result.fetchall()}
+            if 'is_active' not in user_cols:
+                db.session.execute(text("ALTER TABLE user ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                db.session.commit()
+        except Exception:
+            pass
+
         # Auto-create default admin
         from app.models import User
         admin = User.query.filter_by(username='Esprit').first()

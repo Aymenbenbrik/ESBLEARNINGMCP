@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
   useAllStudents,
   useGenerateStudents,
   useResetStudentPassword,
   useExportStudentsCsv,
+  useAdminUpdateStudent,
 } from '@/lib/hooks/useStudents';
-import { GeneratedStudent } from '@/lib/api/students';
+import { GeneratedStudent, StudentListItem } from '@/lib/api/students';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,12 +22,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
   ClipboardCopy,
   Download,
   KeyRound,
   Loader2,
+  Pencil,
   Plus,
   Search,
+  ShieldCheck,
+  ShieldOff,
   Users,
   UserPlus,
 } from 'lucide-react';
@@ -43,6 +55,13 @@ export default function AdminStudentsPage() {
   const [generatedStudents, setGeneratedStudents] = useState<GeneratedStudent[]>([]);
   const [showGenForm, setShowGenForm] = useState(false);
 
+  // Edit dialog state
+  const [editStudent, setEditStudent] = useState<StudentListItem | null>(null);
+  const [editClassId, setEditClassId] = useState<string>('none');
+
+  // Password reset dialog state
+  const [resetPwdResult, setResetPwdResult] = useState<{ username: string; password: string } | null>(null);
+
   // ─── Hooks ──────────────────────────────────────────────────────────
   const classIdParam = classFilter !== 'all' ? parseInt(classFilter) : undefined;
   const { data, isLoading } = useAllStudents({
@@ -52,6 +71,7 @@ export default function AdminStudentsPage() {
   const generateMutation = useGenerateStudents();
   const resetPwdMutation = useResetStudentPassword();
   const exportMutation = useExportStudentsCsv();
+  const adminUpdateMutation = useAdminUpdateStudent();
 
   // ─── Handlers ───────────────────────────────────────────────────────
   const handleGenerate = () => {
@@ -80,6 +100,35 @@ export default function AdminStudentsPage() {
 
   const handleExport = () => {
     exportMutation.mutate(classIdParam);
+  };
+
+  const handleResetPassword = (student: StudentListItem) => {
+    resetPwdMutation.mutate(student.id, {
+      onSuccess: (result) => {
+        setResetPwdResult({ username: student.username, password: result.new_password });
+      },
+    });
+  };
+
+  const handleEditOpen = (student: StudentListItem) => {
+    setEditStudent(student);
+    setEditClassId(student.class_id ? String(student.class_id) : 'none');
+  };
+
+  const handleEditSave = () => {
+    if (!editStudent) return;
+    const newClassId = editClassId === 'none' ? null : parseInt(editClassId);
+    adminUpdateMutation.mutate(
+      { studentId: editStudent.id, data: { class_id: newClassId } },
+      { onSuccess: () => setEditStudent(null) },
+    );
+  };
+
+  const handleToggleActive = (student: StudentListItem) => {
+    adminUpdateMutation.mutate({
+      studentId: student.id,
+      data: { is_active: !student.is_active },
+    });
   };
 
   return (
@@ -273,7 +322,7 @@ export default function AdminStudentsPage() {
                 </thead>
                 <tbody>
                   {data.students.map((s) => (
-                    <tr key={s.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                    <tr key={s.id} className={`border-b last:border-b-0 hover:bg-slate-50 ${!s.is_active ? 'opacity-50' : ''}`}>
                       <td className="py-2 px-3 font-medium">{s.username}</td>
                       <td className="py-2 px-3 text-sm">{s.email}</td>
                       <td className="py-2 px-3">
@@ -282,11 +331,15 @@ export default function AdminStudentsPage() {
                             {s.class_name}
                           </Badge>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-muted-foreground">Non affecté</span>
                         )}
                       </td>
                       <td className="py-2 px-3">
-                        {s.is_first_login ? (
+                        {!s.is_active ? (
+                          <Badge variant="outline" className="text-xs border-red-300 text-red-600">
+                            Inactif
+                          </Badge>
+                        ) : s.is_first_login ? (
                           <Badge variant="outline" className="text-xs border-orange-300 text-orange-600">
                             En attente
                           </Badge>
@@ -297,21 +350,44 @@ export default function AdminStudentsPage() {
                         )}
                       </td>
                       <td className="py-2 px-3 text-xs text-muted-foreground">
-                        {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
+                        {s.created_at ? new Date(s.created_at).toLocaleDateString('fr-FR') : '—'}
                       </td>
                       <td className="py-2 px-3 text-xs text-muted-foreground">
-                        {s.last_login ? new Date(s.last_login).toLocaleDateString() : 'Jamais'}
+                        {s.last_login ? new Date(s.last_login).toLocaleDateString('fr-FR') : 'Jamais'}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => resetPwdMutation.mutate(s.id)}
-                          disabled={resetPwdMutation.isPending}
-                          title="Réinitialiser le mot de passe"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditOpen(s)}
+                            title="Modifier (classe)"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResetPassword(s)}
+                            disabled={resetPwdMutation.isPending}
+                            title="Réinitialiser le mot de passe"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleActive(s)}
+                            disabled={adminUpdateMutation.isPending}
+                            title={s.is_active ? 'Désactiver' : 'Activer'}
+                          >
+                            {s.is_active ? (
+                              <ShieldOff className="h-4 w-4 text-red-500" />
+                            ) : (
+                              <ShieldCheck className="h-4 w-4 text-green-500" />
+                            )}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -321,6 +397,74 @@ export default function AdminStudentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ─── Edit Student Dialog (assign class) ─── */}
+      <Dialog open={!!editStudent} onOpenChange={(open) => !open && setEditStudent(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier l&apos;étudiant</DialogTitle>
+            <DialogDescription>
+              {editStudent?.username} — {editStudent?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Affecter à une classe</Label>
+              <Select value={editClassId} onValueChange={setEditClassId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Aucune classe" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucune classe</SelectItem>
+                  {data?.classes?.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name} {c.program_name ? `(${c.program_name})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditStudent(null)}>Annuler</Button>
+            <Button onClick={handleEditSave} disabled={adminUpdateMutation.isPending}>
+              {adminUpdateMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Password Reset Result Dialog ─── */}
+      <Dialog open={!!resetPwdResult} onOpenChange={(open) => !open && setResetPwdResult(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mot de passe réinitialisé</DialogTitle>
+            <DialogDescription>
+              Nouveau mot de passe pour {resetPwdResult?.username}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg bg-slate-50 border p-4 text-center">
+            <p className="text-2xl font-mono font-bold text-red-600 select-all">
+              {resetPwdResult?.password}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (resetPwdResult) {
+                  navigator.clipboard.writeText(resetPwdResult.password);
+                  toast.success('Mot de passe copié');
+                }
+              }}
+            >
+              <ClipboardCopy className="h-4 w-4 mr-2" />
+              Copier
+            </Button>
+            <Button onClick={() => setResetPwdResult(null)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

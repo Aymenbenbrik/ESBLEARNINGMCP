@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { studentsApi, AllStudentsResponse, GenerateStudentsRequest, GeneratedStudent } from '../api/students';
+import { studentsApi, AllStudentsResponse, GenerateStudentsRequest, GeneratedStudent, StudentListItem } from '../api/students';
 import { toast } from 'sonner';
 
 export const studentKeys = {
@@ -62,6 +62,25 @@ export function useExportStudentsCsv() {
     },
     onError: (error: any) => {
       toast.error('Erreur lors de l\'export');
+    },
+  });
+}
+
+/** Admin update student (class, status) */
+export function useAdminUpdateStudent() {
+  const qc = useQueryClient();
+  return useMutation<
+    { message: string; student: StudentListItem },
+    Error,
+    { studentId: number; data: { class_id?: number | null; is_active?: boolean; username?: string; email?: string } }
+  >({
+    mutationFn: ({ studentId, data }) => studentsApi.adminUpdate(studentId, data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: studentKeys.all });
+      toast.success(data.message);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
     },
   });
 }

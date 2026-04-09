@@ -65,6 +65,7 @@ class User(UserMixin, db.Model):
     is_superuser = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_first_login = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
 
     google_api_key = db.Column(db.String(255), nullable=True)
     class_id = db.Column(db.Integer, db.ForeignKey('classe.id'), nullable=True)
