@@ -14,7 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -41,10 +41,14 @@ import {
   Upload,
   ArrowLeft,
   BookOpen,
+  Zap,
+  Play,
+  Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { TnExamDocument } from '@/lib/types/course';
+import { toast } from 'sonner';
 
 const EXAM_TYPE_LABELS: Record<string, string> = {
   examen: 'Examen final',
@@ -98,9 +102,16 @@ export default function ExamsPage() {
 
   const course = courseData?.course;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file) return;
+  const resetForm = () => {
+    setTitle('');
+    setFile(null);
+    setExamType('ds');
+    setWeight('1');
+    setSelectedAAIds([]);
+  };
+
+  const buildFormData = () => {
+    if (!file) return null;
     const fd = new FormData();
     fd.append('file', file);
     fd.append('title', title || file.name.replace(/\.[^.]+$/, ''));
@@ -109,18 +120,42 @@ export default function ExamsPage() {
     if (selectedAAIds.length > 0) {
       fd.append('target_aa_ids', selectedAAIds.join(','));
     }
-    await uploadMutation.mutateAsync(fd);
-    setDialogOpen(false);
-    setTitle('');
-    setFile(null);
-    setExamType('ds');
-    setWeight('1');
-    setSelectedAAIds([]);
+    return fd;
+  };
+
+  // Upload only → redirect, auto-extraction will trigger on the exam page
+  const handleLaunchAnalysis = async () => {
+    const fd = buildFormData();
+    if (!fd) return;
+    try {
+      const res = await uploadMutation.mutateAsync(fd);
+      const examId = (res as any)?.data?.exam?.id;
+      setDialogOpen(false);
+      resetForm();
+      if (examId) {
+        toast.info('Redirection vers l\'épreuve — l\'analyse démarrera automatiquement…');
+        router.push(`/courses/${courseId}/exams/${examId}`);
+      }
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  // Upload only → stay on list, no auto-analysis
+  const handleWithoutAnalysis = async () => {
+    const fd = buildFormData();
+    if (!fd) return;
+    try {
+      await uploadMutation.mutateAsync(fd);
+      setDialogOpen(false);
+      resetForm();
+    } catch {
+      // error handled by mutation
+    }
   };
 
   const isLoading = courseLoading || examsLoading;
-
-  if (isLoading) {
+  const isSubmitting = uploadMutation.isPending;
     return (
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <Skeleton className="h-8 w-64 mb-2" />
@@ -239,11 +274,18 @@ export default function ExamsPage() {
 
       {/* Add Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Ajouter une épreuve</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Ajouter une épreuve
+            </DialogTitle>
+            <DialogDescription>
+              Renseignez les informations de l&apos;épreuve puis choisissez de lancer l&apos;analyse automatique ou de procéder manuellement.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+
+          <div className="space-y-4 py-2">
             <div className="space-y-1">
               <label className="text-sm font-medium">Titre (optionnel)</label>
               <Input
@@ -252,36 +294,39 @@ export default function ExamsPage() {
                 placeholder="Ex : DS Algèbre — Janvier 2025"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Type d'épreuve</label>
-              <Select value={examType} onValueChange={setExamType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(EXAM_TYPE_LABELS).map(([val, label]) => (
-                    <SelectItem key={val} value={val}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Type d&apos;épreuve</label>
+                <Select value={examType} onValueChange={setExamType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EXAM_TYPE_LABELS).map(([val, label]) => (
+                      <SelectItem key={val} value={val}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Coefficient</label>
+                <Input
+                  type="number"
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  placeholder="1"
+                  min="0"
+                  step="0.5"
+                  className="h-9"
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Pondération (coefficient)</label>
-              <Input
-                type="number"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                placeholder="1"
-                min="0"
-                step="0.5"
-                className="h-9"
-              />
-            </div>
+
             {courseData?.tn_aa_distribution && courseData.tn_aa_distribution.length > 0 && (
               <div className="space-y-1">
-                <label className="text-sm font-medium">Acquis d&apos;Apprentissage ciblés</label>
+                <label className="text-sm font-medium">AA ciblés</label>
                 <MultiSelect
                   options={courseData.tn_aa_distribution.map((aa) => ({
                     value: aa.number,
@@ -294,14 +339,20 @@ export default function ExamsPage() {
                 />
               </div>
             )}
+
             <div className="space-y-1">
               <label className="text-sm font-medium">Fichier (PDF, DOC, DOCX)</label>
               <div
-                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-muted/30 transition-colors"
+                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                  file ? 'border-primary bg-primary/5' : 'hover:bg-muted/30'
+                }`}
                 onClick={() => fileInputRef.current?.click()}
               >
                 {file ? (
-                  <p className="text-sm font-medium text-primary">{file.name}</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <FileText className="h-5 w-5 text-primary" />
+                    <p className="text-sm font-medium text-primary">{file.name}</p>
+                  </div>
                 ) : (
                   <>
                     <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
@@ -319,18 +370,51 @@ export default function ExamsPage() {
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                disabled={!file || isSubmitting}
+                onClick={handleLaunchAnalysis}
+                className="flex flex-col items-center gap-2 rounded-xl border-2 border-primary bg-primary/5 p-4 text-center hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-7 w-7 text-primary animate-spin" />
+                ) : (
+                  <Zap className="h-7 w-7 text-primary" />
+                )}
+                <span className="text-sm font-semibold text-primary">Lancer l&apos;analyse</span>
+                <span className="text-xs text-muted-foreground leading-tight">
+                  Upload + extraction + Bloom + corrections automatiques
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={!file || isSubmitting}
+                onClick={handleWithoutAnalysis}
+                className="flex flex-col items-center gap-2 rounded-xl border-2 border-slate-200 p-4 text-center hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Play className="h-7 w-7 text-slate-500" />
+                <span className="text-sm font-semibold text-slate-700">Sans analyse</span>
+                <span className="text-xs text-muted-foreground leading-tight">
+                  Ajouter uniquement — lancer l&apos;analyse plus tard manuellement
+                </span>
+              </button>
+            </div>
+
+            <div className="text-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => { setDialogOpen(false); resetForm(); }}
+              >
                 Annuler
               </Button>
-              <Button
-                type="submit"
-                disabled={!file || uploadMutation.isPending}
-              >
-                {uploadMutation.isPending ? 'Envoi...' : 'Ajouter'}
-              </Button>
-            </DialogFooter>
-          </form>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
