@@ -766,6 +766,20 @@ def chat_with_assistant(
     else:
         tools = common_tools + student_tools
 
+    # ── Inject modular skills as LangChain tools ──
+    try:
+        from app.services.skill_manager import SkillManager
+        skill_manager = SkillManager()
+        skill_tools = skill_manager.as_langchain_tools(
+            agent_id='assistant',
+            role=role,
+            user_id=user_id,
+        )
+        tools = tools + skill_tools
+        logger.debug(f"Injected {len(skill_tools)} skill tools for role={role}")
+    except Exception as e:
+        logger.warning(f"Skills injection skipped: {e}")
+
     # Build messages
     system_prompt = _build_system_prompt(role, user_name, user_id)
 

@@ -176,6 +176,27 @@ def analyze_student_performance(student_id: int, course_ids: Optional[List[int]]
     # Step 1: Collect performance data
     performance = _collect_performance_data(student_id, course_ids)
 
+    # Step 1b: Enrich with SkillManager skills (compose chain)
+    skills_enrichment = None
+    try:
+        from app.services.skill_manager import SkillManager, SkillContext
+        skill_manager = SkillManager()
+        ctx = SkillContext(
+            user_id=student_id,
+            role='student',
+            agent_id='coach',
+        )
+        skills_result = skill_manager.compose(
+            skill_ids=['performance-scorer', 'weakness-detector', 'exercise-recommender'],
+            context=ctx,
+            initial_input={'student_id': student_id, 'course_ids': course_ids},
+        )
+        if skills_result.success:
+            skills_enrichment = skills_result.data
+            logger.info(f"Skills enrichment succeeded for student {student_id}")
+    except Exception as e:
+        logger.warning(f"Skills enrichment skipped: {e}")
+
     # Step 2 & 3: Use LLM to analyze gaps and generate recommendations
     try:
         llm = _get_llm(robust=False)
@@ -249,6 +270,7 @@ Réponds en JSON strictement avec cette structure:
             'skill_gaps': result.get('skill_gaps', []),
             'recommendations': result.get('recommendations', []),
             'study_plan': result.get('study_plan', {'activities': []}),
+            'skills_enrichment': skills_enrichment,
         }
 
     except json.JSONDecodeError as e:
@@ -293,9 +315,30 @@ def generate_skill_map(student_id: int, course_id: int) -> Dict[str, Any]:
             'target': 70,
         })
 
+    # Enrich with SkillManager performance-scorer if available
+    skill_insights = None
+    try:
+        from app.services.skill_manager import SkillManager, SkillContext
+        manager = SkillManager()
+        ctx = SkillContext(
+            user_id=student_id,
+            course_id=course_id,
+            role='student',
+            agent_id='coach',
+        )
+        result = manager.execute('performance-scorer', ctx, {
+            'student_id': student_id,
+            'course_ids': [course_id],
+        })
+        if result.success:
+            skill_insights = result.data.get('bloom_breakdown')
+    except Exception:
+        pass
+
     return {
         'course_id': course_id,
         'student_id': student_id,
         'skills': skill_map,
         'overall_avg': performance.get('overall_avg', 0),
+        'skill_insights': skill_insights,
     }

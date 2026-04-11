@@ -126,6 +126,21 @@ def _node_classify_aa(state: ExamEvaluationState) -> ExamEvaluationState:
     _persist_progress(state['session_id'], 'classify_aa', state)
     try:
         questions = classify_questions_aa(state.get('questions') or [], state.get('aa_list') or [])
+
+        # Enrich with syllabus-mapper skill for cross-validation
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
+            for q in questions:
+                result = manager.execute('syllabus-mapper', ctx, {
+                    'content': q.get('text', ''),
+                })
+                if result.success:
+                    q['skill_aa_mappings'] = result.data.get('mappings', [])
+        except Exception as e:
+            logger.debug(f"Skill syllabus-mapper enrichment skipped: {e}")
+
         return {**state, 'questions': questions, 'current_node': 'classify_aa'}
     except Exception as e:
         return {**state, 'errors': state.get('errors', []) + [f"classify_aa: {e}"], 'current_node': 'classify_aa'}
@@ -136,6 +151,22 @@ def _node_classify_bloom(state: ExamEvaluationState) -> ExamEvaluationState:
     _persist_progress(state['session_id'], 'classify_bloom', state)
     try:
         questions = classify_questions_bloom(state.get('questions') or [])
+
+        # Enrich with bloom-classifier skill for cross-validation
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
+            for q in questions:
+                result = manager.execute('bloom-classifier', ctx, {
+                    'content': q.get('text', ''),
+                    'content_type': 'question',
+                })
+                if result.success:
+                    q['skill_bloom'] = result.data
+        except Exception as e:
+            logger.debug(f"Skill bloom-classifier enrichment skipped: {e}")
+
         return {**state, 'questions': questions, 'current_node': 'classify_bloom'}
     except Exception as e:
         return {**state, 'errors': state.get('errors', []) + [f"classify_bloom: {e}"], 'current_node': 'classify_bloom'}
@@ -188,6 +219,25 @@ def _node_analyze_feedback(state: ExamEvaluationState) -> ExamEvaluationState:
             state.get('comparison_report') or {},
             state.get('questions') or [],
         )
+
+        # Enrich with feedback-writer skill for pedagogical recommendations
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
+            result = manager.execute('feedback-writer', ctx, {
+                'performance': state.get('comparison_report', {}),
+                'type': 'exam',
+                'language': 'fr',
+            })
+            if result.success:
+                if isinstance(feedback, dict):
+                    feedback['skill_feedback'] = result.data
+                elif isinstance(feedback, str):
+                    feedback = {'original': feedback, 'skill_feedback': result.data}
+        except Exception as e:
+            logger.debug(f"Skill feedback-writer enrichment skipped: {e}")
+
         return {**state, 'feedback': feedback, 'current_node': 'analyze_feedback'}
     except Exception as e:
         return {**state, 'errors': state.get('errors', []) + [f"analyze_feedback: {e}"], 'current_node': 'analyze_feedback'}

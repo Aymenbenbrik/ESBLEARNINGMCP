@@ -155,7 +155,7 @@ def _node_suggest_aa(state: TPCreationState) -> dict:
 
 
 def _node_generate_reference(state: TPCreationState) -> dict:
-    """Node: Generate reference solution + correction criteria."""
+    """Node: Generate reference solution + correction criteria, enriched with rubric-builder skill."""
     from app.services.mcp_tools import generate_reference_solution
     statement = state.get('statement', '')
     if not statement:
@@ -167,17 +167,36 @@ def _node_generate_reference(state: TPCreationState) -> dict:
             max_grade=state.get('max_grade', 20.0),
             questions=state.get('questions') or [],
         )
-        return {
+
+        output = {
             "reference_solution": result.get("reference_solution", ""),
             "correction_criteria": result.get("correction_criteria", ""),
         }
+
+        # Enrich with rubric-builder skill for structured evaluation rubric
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, role='teacher', agent_id='tp',
+                              course_id=state.get('section_id'))
+            rubric = manager.execute('rubric-builder', ctx, {
+                'type': 'tp',
+                'content': statement,
+                'max_score': state.get('max_grade', 20.0),
+            })
+            if rubric.success:
+                output['skill_rubric'] = rubric.data
+        except Exception as e:
+            logger.debug(f"Skill rubric-builder enrichment skipped: {e}")
+
+        return output
     except Exception as e:
         logger.error(f"[TPGraph] generate_reference error: {e}")
         return {"errors": state.get("errors", []) + [str(e)]}
 
 
 def _node_auto_correct(state: TPCorrectionState) -> dict:
-    """Node: Auto-correct student submission."""
+    """Node: Auto-correct student submission, enriched with code-reviewer skill."""
     from app.services.mcp_tools import auto_correct_submission
     try:
         result = auto_correct_submission(
@@ -188,12 +207,30 @@ def _node_auto_correct(state: TPCorrectionState) -> dict:
             correction_criteria=state.get('correction_criteria', ''),
             max_grade=state.get('max_grade', 20.0),
         )
-        return {
+
+        output = {
             "correction_report": result.get("correction_report", ""),
             "proposed_grade":    result.get("proposed_grade", 0.0),
             "strengths":         result.get("strengths", []),
             "weaknesses":        result.get("weaknesses", []),
         }
+
+        # Enrich with code-reviewer skill for pedagogical feedback
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, role='teacher', agent_id='tp')
+            review = manager.execute('code-reviewer', ctx, {
+                'student_code': state['student_code'],
+                'language': state['language'],
+                'reference_solution': state['reference_solution'],
+            })
+            if review.success:
+                output['skill_code_review'] = review.data
+        except Exception as e:
+            logger.debug(f"Skill code-reviewer enrichment skipped: {e}")
+
+        return output
     except Exception as e:
         logger.error(f"[TPGraph] auto_correct error: {e}")
         return {
