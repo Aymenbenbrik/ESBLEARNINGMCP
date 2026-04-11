@@ -817,7 +817,16 @@ def chat_with_assistant(
 
         # Extract the final AI response
         ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
-        response_text = ai_messages[-1].content if ai_messages else "I'm sorry, I couldn't generate a response."
+        raw_content = ai_messages[-1].content if ai_messages else "I'm sorry, I couldn't generate a response."
+
+        # Gemini may return structured content parts [{text, type, extras}] instead of a string
+        if isinstance(raw_content, list):
+            response_text = " ".join(
+                part.get("text", "") if isinstance(part, dict) else str(part)
+                for part in raw_content
+            ).strip() or "I'm sorry, I couldn't generate a response."
+        else:
+            response_text = str(raw_content)
 
         # Track which tools were called
         tools_used: list[str] = []

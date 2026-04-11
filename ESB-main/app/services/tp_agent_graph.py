@@ -120,7 +120,14 @@ def _extract_data_from_agent(result, key=None):
     for m in reversed(messages):
         if isinstance(m, AIMessage) and m.content:
             try:
-                text = m.content.strip()
+                raw = m.content
+                if isinstance(raw, list):
+                    text = " ".join(
+                        p.get("text", "") if isinstance(p, dict) else str(p)
+                        for p in raw
+                    ).strip()
+                else:
+                    text = raw.strip()
                 if text.startswith('```'):
                     text = text.split('\n', 1)[1] if '\n' in text else text[3:]
                 if text.endswith('```'):

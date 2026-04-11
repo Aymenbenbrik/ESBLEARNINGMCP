@@ -348,7 +348,14 @@ def _node_analyze_feedback(state: ExamEvaluationState) -> ExamEvaluationState:
                     feedback = r
                     break
             if feedback is None and ai_msgs:
-                feedback = ai_msgs[-1].content
+                raw = ai_msgs[-1].content
+                if isinstance(raw, list):
+                    feedback = " ".join(
+                        p.get("text", "") if isinstance(p, dict) else str(p)
+                        for p in raw
+                    ).strip()
+                else:
+                    feedback = raw
             if feedback is None:
                 feedback = ''
             return {**state, 'feedback': feedback, 'current_node': 'analyze_feedback'}

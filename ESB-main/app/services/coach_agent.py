@@ -23,6 +23,17 @@ from typing import Any, Dict, List, Optional, TypedDict
 from flask import current_app
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+
+def _safe_content_text(content) -> str:
+    """Extract plain text from AIMessage.content which may be str or list of parts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+        ).strip()
+    return str(content) if content else ""
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
@@ -328,7 +339,7 @@ def _node_analyze_performance(state: CoachState) -> dict:
         })
 
         ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
-        analysis_text = ai_messages[-1].content if ai_messages else ""
+        analysis_text = _safe_content_text(ai_messages[-1].content) if ai_messages else ""
         return {"analysis": _parse_json_or_text(analysis_text)}
     except Exception as e:
         logger.warning(f"[CoachGraph] ReAct analyze failed, using fallback: {e}")
@@ -372,7 +383,7 @@ def _node_detect_gaps(state: CoachState) -> dict:
         })
 
         ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
-        gaps_text = ai_messages[-1].content if ai_messages else ""
+        gaps_text = _safe_content_text(ai_messages[-1].content) if ai_messages else ""
         parsed = _parse_json_or_text(gaps_text)
         gaps = parsed.get('skill_gaps', parsed if isinstance(parsed, list) else [])
         if isinstance(gaps, dict):
@@ -424,7 +435,7 @@ def _node_generate_plan(state: CoachState) -> dict:
         })
 
         ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
-        plan_text = ai_messages[-1].content if ai_messages else ""
+        plan_text = _safe_content_text(ai_messages[-1].content) if ai_messages else ""
         parsed = _parse_json_or_text(plan_text)
         return {
             "recommendations": parsed.get('recommendations', []),
