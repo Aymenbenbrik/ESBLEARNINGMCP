@@ -1,7 +1,7 @@
 'use client';
 /**
  * ExamMCPPanel — displays the MCP multi-agent exam analysis pipeline.
- * Shows real-time progress across 10 agents, then displays results.
+ * Shows real-time progress across 11 agents, then displays results.
  */
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import {
   FileCode2,
   Star,
   CheckCircle2,
+  ClipboardCheck,
   Loader2,
   Download,
   ChevronDown,
@@ -35,6 +36,7 @@ const AGENTS = [
   { key: 'compare_content',     label: 'Comparaison Module ↔ Examen',   icon: GitCompare },
   { key: 'analyze_feedback',    label: 'Feedback pédagogique',          icon: MessageSquare },
   { key: 'suggest_adjustments', label: 'Ajustements suggérés',          icon: Lightbulb },
+  { key: 'generate_corrections',label: 'Génération corrections',        icon: ClipboardCheck },
   { key: 'generate_latex',      label: 'Génération LaTeX + PDF',        icon: FileCode2 },
   { key: 'evaluate_proposal',   label: 'Évaluation de la proposition',  icon: Star },
 ] as const;
