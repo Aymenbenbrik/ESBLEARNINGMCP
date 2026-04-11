@@ -370,4 +370,13 @@ export const tnExamsApi = {
     );
     return data;
   },
+
+  /** Auto-classify all extracted questions (Bloom, AA, difficulty) */
+  autoClassify: (courseId: number, examId: number) =>
+    apiClient.post<{
+      success: boolean;
+      classified_count: number;
+      results: Record<string, string>;
+      questions: any[];
+    }>(`/api/v1/courses/${courseId}/tn-exams/${examId}/auto-classify`),
 };

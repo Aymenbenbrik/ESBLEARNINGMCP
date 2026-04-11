@@ -636,6 +636,19 @@ def save_proposal(course_id, document_id):
     doc.content_metadata = meta
     db.session.commit()
 
+    # Auto-sync corrections with new proposal
+    ar = doc.analysis_results or {}
+    existing_corrections = ar.get('corrections', [])
+    if existing_corrections:
+        from sqlalchemy.orm.attributes import flag_modified
+        for corr in existing_corrections:
+            corr['outdated'] = True
+            corr['validated'] = False
+        ar['corrections'] = existing_corrections
+        doc.analysis_results = ar
+        flag_modified(doc, 'analysis_results')
+        db.session.commit()
+
     return jsonify({'status': 'ok', 'message': 'Proposition sauvegardee', 'total_proposals': len(proposals)}), 200
 
 
@@ -1676,4 +1689,177 @@ def sync_question_tags_endpoint(course_id: int, document_id: int, question_index
         'tags_changed': result.get('tags_changed', False),
         'bloom_justification': result.get('bloom_justification', ''),
         'difficulty_justification': result.get('difficulty_justification', ''),
+    }), 200
+
+
+@tn_exams_api_bp.route('/<int:document_id>/sync-corrections', methods=['POST'])
+@jwt_required()
+def sync_corrections(course_id: int, document_id: int):
+    """Regenerate corrections for questions that have changed since last correction."""
+    from app.services.exam_mcp_tools import generate_question_correction
+    from sqlalchemy.orm.attributes import flag_modified
+
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    ar = doc.analysis_results or {}
+    questions = ar.get('extracted_questions') or ar.get('questions') or []
+    corrections = ar.get('corrections', [])
+
+    validated_qs = [q for q in questions if q.get('validated', True)]
+
+    if not validated_qs:
+        return jsonify({'error': 'Aucune question validée trouvée'}), 400
+
+    module = (ar.get('exam_metadata') or {}).get('module', '')
+    course_context = f"Module: {module}" if module else ''
+
+    # Regenerate only outdated or missing corrections
+    new_corrections = []
+    for i, q in enumerate(validated_qs):
+        existing = next((c for c in corrections if c.get('index') == i and not c.get('outdated')), None)
+        if existing and existing.get('validated'):
+            # Keep validated corrections that aren't outdated
+            new_corrections.append(existing)
+        else:
+            # Generate new correction
+            q_text = q.get('text') or q.get('question_text') or q.get('question', '')
+            q_type = q.get('question_type') or q.get('type') or 'Ouvert'
+            points = float(q.get('points') or q.get('bareme') or 2)
+            bloom = q.get('bloom_level') or q.get('Bloom_Level') or ''
+            difficulty = q.get('difficulty') or q.get('Difficulty') or ''
+            aa_numbers = q.get('aa_numbers') or q.get('aa_codes') or []
+            exercise_num = q.get('exercise_number') or q.get('exercice') or (i + 1)
+            exercise_title = q.get('exercise_title') or f'Exercice {exercise_num}'
+
+            try:
+                corr_data = generate_question_correction(
+                    question_text=q_text,
+                    question_type=q_type,
+                    points=points,
+                    bloom_level=bloom,
+                    difficulty=difficulty,
+                    aa_codes=[str(a) for a in aa_numbers],
+                    course_context=course_context,
+                )
+            except Exception as e:
+                current_app.logger.error(f'[SYNC-CORRECTION] Error for Q{i}: {e}')
+                corr_data = {'correction': f'Erreur: {e}', 'points_detail': '', 'criteres': []}
+
+            new_corrections.append({
+                'index': i,
+                'exercise_number': exercise_num,
+                'exercise_title': exercise_title,
+                'question_text': q_text,
+                'question_type': q_type,
+                'points': points,
+                'bloom_level': bloom,
+                'difficulty': difficulty,
+                'aa_numbers': aa_numbers,
+                'correction': corr_data.get('correction', ''),
+                'points_detail': corr_data.get('points_detail', ''),
+                'criteres': corr_data.get('criteres', []),
+                'validated': False,
+                'outdated': False,
+            })
+
+    ar['corrections'] = new_corrections
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify({
+        'corrections': new_corrections,
+        'count': len(new_corrections),
+        'regenerated': sum(1 for c in new_corrections if not c.get('validated')),
+        'kept': sum(1 for c in new_corrections if c.get('validated')),
+    }), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AUTO-CLASSIFY ALL QUESTIONS (Bloom, AA, difficulty)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/auto-classify', methods=['POST'])
+@jwt_required()
+def auto_classify_questions(course_id: int, document_id: int):
+    """Auto-classify all extracted questions: Bloom, AA, difficulty."""
+    from app.services.exam_mcp_tools import (
+        classify_questions_bloom, classify_questions_aa,
+        assess_question_difficulty,
+    )
+    from app.models.syllabus import Syllabus, TNAA
+    from sqlalchemy.orm.attributes import flag_modified
+
+    user, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    ar = doc.analysis_results or {}
+    questions = ar.get('extracted_questions') or ar.get('questions') or []
+
+    if not questions:
+        return jsonify({'error': 'No questions to classify'}), 400
+
+    # Ensure each question has a 'number' key for classification functions
+    for i, q in enumerate(questions):
+        if 'number' not in q:
+            q['number'] = q.get('question_number', i + 1)
+
+    # Get AA list from syllabus
+    aa_list = []
+    syllabus = Syllabus.query.filter_by(course_id=course_id).first()
+    if syllabus:
+        aas = TNAA.query.filter_by(syllabus_id=syllabus.id).all()
+        aa_list = [{'AA#': aa.number, 'AA Description': aa.description} for aa in aas]
+
+    results = {}
+
+    # Bloom classification
+    try:
+        classify_questions_bloom(questions)
+        results['bloom'] = 'success'
+    except Exception as e:
+        current_app.logger.error(f"auto_classify bloom error: {e}")
+        results['bloom'] = f'error: {e}'
+
+    # AA classification
+    try:
+        if aa_list:
+            classify_questions_aa(questions, aa_list)
+            results['aa'] = 'success'
+        else:
+            results['aa'] = 'skipped (no syllabus)'
+    except Exception as e:
+        current_app.logger.error(f"auto_classify aa error: {e}")
+        results['aa'] = f'error: {e}'
+
+    # Difficulty assessment
+    try:
+        assess_question_difficulty(questions, '')
+        results['difficulty'] = 'success'
+    except Exception as e:
+        current_app.logger.error(f"auto_classify difficulty error: {e}")
+        results['difficulty'] = f'error: {e}'
+
+    # Persist
+    ar['extracted_questions'] = questions
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'classified_count': len(questions),
+        'results': results,
+        'questions': questions,
     }), 200

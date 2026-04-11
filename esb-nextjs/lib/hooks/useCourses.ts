@@ -663,6 +663,17 @@ export function useExamTags() {
   });
 }
 
+export function useSyncCorrections(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => tnExamsApi.syncCorrections(courseId, examId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam-corrections', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+    },
+  });
+}
+
 export function useSyncQuestionTags(courseId: number, examId: number) {
   const qc = useQueryClient();
   return useMutation({
@@ -670,6 +681,21 @@ export function useSyncQuestionTags(courseId: number, examId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
       qc.invalidateQueries({ queryKey: ['tn-exam-corrections', courseId, examId] });
+    },
+  });
+}
+
+export function useAutoClassify(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => tnExamsApi.autoClassify(courseId, examId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exams', courseId] });
+      toast.success('Classification automatique terminée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la classification automatique');
     },
   });
 }

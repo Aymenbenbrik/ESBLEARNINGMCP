@@ -728,13 +728,14 @@ function DifficultyDonut({ data }: { data: Record<string, number> }) {
 /** Question types doughnut */
 function TypeDonut({ data }: { data: Record<string, number> }) {
   const TYPE_COLORS: Record<string, string> = {
-    'QCM': '#3b82f6', 'MCQ': '#3b82f6',
-    'Ouvert': '#22c55e', 'Short Answer': '#22c55e', 'Essay': '#22c55e',
-    'Pratique': '#f97316', 'Practical': '#f97316',
-    'Calcul': '#a855f7',
-    'Vrai/Faux': '#eab308',
-    'Étude de cas': '#06b6d4', 'Case Study': '#06b6d4',
-    'Rédactionnel': '#ec4899',
+    'QCM': '#6366f1', 'MCQ': '#6366f1',
+    'Ouvert': '#10b981', 'Short Answer': '#10b981', 'Essay': '#10b981',
+    'Pratique': '#f59e0b', 'Practical': '#f59e0b',
+    'Calcul': '#8b5cf6',
+    'Vrai/Faux': '#ec4899',
+    'Étude de cas': '#0ea5e9', 'Case Study': '#0ea5e9',
+    'Rédactionnel': '#f97316',
+    'Code': '#14b8a6',
   };
 
   const labels = Object.keys(data).filter((k) => data[k] > 0);
@@ -1013,17 +1014,22 @@ function DurationBarChart({ estimated, buffer, declared }: {
 
 function PointsPerExerciseChart({ questions }: { questions: any[] }) {
   const ex: Record<string, number> = {};
-  questions.forEach((q) => {
-    const t = (q as any).exercise_title ?? `Exercice ${(q as any).exercise_number ?? 1}`;
-    ex[t] = (ex[t] ?? 0) + ((q as any).points ?? 0);
+  const exOrder: string[] = [];
+  questions.forEach((q, idx) => {
+    const exNum = (q as any).exercise_number ?? Math.floor(idx / 3) + 1;
+    const t = (q as any).exercise_title ?? `Exercice ${exNum}`;
+    if (!ex[t]) exOrder.push(t);
+    ex[t] = (ex[t] ?? 0) + (parseFloat((q as any).points) || 0);
   });
-  const labels = Object.keys(ex);
-  const data = Object.values(ex);
-  if (!labels.length) return null;
+  const labels = exOrder;
+  const data = labels.map((l) => ex[l]);
+  const total = data.reduce((a, b) => a + b, 0);
+  if (!labels.length || total === 0) return <p className="text-sm text-muted-foreground italic text-center py-4">Aucune donnée de barème disponible. Vérifiez que les questions ont des points attribués.</p>;
+  const EXERCISE_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#818cf8', '#4f46e5', '#7c3aed', '#5b21b6'];
   return (
     <ChartBar
-      data={{ labels, datasets: [{ label: 'Points', data, backgroundColor: PIE_PALETTE.slice(0, labels.length).map((c) => c + '99'), borderColor: PIE_PALETTE.slice(0, labels.length), borderWidth: 2, borderRadius: 6 }] }}
-      options={{ responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => `${ctx.raw} pts` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } } }}
+      data={{ labels, datasets: [{ label: 'Points', data, backgroundColor: labels.map((_, i) => EXERCISE_COLORS[i % EXERCISE_COLORS.length] + '99'), borderColor: labels.map((_, i) => EXERCISE_COLORS[i % EXERCISE_COLORS.length]), borderWidth: 2, borderRadius: 6 }] }}
+      options={{ responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => `${ctx.raw} pts (${total > 0 ? Math.round(ctx.raw / total * 100) : 0}%)` } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Points' } } } }}
       height={200}
     />
   );
@@ -1049,11 +1055,17 @@ function BloomRadarChart({ bloomPercentages }: { bloomPercentages: Record<string
   const BLOOM_LABELS = ['Mémorisation', 'Compréhension', 'Application', 'Analyse', 'Évaluation', 'Création'];
   const KEY_MAP: Record<string, string> = {
     'Mémorisation': 'Mémorisation', 'mémorisation': 'Mémorisation', 'Remember': 'Mémorisation', 'remember': 'Mémorisation',
+    'Mémoriser': 'Mémorisation', 'mémoriser': 'Mémorisation',
     'Compréhension': 'Compréhension', 'compréhension': 'Compréhension', 'Understand': 'Compréhension', 'understand': 'Compréhension',
+    'Comprendre': 'Compréhension', 'comprendre': 'Compréhension',
     'Application': 'Application', 'application': 'Application', 'Apply': 'Application', 'apply': 'Application',
+    'Appliquer': 'Application', 'appliquer': 'Application',
     'Analyse': 'Analyse', 'analyse': 'Analyse', 'Analyze': 'Analyse', 'analyze': 'Analyse',
+    'Analyser': 'Analyse', 'analyser': 'Analyse',
     'Évaluation': 'Évaluation', 'évaluation': 'Évaluation', 'Evaluate': 'Évaluation', 'evaluate': 'Évaluation',
+    'Évaluer': 'Évaluation', 'évaluer': 'Évaluation',
     'Création': 'Création', 'création': 'Création', 'Create': 'Création', 'create': 'Création',
+    'Créer': 'Création', 'créer': 'Création',
   };
   const normalized: Record<string, number> = {};
   for (const [k, v] of Object.entries(bloomPercentages)) {
@@ -2679,6 +2691,26 @@ function QuestionsTab({
 
       toast.success(`${extracted.length} questions extraites avec succès !`);
       onQuestionsUpdated();
+
+      // Auto-trigger classification after extraction
+      try {
+        toast.info('Classification automatique en cours…');
+        await tnExamsApi.autoClassify(courseId, examId);
+        toast.success('Classification automatique terminée');
+        onQuestionsUpdated(); // Refresh with classified data
+      } catch (classifyErr) {
+        console.warn('[EXAM QUESTIONS] Auto-classify failed (non-blocking):', classifyErr);
+      }
+
+      // Auto-trigger correction generation after classification
+      try {
+        toast.info('Génération des corrections en cours…');
+        await tnExamsApi.generateCorrection(courseId, examId);
+        toast.success('Corrections générées automatiquement');
+        onQuestionsUpdated();
+      } catch (corrErr) {
+        console.warn('[EXAM QUESTIONS] Auto-correction failed (non-blocking):', corrErr);
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || "Erreur lors de l'extraction";
       console.error('[EXAM QUESTIONS] Extraction failed:', err);
@@ -3622,6 +3654,24 @@ function AnalyseAITab({
             </Button>
           )}
 
+          {/* Batch validate all questions */}
+          {editedQuestions.length > 0 && (
+            <Button
+              onClick={() => {
+                const allValidated = editedQuestions.map(q => ({ ...q, validated: true }));
+                setEditedQuestions(allValidated);
+                setDirty(true);
+                toast.success(`${allValidated.length} questions validées en lot`);
+              }}
+              variant="outline"
+              size="sm"
+              className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Valider tout ({editedQuestions.length})
+            </Button>
+          )}
+
         </div>
 
 
@@ -4092,6 +4142,7 @@ function AnalyseAITab({
                     <TableHead className="w-28">Difficulté</TableHead>
                     <TableHead className="w-28">Bloom</TableHead>
                     <TableHead className="w-24">Temps</TableHead>
+                    <TableHead className="w-20">Validé</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -4111,7 +4162,7 @@ function AnalyseAITab({
                       return (
                         <React.Fragment key={exNum}>
                           <TableRow className="bg-amber-50/60 border-t-2 border-amber-200">
-                            <TableCell colSpan={8} className="py-2 px-4">
+                            <TableCell colSpan={9} className="py-2 px-4">
                               <div className="flex items-center gap-3">
                                 <span className="text-sm font-bold text-amber-800">{title}</span>
                                 {exPts > 0 && <Badge className="bg-amber-100 text-amber-800 text-xs border-0">{exPts} pts</Badge>}
@@ -4149,6 +4200,27 @@ function AnalyseAITab({
                                 </TableCell>
                                 <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                   {q.estimated_time_min != null ? `${q.estimated_time_min} min` : '—'}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const globalIdx = editedQuestions.indexOf(q);
+                                      if (globalIdx === -1) return;
+                                      const updated = [...editedQuestions];
+                                      updated[globalIdx] = { ...updated[globalIdx], validated: !updated[globalIdx].validated };
+                                      setEditedQuestions(updated);
+                                      setDirty(true);
+                                    }}
+                                    className={`inline-flex items-center justify-center rounded-full p-1 transition-colors ${
+                                      q.validated
+                                        ? 'text-green-600 hover:bg-green-100'
+                                        : 'text-gray-300 hover:bg-gray-100 hover:text-gray-500'
+                                    }`}
+                                    title={q.validated ? 'Validée — cliquer pour invalider' : 'Non validée — cliquer pour valider'}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </button>
                                 </TableCell>
                               </TableRow>
                             );
@@ -5055,6 +5127,36 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
   const effectiveCoveragePct = effectiveCoveredCount + effectiveMissingCount > 0
     ? Math.round((effectiveCoveredCount / (effectiveCoveredCount + effectiveMissingCount)) * 100) : 0;
 
+  // ── Auto-computed diagnostics from local data when AI analysis hasn't run ──
+  const autoStrengths: string[] = strengths.length > 0 ? strengths : (() => {
+    const s: string[] = [];
+    if (totalExtracted > 0) {
+      if (effectiveCoveragePct >= 80) s.push(`Bonne couverture des AA (${effectiveCoveragePct}%)`);
+      const bloomKeys = Object.keys(effectiveBloom);
+      if (bloomKeys.length >= 4) s.push(`Diversité des niveaux Bloom (${bloomKeys.length}/6 niveaux couverts)`);
+      const hotPct = (effectiveBloom['Analyse'] ?? effectiveBloom['Analyser'] ?? 0) + (effectiveBloom['Évaluation'] ?? effectiveBloom['Évaluer'] ?? 0) + (effectiveBloom['Création'] ?? effectiveBloom['Créer'] ?? 0);
+      if (hotPct >= 30) s.push(`Bonne proportion de questions HOT (${hotPct}%)`);
+      const typeCount = Object.keys(effectiveType).length;
+      if (typeCount >= 3) s.push(`Variété des types de questions (${typeCount} types)`);
+      if (s.length === 0) s.push(`${totalExtracted} questions extraites — lancez l'analyse IA pour un diagnostic détaillé`);
+    }
+    return s;
+  })();
+
+  const autoRecommendations: string[] = recommendations.length > 0 ? recommendations : (() => {
+    const r: string[] = [];
+    if (totalExtracted > 0) {
+      if (effectiveMissingCount > 0) r.push(`${effectiveMissingCount} AA(s) non couvert(s) dans l'examen`);
+      const memPct = effectiveBloom['Mémorisation'] ?? effectiveBloom['Mémoriser'] ?? 0;
+      if (memPct > 30) r.push(`Trop de questions de mémorisation (${memPct}%) — visez ≤ 15%`);
+      const hotPct = (effectiveBloom['Analyse'] ?? effectiveBloom['Analyser'] ?? 0) + (effectiveBloom['Évaluation'] ?? effectiveBloom['Évaluer'] ?? 0) + (effectiveBloom['Création'] ?? effectiveBloom['Créer'] ?? 0);
+      if (hotPct < 20 && totalExtracted >= 3) r.push(`Peu de questions d'ordre supérieur (HOT: ${hotPct}%) — ajoutez des questions d'analyse/évaluation`);
+      const diffKeys = Object.keys(effectiveDiff);
+      if (diffKeys.length <= 2) r.push(`Manque de diversité de difficulté (${diffKeys.length} niveaux) — visez au moins 3 niveaux`);
+    }
+    return r;
+  })();
+
   const hasData = (ar && (Object.keys(bloomPercentages).length > 0 || displayQuestions.length > 0))
     || evalHeaderData !== null
     || (extractedRaw && extractedRaw.length > 0);
@@ -5264,7 +5366,7 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
               <Badge className="ml-auto text-xs bg-green-200 text-green-800 border-0">{strengths.length}</Badge>
             </div>
             <div className="p-4 space-y-2">
-              {strengths.length > 0 ? strengths.map((s, i) => (
+              {autoStrengths.length > 0 ? autoStrengths.map((s, i) => (
                 <div key={i} className="flex gap-2 text-sm text-green-800"><span className="shrink-0 mt-0.5">✅</span><span>{s}</span></div>
               )) : <p className="text-sm text-green-600 italic">Lancez l&apos;analyse pour identifier les points forts.</p>}
             </div>
@@ -5274,10 +5376,10 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
           <div className="rounded-xl border border-orange-200 bg-orange-50 overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-orange-200 bg-orange-100/50">
               <AlertTriangle className="h-4 w-4 text-orange-600" /><h3 className="text-sm font-semibold text-orange-800">Points à améliorer</h3>
-              <Badge className="ml-auto text-xs bg-orange-200 text-orange-800 border-0">{recommendations.length}</Badge>
+              <Badge className="ml-auto text-xs bg-orange-200 text-orange-800 border-0">{autoRecommendations.length}</Badge>
             </div>
             <div className="p-4 space-y-2">
-              {recommendations.length > 0 ? recommendations.map((r, i) => (
+              {autoRecommendations.length > 0 ? autoRecommendations.map((r, i) => (
                 <div key={i} className="flex gap-2 text-sm text-orange-800"><span className="shrink-0 mt-0.5">⚠️</span><span>{r}</span></div>
               )) : <p className="text-sm text-orange-600 italic">Aucune recommandation pour l&apos;instant.</p>}
             </div>

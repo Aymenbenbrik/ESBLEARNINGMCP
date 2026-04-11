@@ -578,6 +578,7 @@ export interface TnExamQuestion {
   source_docs?: string[];
   exercise_number?: number | string;
   exercise_title?: string;
+  validated?: boolean;
 }
 
 export interface TnExamMetadata {
