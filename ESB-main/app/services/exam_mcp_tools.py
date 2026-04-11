@@ -18,6 +18,42 @@ from flask import current_app
 from app.services.mcp_tools import _llm, _llm_robust  # noqa: F401
 
 
+# ── Unified Tag Constants ──────────────────────────────────────────────────────
+# Single source of truth for all exam tags. Used by MCP tools, agent nodes, and API.
+
+BLOOM_LEVELS = ['Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer']
+
+BLOOM_DISTRIBUTION_IDEAL = {
+    'Mémoriser': 10,
+    'Comprendre': 20,
+    'Appliquer': 30,
+    'Analyser': 20,
+    'Évaluer': 15,
+    'Créer': 5,
+}
+
+DIFFICULTY_LEVELS = ['Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile']
+
+QUESTION_TYPES = ['QCM', 'Ouvert', 'Pratique', 'Vrai/Faux', 'Calcul', 'Étude de cas']
+
+BLOOM_COLORS = {
+    'Mémoriser': '#3b82f6',
+    'Comprendre': '#22c55e',
+    'Appliquer': '#eab308',
+    'Analyser': '#f97316',
+    'Évaluer': '#ef4444',
+    'Créer': '#a855f7',
+}
+
+DIFFICULTY_COLORS = {
+    'Très facile': '#22c55e',
+    'Facile': '#86efac',
+    'Moyen': '#eab308',
+    'Difficile': '#f97316',
+    'Très difficile': '#ef4444',
+}
+
+
 # ── MCP Tool Schema Registry ───────────────────────────────────────────────────
 EXAM_MCP_TOOL_DEFINITIONS = [
     {
@@ -135,6 +171,56 @@ EXAM_MCP_TOOL_DEFINITIONS = [
                 "original_feedback": {"type": "string"},
             },
             "required": ["latex_source"],
+        },
+    },
+    {
+        "name": "generate_question_correction",
+        "description": "Generates a model correction/answer for a single validated exam question, including grading criteria and point breakdown.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question_text": {"type": "string"},
+                "question_type": {"type": "string"},
+                "bloom_level": {"type": "string"},
+                "difficulty": {"type": "string"},
+                "points": {"type": "number"},
+                "aa_codes": {"type": "array", "items": {"type": "string"}},
+                "course_context": {"type": "string"},
+            },
+            "required": ["question_text", "question_type", "points"],
+        },
+    },
+    {
+        "name": "correct_student_answer",
+        "description": "Evaluates a student's answer against a reference correction, assigning a score and providing detailed feedback.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question_text": {"type": "string"},
+                "question_type": {"type": "string"},
+                "reference_correction": {"type": "string"},
+                "student_answer": {"type": "string"},
+                "max_points": {"type": "number"},
+                "grading_criteria": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["question_text", "reference_correction", "student_answer", "max_points"],
+        },
+    },
+    {
+        "name": "sync_question_tags",
+        "description": "Re-classifies a question's Bloom level, difficulty, and AA codes after modification. Ensures tag consistency.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question_text": {"type": "string"},
+                "question_type": {"type": "string"},
+                "current_bloom": {"type": "string"},
+                "current_difficulty": {"type": "string"},
+                "current_aa_codes": {"type": "array"},
+                "aa_list": {"type": "array"},
+                "course_context": {"type": "string"},
+            },
+            "required": ["question_text"],
         },
     },
 ]
@@ -598,3 +684,190 @@ Réponds avec un objet JSON:
     except Exception as e:
         current_app.logger.error(f"evaluate_exam_proposal error: {e}")
     return {"overall_score": 0, "final_recommendation": "Évaluation non disponible."}
+
+
+# ── Correction & Tag-Sync Tool Implementations ────────────────────────────────
+
+def generate_question_correction(
+    question_text: str,
+    question_type: str,
+    points: float,
+    bloom_level: str = '',
+    difficulty: str = '',
+    aa_codes: List[str] = None,
+    course_context: str = '',
+) -> Dict[str, Any]:
+    """Generate a model correction for a single exam question using unified LLM."""
+    llm = _llm_robust(0.2)
+
+    context_section = f"\nContexte du cours:\n{course_context[:2000]}" if course_context else ""
+
+    prompt = f"""Tu es un enseignant expert. Génère une correction modèle complète pour cette question d'examen.
+
+Question: {question_text}
+Type: {question_type}
+Bloom: {bloom_level or 'Non classifié'}
+Difficulté: {difficulty or 'Non évaluée'}
+Barème: {points} points
+AA concernés: {', '.join(aa_codes or [])}
+{context_section}
+
+Retourne un objet JSON avec:
+{{
+    "correction": "<correction modèle détaillée>",
+    "points_detail": "<répartition des points: ex. 1pt pour X, 2pts pour Y>",
+    "criteres": ["<critère d'évaluation 1>", "<critère 2>", ...],
+    "mots_cles": ["<mot-clé attendu 1>", "<mot-clé 2>", ...],
+    "erreurs_courantes": ["<erreur fréquente 1>", "<erreur 2>", ...]
+}}"""
+
+    try:
+        response = llm.invoke(prompt)
+        content = response.content if hasattr(response, 'content') else str(response)
+        if isinstance(content, list):
+            content = " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except Exception as e:
+        current_app.logger.error(f"generate_question_correction error: {e}")
+
+    return {
+        "correction": "Correction non disponible.",
+        "points_detail": f"{points} points",
+        "criteres": [],
+        "mots_cles": [],
+        "erreurs_courantes": [],
+    }
+
+
+def correct_student_answer(
+    question_text: str,
+    reference_correction: str,
+    student_answer: str,
+    max_points: float,
+    question_type: str = 'open_ended',
+    grading_criteria: List[str] = None,
+) -> Dict[str, Any]:
+    """Evaluate a student answer against the reference correction using unified LLM."""
+    llm = _llm_robust(0.1)
+
+    criteria_section = ""
+    if grading_criteria:
+        criteria_section = "\nCritères d'évaluation:\n" + "\n".join(f"- {c}" for c in grading_criteria)
+
+    prompt = f"""Tu es un correcteur d'examen universitaire. Évalue cette réponse d'étudiant.
+
+Question: {question_text}
+Type: {question_type}
+Correction modèle: {reference_correction}
+Réponse de l'étudiant: {student_answer or '(Aucune réponse)'}
+Barème maximum: {max_points} points
+{criteria_section}
+
+Règles:
+- Sois juste et précis dans la notation
+- Accorde des points partiels quand pertinent
+- Le score doit être entre 0 et {max_points}
+
+Retourne un objet JSON:
+{{
+    "score": <nombre entre 0 et {max_points}>,
+    "feedback": "<feedback détaillé pour l'étudiant>",
+    "is_correct": <true si score >= {max_points * 0.5}>,
+    "points_breakdown": "<détail des points accordés/retirés>",
+    "improvement_suggestions": ["<suggestion 1>", ...]
+}}"""
+
+    try:
+        response = llm.invoke(prompt)
+        content = response.content if hasattr(response, 'content') else str(response)
+        if isinstance(content, list):
+            content = " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            result = json.loads(match.group())
+            result['score'] = min(float(result.get('score', 0)), max_points)
+            return result
+    except Exception as e:
+        current_app.logger.error(f"correct_student_answer error: {e}")
+
+    return {
+        "score": 0,
+        "feedback": "Correction automatique non disponible.",
+        "is_correct": False,
+        "points_breakdown": "",
+        "improvement_suggestions": [],
+    }
+
+
+def sync_question_tags(
+    question_text: str,
+    question_type: str = '',
+    current_bloom: str = '',
+    current_difficulty: str = '',
+    current_aa_codes: List[str] = None,
+    aa_list: List[Dict] = None,
+    course_context: str = '',
+) -> Dict[str, Any]:
+    """Re-classify a question's tags to ensure consistency. Uses pro model."""
+    llm = _llm_robust(0.1)
+
+    aa_str = ""
+    if aa_list:
+        aa_str = "\n".join([f"AA{a.get('AA#', a.get('number', '?'))}: {a.get('AA Description', a.get('description', ''))}" for a in aa_list])
+
+    bloom_levels_str = ", ".join(BLOOM_LEVELS)
+    difficulty_levels_str = ", ".join(DIFFICULTY_LEVELS)
+
+    prompt = f"""Reclassifie cette question d'examen avec précision.
+
+Question: {question_text}
+Type: {question_type or 'Non spécifié'}
+
+Tags actuels (à vérifier/corriger):
+- Bloom: {current_bloom or 'Non classifié'}
+- Difficulté: {current_difficulty or 'Non évaluée'}
+- AA: {', '.join(current_aa_codes or []) or 'Non assignés'}
+
+Niveaux Bloom valides: {bloom_levels_str}
+Niveaux difficulté valides: {difficulty_levels_str}
+
+AA disponibles du module:
+{aa_str or 'Non disponibles'}
+
+{f'Contexte du cours: {course_context[:1500]}' if course_context else ''}
+
+Retourne un JSON:
+{{
+    "bloom_level": "<niveau Bloom exact parmi la liste>",
+    "difficulty": "<niveau difficulté exact parmi la liste>",
+    "aa_codes": ["AA1", "AA2"],
+    "bloom_justification": "<pourquoi ce niveau>",
+    "difficulty_justification": "<pourquoi cette difficulté>",
+    "tags_changed": <true si au moins un tag a changé par rapport aux tags actuels>
+}}"""
+
+    try:
+        response = llm.invoke(prompt)
+        content = response.content if hasattr(response, 'content') else str(response)
+        if isinstance(content, list):
+            content = " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            result = json.loads(match.group())
+            # Validate against allowed values
+            if result.get('bloom_level') not in BLOOM_LEVELS:
+                result['bloom_level'] = current_bloom or 'Appliquer'
+            if result.get('difficulty') not in DIFFICULTY_LEVELS:
+                result['difficulty'] = current_difficulty or 'Moyen'
+            return result
+    except Exception as e:
+        current_app.logger.error(f"sync_question_tags error: {e}")
+
+    return {
+        "bloom_level": current_bloom or 'Appliquer',
+        "difficulty": current_difficulty or 'Moyen',
+        "aa_codes": current_aa_codes or [],
+        "tags_changed": False,
+    }

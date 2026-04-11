@@ -319,9 +319,7 @@ def generate_answers(exam_id):
         return jsonify({'error': 'GOOGLE_API_KEY non configurée'}), 500
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        from app.services.exam_mcp_tools import generate_question_correction
 
         course = Course.query.get(exam.course_id)
         course_name = course.title if course else 'Ce cours'
@@ -330,89 +328,46 @@ def generate_answers(exam_id):
 
         for question in questions:
             if question.answer_generated and question.answer:
-                continue  # Skip already generated
+                continue
 
-            # Build prompt based on question type
-            if question.question_type == 'mcq':
-                prompt = f"""Tu es un expert pédagogique. Pour cette question de type QCM du cours "{course_name}", identifie la bonne réponse et explique pourquoi.
-
-Question: {question.question_text}
-A) {question.choice_a or 'N/A'}
-B) {question.choice_b or 'N/A'}
-C) {question.choice_c or 'N/A'}
-D) {question.choice_d or 'N/A'}
-
-Réponds en JSON avec:
-{{
-  "correct_choice": "A|B|C|D",
-  "answer": "Explication détaillée de la bonne réponse et pourquoi les autres sont incorrectes"
-}}"""
-
-            elif question.question_type == 'true_false':
-                prompt = f"""Tu es un expert pédagogique. Pour cette question Vrai/Faux du cours "{course_name}", détermine la réponse correcte.
-
-Question: {question.question_text}
-
-Réponds en JSON avec:
-{{
-  "correct_choice": "True|False",
-  "answer": "Explication détaillée justifiant la réponse"
-}}"""
-
-            elif question.question_type == 'code':
-                lang = question.programming_language or 'Python'
-                prompt = f"""Tu es un expert en {lang} et pédagogie. Pour cette question pratique de code du cours "{course_name}", fournis une solution complète et commentée.
-
-Question: {question.question_text}
-
-Réponds en JSON avec:
-{{
-  "answer": "Solution complète en {lang} avec commentaires explicatifs",
-  "expected_output": "Sortie attendue du programme (si applicable)"
-}}"""
-
-            else:  # open_ended, practical
-                prompt = f"""Tu es un expert pédagogique. Pour cette question ouverte du cours "{course_name}", fournis une réponse modèle complète et structurée.
-
-Question: {question.question_text}
-
-Fournis une réponse modèle détaillée qui couvre tous les aspects importants. Structure ta réponse avec des points clés.
-Réponds en JSON avec:
-{{
-  "answer": "Réponse modèle complète et structurée"
-}}"""
-
-            try:
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
-                        temperature=0.3,
-                        response_mime_type="application/json"
-                    )
+            if question.question_type in ('mcq', 'true_false'):
+                # For MCQ/true_false, use generate_question_correction for explanation
+                result = generate_question_correction(
+                    question_text=question.question_text,
+                    question_type=question.question_type,
+                    points=float(question.points or 0),
+                    bloom_level=question.bloom_level or '',
+                    difficulty=question.difficulty or '',
                 )
-
-                result_text = response.text.strip()
-                # Clean JSON if needed
-                if result_text.startswith('```'):
-                    result_text = result_text.split('```')[1]
-                    if result_text.startswith('json'):
-                        result_text = result_text[4:]
-
-                result = json.loads(result_text)
-                question.answer = result.get('answer', '')
+                question.answer = result.get('correction', '')
                 question.answer_generated = True
-
-                if question.question_type in ('mcq', 'true_false') and 'correct_choice' in result:
-                    question.correct_choice = result['correct_choice']
-
-                if question.question_type == 'code' and 'expected_output' in result:
-                    question.expected_output = result.get('expected_output', '')
-
                 generated_count += 1
 
-            except Exception as e:
-                logger.error(f"Erreur génération réponse question {question.id}: {e}")
-                question.answer = f"[Erreur de génération: {str(e)}]"
+            elif question.question_type == 'code':
+                result = generate_question_correction(
+                    question_text=question.question_text,
+                    question_type='Code',
+                    points=float(question.points or 0),
+                    bloom_level=question.bloom_level or '',
+                    difficulty=question.difficulty or '',
+                    course_context=f"Cours: {course_name}. Langage: {question.programming_language or 'Python'}",
+                )
+                question.answer = result.get('correction', '')
+                question.answer_generated = True
+                generated_count += 1
+
+            else:  # open_ended, practical
+                result = generate_question_correction(
+                    question_text=question.question_text,
+                    question_type=question.question_type or 'Ouvert',
+                    points=float(question.points or 0),
+                    bloom_level=question.bloom_level or '',
+                    difficulty=question.difficulty or '',
+                    course_context=f"Cours: {course_name}",
+                )
+                question.answer = result.get('correction', '')
+                question.answer_generated = True
+                generated_count += 1
 
         db.session.commit()
         return jsonify({
@@ -598,41 +553,19 @@ def submit_session(session_id):
             if answer.score is not None:
                 total_score += answer.score
         elif question.question_type in ('open_ended', 'code', 'practical'):
-            # Use Gemini 2.5 Pro to evaluate
+            # Use MCP tool to evaluate
             if api_key and answer.student_answer:
                 try:
-                    import google.generativeai as genai
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-2.5-pro')
+                    from app.services.exam_mcp_tools import correct_student_answer
 
-                    eval_prompt = f"""Tu es un correcteur d'examen. Évalue cette réponse étudiant.
-
-Question ({question.points} points): {question.question_text}
-Réponse modèle: {question.answer or 'Non disponible'}
-
-Réponse de l'étudiant: {answer.student_answer}
-
-Évalue sur {question.points} points. Réponds en JSON:
-{{
-  "score": <nombre entre 0 et {question.points}>,
-  "feedback": "Commentaire détaillé sur la réponse",
-  "is_correct": <true si score >= 50% des points>
-}}"""
-
-                    response = model.generate_content(
-                        eval_prompt,
-                        generation_config=genai.GenerationConfig(
-                            temperature=0.2,
-                            response_mime_type="application/json"
-                        )
+                    eval_result = correct_student_answer(
+                        question_text=question.question_text,
+                        reference_correction=question.answer or '',
+                        student_answer=answer.student_answer or '',
+                        max_points=float(question.points),
+                        question_type=question.question_type,
+                        grading_criteria=[],
                     )
-                    result_text = response.text.strip()
-                    if result_text.startswith('```'):
-                        result_text = result_text.split('```')[1]
-                        if result_text.startswith('json'):
-                            result_text = result_text[4:]
-
-                    eval_result = json.loads(result_text)
                     answer.score = min(float(eval_result.get('score', 0)), question.points)
                     answer.ai_feedback = eval_result.get('feedback', '')
                     answer.is_correct = eval_result.get('is_correct', False)
@@ -974,18 +907,15 @@ def auto_correct_exam(exam_id):
     """
     Corriger automatiquement toutes les sessions soumises de cette épreuve.
     - MCQ / True/False : comparaison directe correct_choice vs student_choice
-    - Open-ended : correction par Gemini 2.5 Flash
+    - Open-ended : correction par MCP tool correct_student_answer
     """
-    import json as _json
-    import google.generativeai as genai
+    from app.services.exam_mcp_tools import correct_student_answer
 
     user = get_current_user()
     if not user or (not user.is_teacher and not user.is_superuser):
         return jsonify({'error': 'Réservé aux enseignants'}), 403
 
     exam = ValidatedExam.query.get_or_404(exam_id)
-    genai.configure(api_key=current_app.config.get('GOOGLE_API_KEY', ''))
-    model = genai.GenerativeModel('gemini-2.5-flash')
 
     # Load TN corrections as reference if available
     tn_corrections_map = {}  # question_index -> correction text
@@ -1025,38 +955,24 @@ def auto_correct_exam(exam_id):
 
             elif question.question_type in ('open_ended', 'code', 'practical'):
                 try:
-                    # Use TN correction if available, else question.answer
                     ref_answer = question.answer or 'Non fournie'
                     q_idx = question.order - 1 if hasattr(question, 'order') and question.order else -1
                     if q_idx in tn_corrections_map:
                         ref_answer = tn_corrections_map[q_idx]
 
-                    prompt = (
-                        f"Tu es un correcteur d'examen universitaire.\n"
-                        f"Question : {question.question_text}\n"
-                        f"Correction de référence : {ref_answer}\n"
-                        f"Réponse étudiant : {answer.student_answer or '(vide)'}\n"
-                        f"Points maximum : {question.points}\n\n"
-                        f"Évalue la réponse par rapport à la correction de référence.\n"
-                        f"Réponds UNIQUEMENT en JSON valide :\n"
-                        f'{{\"score\": <number 0-{question.points}>, \"feedback\": \"<feedback constructif en français>\"}}'
+                    eval_result = correct_student_answer(
+                        question_text=question.question_text,
+                        reference_correction=ref_answer,
+                        student_answer=answer.student_answer or '',
+                        max_points=float(question.points),
+                        question_type=question.question_type,
+                        grading_criteria=[],
                     )
-                    resp = model.generate_content(prompt)
-                    text = resp.text.strip()
-                    # Extract JSON
-                    start = text.find('{')
-                    end = text.rfind('}') + 1
-                    if start >= 0 and end > start:
-                        parsed = _json.loads(text[start:end])
-                        score = min(float(parsed.get('score', 0)), float(question.points))
-                        score = max(0.0, score)
-                        answer.score = score
-                        answer.ai_feedback = parsed.get('feedback', '')
-                    else:
-                        answer.score = 0.0
-                        answer.ai_feedback = 'Correction automatique indisponible.'
+                    answer.score = eval_result['score']
+                    answer.ai_feedback = eval_result.get('feedback', '')
+                    answer.is_correct = eval_result.get('is_correct', False)
                 except Exception as e:
-                    logger.warning(f'Gemini grading failed for answer {answer.id}: {e}')
+                    logger.warning(f'AI grading failed for answer {answer.id}: {e}')
                     answer.score = 0.0
                     answer.ai_feedback = 'Correction automatique échouée.'
                 total_score += answer.score or 0.0
@@ -1162,6 +1078,36 @@ def update_session_feedback(session_id):
 
     db.session.commit()
     return jsonify(session.to_dict())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAG CONSTANTS API
+# ─────────────────────────────────────────────────────────────────────────────
+
+@exam_bank_api_bp.route('/tags', methods=['GET'])
+def get_exam_tags():
+    """Return unified exam tag constants for frontend synchronization."""
+    try:
+        from app.services.exam_mcp_tools import (
+            BLOOM_LEVELS, BLOOM_DISTRIBUTION_IDEAL, DIFFICULTY_LEVELS,
+            QUESTION_TYPES, BLOOM_COLORS, DIFFICULTY_COLORS,
+        )
+    except ImportError:
+        BLOOM_LEVELS = ['Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer']
+        BLOOM_DISTRIBUTION_IDEAL = {'Mémoriser': 10, 'Comprendre': 20, 'Appliquer': 30, 'Analyser': 20, 'Évaluer': 15, 'Créer': 5}
+        BLOOM_COLORS = {}
+        DIFFICULTY_LEVELS = ['Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile']
+        DIFFICULTY_COLORS = {}
+        QUESTION_TYPES = ['QCM', 'Vrai/Faux', 'Ouvert', 'Calcul', 'Code', 'Pratique']
+
+    return jsonify({
+        'bloom_levels': BLOOM_LEVELS,
+        'bloom_distribution_ideal': BLOOM_DISTRIBUTION_IDEAL,
+        'bloom_colors': BLOOM_COLORS,
+        'difficulty_levels': DIFFICULTY_LEVELS,
+        'difficulty_colors': DIFFICULTY_COLORS,
+        'question_types': QUESTION_TYPES,
+    }), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1358,9 +1304,10 @@ def course_review(course_id):
     # Generate AI recommendations if available
     recommendations = []
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=current_app.config.get('GOOGLE_API_KEY', ''))
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        from app.services.mcp_tools import _llm
+        import re as _re
+
+        llm = _llm(0.3)
 
         stats_summary = {
             'exam_count': len(exams),
@@ -1378,13 +1325,11 @@ Statistiques : {stats_summary}
 Retourne uniquement un JSON :
 {{"recommendations": ["recommandation 1", "recommandation 2", "recommandation 3", "recommandation 4", "recommandation 5"]}}"""
 
-        resp = model.generate_content(prompt)
-        text = resp.text.strip()
-        start = text.find('{')
-        end = text.rfind('}') + 1
-        if start >= 0 and end > start:
-            import json
-            parsed = json.loads(text[start:end])
+        response = llm.invoke(prompt)
+        content = response.content if hasattr(response, 'content') else str(response)
+        match = _re.search(r'\{.*\}', content, _re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
             recommendations = parsed.get('recommendations', [])
     except Exception:
         recommendations = [
