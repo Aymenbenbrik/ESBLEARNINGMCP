@@ -13,9 +13,15 @@ export function useAssistant() {
     mutationFn: (message) => assistantApi.chat(message, messages),
     onSuccess: (data) => {
       setDetectedLanguage(data.language);
+      // Sanitize response — backend may return structured content from Gemini
+      const responseText = typeof data.response === 'string'
+        ? data.response
+        : Array.isArray(data.response)
+          ? data.response.map((p: any) => (typeof p === 'string' ? p : p?.text ?? '')).join(' ')
+          : (data.response as any)?.text ?? String(data.response ?? '');
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: data.response,
+        content: responseText,
         timestamp: new Date().toISOString(),
         language: data.language,
         tools_used: data.tools_used,

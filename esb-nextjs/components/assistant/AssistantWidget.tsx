@@ -275,6 +275,13 @@ function MessageBubble({
 }) {
   const isUser = message.role === 'user';
 
+  // Safely extract text — Gemini may return structured {text, type, extras} objects
+  const content = typeof message.content === 'string'
+    ? message.content
+    : Array.isArray(message.content)
+      ? message.content.map((p: any) => (typeof p === 'string' ? p : p?.text ?? '')).join(' ')
+      : (message.content as any)?.text ?? String(message.content ?? '');
+
   return (
     <div className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
       {!isUser && (
@@ -296,7 +303,7 @@ function MessageBubble({
               : 'bg-muted rounded-tl-sm'
           }`}
         >
-          {message.content}
+          {content}
         </div>
         <div className={`flex items-center gap-2 mt-0.5 ${isUser ? 'justify-end' : ''}`}>
           {message.timestamp && (
