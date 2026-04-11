@@ -18,6 +18,7 @@ import {
   useUpdateCorrection,
   useExamTags,
   useSyncQuestionTags,
+  useSyncCorrections,
 } from '@/lib/hooks/useCourses';
 import type { TnExamDocument, TnExamCorrection } from '@/lib/types/course';
 
@@ -42,6 +43,9 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
   const updateMutation = useUpdateCorrection(courseId, examId);
   const { data: tagConstants } = useExamTags();
   const syncTagsMutation = useSyncQuestionTags(courseId, examId);
+  const syncMutation = useSyncCorrections(courseId, examId);
+
+  const hasOutdated = corrections.some((c) => c.outdated);
 
   const ar = exam.analysis_results as Record<string, unknown> | null | undefined;
   const rawQuestions = (ar?.extracted_questions ?? ar?.questions ?? []) as Array<Record<string, unknown>>;
@@ -106,10 +110,27 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
             {validatedQuestions.length} question(s) validée(s) disponibles
           </p>
         </div>
-        <Button onClick={handleGenerate} disabled={generateMutation.isPending || validatedQuestions.length === 0} className="gap-2">
-          {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          Générer la correction
-        </Button>
+        <div className="flex gap-2">
+          {corrections.length > 0 && (
+            <Button
+              onClick={() => syncMutation.mutate(undefined, {
+                onSuccess: () => toast.success('Corrections synchronisées'),
+                onError: () => toast.error('Erreur lors de la synchronisation'),
+              })}
+              disabled={syncMutation.isPending}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {syncMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Synchroniser corrections
+            </Button>
+          )}
+          <Button onClick={handleGenerate} disabled={generateMutation.isPending || validatedQuestions.length === 0} className="gap-2">
+            {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+            Générer la correction
+          </Button>
+        </div>
       </div>
 
       {validatedQuestions.length === 0 && (
@@ -117,6 +138,15 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
           <CardContent className="pt-4 flex items-center gap-3 text-amber-700">
             <AlertCircle className="h-5 w-5 flex-shrink-0" />
             <p className="text-sm">Aucune question validée. Rendez-vous dans l&apos;onglet <strong>Questions</strong> pour valider des questions.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasOutdated && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="pt-4 flex items-center gap-3 text-amber-700">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <p className="text-sm">Certaines corrections sont périmées suite à une modification des questions. Cliquez sur <strong>Synchroniser corrections</strong> pour les régénérer.</p>
           </CardContent>
         </Card>
       )}
@@ -165,11 +195,14 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
                 <AccordionContent>
                   <div className="space-y-4 pt-2">
                     {exCorrections.map((c) => (
-                      <Card key={c.index} className={c.validated ? 'border-emerald-200 bg-emerald-50/30' : ''}>
+                      <Card key={c.index} className={c.outdated ? 'border-amber-200 bg-amber-50/30' : c.validated ? 'border-emerald-200 bg-emerald-50/30' : ''}>
                         <CardHeader className="pb-2">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
-                              <CardTitle className="text-sm font-medium text-gray-700">Q{c.index + 1}. {c.question_text}</CardTitle>
+                              <CardTitle className="text-sm font-medium text-gray-700">
+                                Q{c.index + 1}. {c.question_text}
+                                {c.outdated && <Badge variant="destructive" className="text-xs ml-2">⚠️ Périmée</Badge>}
+                              </CardTitle>
                               <div className="flex gap-2 mt-1 flex-wrap items-center">
                                 <Badge variant="outline" className="text-xs">{c.question_type}</Badge>
                                 {editingIndex === c.index ? (
