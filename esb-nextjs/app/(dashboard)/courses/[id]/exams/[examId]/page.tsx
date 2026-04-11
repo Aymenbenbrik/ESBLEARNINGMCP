@@ -6540,9 +6540,15 @@ export default function ExamDetailPage() {
   const [isAnalyzingFromEval, setIsAnalyzingFromEval] = useState(false);
   const [linkedExam, setLinkedExam] = useState<any>(null);
   useEffect(() => {
-    fetch(`/api/v1/exam-bank/exams?course_id=${courseId}&tn_exam_id=${examId}`)
+    fetch(`/api/v1/exam-bank/?course_id=${courseId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.exams?.length) setLinkedExam(data.exams[0]); })
+      .then((data: any[]) => {
+        if (!data) return;
+        // Filter by tn_exam_id if the exam has a source_tn_exam_id field
+        const linked = data.find((e: any) => e.source_tn_exam_id === examId || e.tn_exam_id === examId);
+        if (linked) setLinkedExam(linked);
+        else if (data.length) setLinkedExam(data[0]);
+      })
       .catch(() => {});
   }, [courseId, examId]);
 
