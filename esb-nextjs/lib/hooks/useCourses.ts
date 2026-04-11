@@ -655,3 +655,22 @@ export function useUpdateCorrection(courseId: number, examId: number) {
   });
 }
 
+export function useExamTags() {
+  return useQuery({
+    queryKey: ['exam-tags'],
+    queryFn: () => tnExamsApi.getExamTags(),
+    staleTime: 1000 * 60 * 60, // Cache for 1 hour (constants don't change)
+  });
+}
+
+export function useSyncQuestionTags(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (questionIndex: number) => tnExamsApi.syncQuestionTags(courseId, examId, questionIndex),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exam-corrections', courseId, examId] });
+    },
+  });
+}
+

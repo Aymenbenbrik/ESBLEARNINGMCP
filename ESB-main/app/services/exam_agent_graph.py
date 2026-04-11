@@ -4,14 +4,16 @@ exam_agent_graph.py — LangGraph multi-agent graph for exam evaluation.
 Pipeline:
   extract_text → extract_questions → classify_aa → classify_bloom
   → assess_difficulty → compare_content → analyze_feedback
-  → suggest_adjustments → generate_latex → evaluate_proposal → END
+  → suggest_adjustments → generate_corrections → generate_latex
+  → evaluate_proposal → END
 
 Architecture:
-  - 4 **agentic nodes** (classify_aa, classify_bloom, analyze_feedback,
-    suggest_adjustments) use ReAct sub-agents via ``create_react_agent``.
-    Each receives both MCP tools and AI skills as LangChain tools so the
-    LLM can autonomously decide which tools/skills to invoke.  A fallback
-    to the original direct-call logic is triggered when tool-calling fails.
+  - 5 **agentic nodes** (classify_aa, classify_bloom, analyze_feedback,
+    suggest_adjustments, generate_corrections) use ReAct sub-agents via
+    ``create_react_agent``.  Each receives both MCP tools and AI skills
+    as LangChain tools so the LLM can autonomously decide which
+    tools/skills to invoke.  A fallback to the original direct-call
+    logic is triggered when tool-calling fails.
   - 6 **deterministic nodes** (extract_text, extract_questions,
     assess_difficulty, compare_content, generate_latex, evaluate_proposal)
     call MCP tool functions directly — they don't need autonomy.
@@ -56,6 +58,9 @@ class ExamEvaluationState(TypedDict):
     latex_pdf_path: Optional[str]
     proposal_evaluation: Optional[Dict[str, Any]]
 
+    # Correction outputs
+    corrections: Optional[List[Dict[str, Any]]]
+
     # Orchestration
     errors: List[str]
     current_node: str
@@ -66,20 +71,21 @@ class ExamEvaluationState(TypedDict):
 AGENT_STEPS = [
     "extract_text", "extract_questions", "classify_aa", "classify_bloom",
     "assess_difficulty", "compare_content", "analyze_feedback",
-    "suggest_adjustments", "generate_latex", "evaluate_proposal",
+    "suggest_adjustments", "generate_corrections", "generate_latex", "evaluate_proposal",
 ]
 
 AGENT_LABELS = {
-    "extract_text":        "Extraction du texte de l'examen",
-    "extract_questions":   "Extraction et structuration des questions",
-    "classify_aa":         "Classification par Apprentissages Attendus",
-    "classify_bloom":      "Classification Taxonomie de Bloom",
-    "assess_difficulty":   "Évaluation de la difficulté",
-    "compare_content":     "Comparaison Module ↔ Examen",
-    "analyze_feedback":    "Génération du feedback pédagogique",
-    "suggest_adjustments": "Proposition d'ajustements",
-    "generate_latex":      "Génération LaTeX et compilation PDF",
-    "evaluate_proposal":   "Évaluation de la nouvelle proposition",
+    "extract_text":          "Extraction du texte de l'examen",
+    "extract_questions":     "Extraction et structuration des questions",
+    "classify_aa":           "Classification par Apprentissages Attendus",
+    "classify_bloom":        "Classification Taxonomie de Bloom",
+    "assess_difficulty":     "Évaluation de la difficulté",
+    "compare_content":       "Comparaison Module ↔ Examen",
+    "analyze_feedback":      "Génération du feedback pédagogique",
+    "suggest_adjustments":   "Proposition d'ajustements",
+    "generate_corrections":  "Génération des corrections modèles",
+    "generate_latex":        "Génération LaTeX et compilation PDF",
+    "evaluate_proposal":     "Évaluation de la nouvelle proposition",
 }
 
 
@@ -486,12 +492,120 @@ def _node_evaluate_proposal(state: ExamEvaluationState) -> ExamEvaluationState:
                 if k not in ('exam_text', 'course_context')
             }
             final_state['proposal_evaluation'] = evaluation
+            final_state['corrections'] = state.get('corrections', [])
             session.state_json = json.dumps(final_state, ensure_ascii=False, default=str)
             db.session.commit()
         return {**state, 'proposal_evaluation': evaluation, 'current_node': 'evaluate_proposal'}
     except Exception as e:
         db.session.rollback()
         return {**state, 'errors': state.get('errors', []) + [f"evaluate_proposal: {e}"], 'current_node': 'evaluate_proposal'}
+
+
+def _node_generate_corrections(state: ExamEvaluationState) -> ExamEvaluationState:
+    """ReAct agent that generates model corrections for validated questions."""
+    _persist_progress(state['session_id'], 'generate_corrections', state)
+
+    questions = state.get('questions') or []
+    validated_qs = [q for q in questions if q.get('validated', True)]
+
+    if not validated_qs:
+        return {**state, 'corrections': [], 'current_node': 'generate_corrections'}
+
+    # Try ReAct agent first
+    try:
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+        from langgraph.prebuilt import create_react_agent
+        from app.services.mcp_langchain_bridge import get_exam_langchain_tools, get_skill_langchain_tools
+
+        llm = _get_react_llm()
+        tools = get_exam_langchain_tools() + get_skill_langchain_tools()
+
+        if tools:
+            system_msg = (
+                "Tu es un agent de correction d'examens. Pour chaque question validée, "
+                "utilise l'outil generate_question_correction pour créer une correction modèle. "
+                "Traite toutes les questions une par une."
+            )
+            agent = create_react_agent(llm, tools, prompt=system_msg)
+
+            q_list_str = "\n".join([
+                f"Q{q.get('number', i+1)}: {q.get('text', '')[:200]} ({q.get('points', '?')} pts, "
+                f"Bloom: {q.get('bloom_level', '?')}, Type: {q.get('type', '?')})"
+                for i, q in enumerate(validated_qs)
+            ])
+
+            result = agent.invoke({
+                "messages": [HumanMessage(
+                    content=f"Génère les corrections pour ces {len(validated_qs)} questions:\n{q_list_str}"
+                )],
+            })
+
+            # Extract corrections from tool results
+            tool_results = _extract_tool_results(result.get("messages", []))
+            if tool_results:
+                corrections = []
+                for i, q in enumerate(validated_qs):
+                    corr_data = tool_results[i] if i < len(tool_results) else {}
+                    if not isinstance(corr_data, dict):
+                        corr_data = {}
+                    corrections.append({
+                        'index': i,
+                        'exercise_number': q.get('exercise_number', q.get('number', i + 1)),
+                        'exercise_title': q.get('exercise_title', f"Question {i + 1}"),
+                        'question_text': q.get('text', ''),
+                        'question_type': q.get('type', 'Ouvert'),
+                        'points': q.get('points', 0),
+                        'bloom_level': q.get('bloom_level', ''),
+                        'difficulty': q.get('difficulty', ''),
+                        'aa_numbers': q.get('aa_codes', []),
+                        'correction': corr_data.get('correction', ''),
+                        'points_detail': corr_data.get('points_detail', ''),
+                        'criteres': corr_data.get('criteres', []),
+                        'validated': False,
+                    })
+                return {**state, 'corrections': corrections, 'current_node': 'generate_corrections'}
+
+        raise RuntimeError("No tools available, using fallback")
+
+    except Exception as e:
+        logger.info(f"ReAct generate_corrections fallback: {e}")
+        # Fallback: direct MCP tool calls
+        from app.services.exam_mcp_tools import generate_question_correction
+
+        course_context = state.get('course_context', '')
+        corrections = []
+        for i, q in enumerate(validated_qs):
+            try:
+                corr_data = generate_question_correction(
+                    question_text=q.get('text', ''),
+                    question_type=q.get('type', 'Ouvert'),
+                    points=q.get('points', 0),
+                    bloom_level=q.get('bloom_level', ''),
+                    difficulty=q.get('difficulty', ''),
+                    aa_codes=q.get('aa_codes', []),
+                    course_context=course_context,
+                )
+            except Exception as e2:
+                logger.warning(f"Correction generation failed for Q{i + 1}: {e2}")
+                corr_data = {}
+
+            corrections.append({
+                'index': i,
+                'exercise_number': q.get('exercise_number', q.get('number', i + 1)),
+                'exercise_title': q.get('exercise_title', f"Question {i + 1}"),
+                'question_text': q.get('text', ''),
+                'question_type': q.get('type', 'Ouvert'),
+                'points': q.get('points', 0),
+                'bloom_level': q.get('bloom_level', ''),
+                'difficulty': q.get('difficulty', ''),
+                'aa_numbers': q.get('aa_codes', []),
+                'correction': corr_data.get('correction', ''),
+                'points_detail': corr_data.get('points_detail', ''),
+                'criteres': corr_data.get('criteres', []),
+                'validated': False,
+            })
+
+        return {**state, 'corrections': corrections, 'current_node': 'generate_corrections'}
 
 
 # ── Graph Builder ─────────────────────────────────────────────────────────────
@@ -506,6 +620,7 @@ def build_exam_graph():
     g.add_node("compare_content",     _node_compare_content)
     g.add_node("analyze_feedback",    _node_analyze_feedback)
     g.add_node("suggest_adjustments", _node_suggest_adjustments)
+    g.add_node("generate_corrections", _node_generate_corrections)
     g.add_node("generate_latex",      _node_generate_latex)
     g.add_node("evaluate_proposal",   _node_evaluate_proposal)
 
@@ -517,7 +632,8 @@ def build_exam_graph():
     g.add_edge("assess_difficulty",   "compare_content")
     g.add_edge("compare_content",     "analyze_feedback")
     g.add_edge("analyze_feedback",    "suggest_adjustments")
-    g.add_edge("suggest_adjustments", "generate_latex")
+    g.add_edge("suggest_adjustments", "generate_corrections")
+    g.add_edge("generate_corrections", "generate_latex")
     g.add_edge("generate_latex",      "evaluate_proposal")
     g.add_edge("evaluate_proposal",   END)
     return g.compile()

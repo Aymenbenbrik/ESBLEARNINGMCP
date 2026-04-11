@@ -1,4 +1,4 @@
-﻿"""
+"""
 Exam Bank API — Banque d'épreuves validées avec Safe Exam & Gemini 2.5 Pro
 Endpoints pour la gestion des épreuves, génération de réponses et sessions de passage.
 """

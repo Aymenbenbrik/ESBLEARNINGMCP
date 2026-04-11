@@ -10,14 +10,19 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { GraduationCap, Wand2, CheckCircle2, Pencil, Save, Loader2, AlertCircle } from 'lucide-react';
+import { GraduationCap, Wand2, CheckCircle2, Pencil, Save, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useGenerateCorrection,
   useTnExamCorrections,
   useUpdateCorrection,
+  useExamTags,
+  useSyncQuestionTags,
 } from '@/lib/hooks/useCourses';
 import type { TnExamDocument, TnExamCorrection } from '@/lib/types/course';
+
+const BLOOM_LEVELS_FALLBACK = ['Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer'];
+const DIFFICULTY_LEVELS_FALLBACK = ['Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile'];
 
 interface CorrectionTabProps {
   exam: TnExamDocument;
@@ -29,10 +34,14 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const [editPointsDetail, setEditPointsDetail] = useState('');
+  const [editBloom, setEditBloom] = useState('');
+  const [editDifficulty, setEditDifficulty] = useState('');
 
   const { data: corrections = [], isLoading } = useTnExamCorrections(courseId, examId);
   const generateMutation = useGenerateCorrection(courseId, examId);
   const updateMutation = useUpdateCorrection(courseId, examId);
+  const { data: tagConstants } = useExamTags();
+  const syncTagsMutation = useSyncQuestionTags(courseId, examId);
 
   const ar = exam.analysis_results as Record<string, unknown> | null | undefined;
   const rawQuestions = (ar?.extracted_questions ?? ar?.questions ?? []) as Array<Record<string, unknown>>;
@@ -53,11 +62,21 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
     setEditingIndex(c.index);
     setEditText(c.correction);
     setEditPointsDetail(c.points_detail);
+    setEditBloom(c.bloom_level || '');
+    setEditDifficulty(c.difficulty || '');
   }
 
   function saveEdit(c: TnExamCorrection) {
     updateMutation.mutate(
-      { index: c.index, data: { correction: editText, points_detail: editPointsDetail } },
+      {
+        index: c.index,
+        data: {
+          correction: editText,
+          points_detail: editPointsDetail,
+          bloom_level: editBloom || c.bloom_level,
+          difficulty: editDifficulty || c.difficulty,
+        },
+      },
       {
         onSuccess: () => { toast.success('Correction mise à jour'); setEditingIndex(null); },
         onError: () => toast.error('Erreur lors de la sauvegarde'),
@@ -151,11 +170,69 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
                               <CardTitle className="text-sm font-medium text-gray-700">Q{c.index + 1}. {c.question_text}</CardTitle>
-                              <div className="flex gap-2 mt-1 flex-wrap">
+                              <div className="flex gap-2 mt-1 flex-wrap items-center">
                                 <Badge variant="outline" className="text-xs">{c.question_type}</Badge>
-                                {c.bloom_level && <Badge variant="secondary" className="text-xs">{c.bloom_level}</Badge>}
-                                {c.difficulty && <Badge variant="secondary" className="text-xs">{c.difficulty}</Badge>}
+                                {editingIndex === c.index ? (
+                                  <select
+                                    value={editBloom}
+                                    onChange={(e) => setEditBloom(e.target.value)}
+                                    className="text-xs border rounded px-1 py-0.5"
+                                  >
+                                    <option value="">—</option>
+                                    {(tagConstants?.bloom_levels || BLOOM_LEVELS_FALLBACK).map(level => (
+                                      <option key={level} value={level}>{level}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  c.bloom_level && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                      style={{
+                                        backgroundColor: (tagConstants?.bloom_colors?.[c.bloom_level] || '') + '20',
+                                        color: tagConstants?.bloom_colors?.[c.bloom_level] || undefined,
+                                      }}
+                                    >
+                                      {c.bloom_level}
+                                    </Badge>
+                                  )
+                                )}
+                                {editingIndex === c.index ? (
+                                  <select
+                                    value={editDifficulty}
+                                    onChange={(e) => setEditDifficulty(e.target.value)}
+                                    className="text-xs border rounded px-1 py-0.5"
+                                  >
+                                    <option value="">—</option>
+                                    {(tagConstants?.difficulty_levels || DIFFICULTY_LEVELS_FALLBACK).map(level => (
+                                      <option key={level} value={level}>{level}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  c.difficulty && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                      style={{
+                                        backgroundColor: (tagConstants?.difficulty_colors?.[c.difficulty] || '') + '20',
+                                        color: tagConstants?.difficulty_colors?.[c.difficulty] || undefined,
+                                      }}
+                                    >
+                                      {c.difficulty}
+                                    </Badge>
+                                  )
+                                )}
                                 <Badge className="text-xs bg-blue-100 text-blue-700">{c.points} pts</Badge>
+                                {editingIndex !== c.index && (
+                                  <button
+                                    onClick={() => syncTagsMutation.mutate(c.index)}
+                                    title="Synchroniser les tags"
+                                    className="text-xs text-muted-foreground hover:text-foreground ml-1"
+                                    disabled={syncTagsMutation.isPending}
+                                  >
+                                    {syncTagsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                  </button>
+                                )}
                               </div>
                             </div>
                             <div className="flex gap-2 flex-shrink-0">

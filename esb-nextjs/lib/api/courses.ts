@@ -349,4 +349,25 @@ export const tnExamsApi = {
       `/api/v1/courses/${courseId}/tn-exams/${examId}/corrections/${index}`,
       data
     ),
+
+  /** Fetch unified exam tag constants from backend */
+  getExamTags: async (): Promise<{
+    bloom_levels: string[];
+    bloom_distribution_ideal: Record<string, number>;
+    bloom_colors: Record<string, string>;
+    difficulty_levels: string[];
+    difficulty_colors: Record<string, string>;
+    question_types: string[];
+  }> => {
+    const { data } = await apiClient.get('/api/v1/exam-bank/tags');
+    return data;
+  },
+
+  /** Sync question tags after manual edit */
+  syncQuestionTags: async (courseId: number, examId: number, questionIndex: number) => {
+    const { data } = await apiClient.post(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/questions/${questionIndex}/sync-tags`
+    );
+    return data;
+  },
 };
