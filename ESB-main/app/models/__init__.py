@@ -62,6 +62,7 @@ from app.models.assessments import (
     QuestionBankQuestion,
     PracticeQuiz,
     PracticeQuizQuestion,
+    CourseSafeExamConfig,
 )
 
 from app.models.activities import (
@@ -149,6 +150,7 @@ __all__ = [
     # assessments
     'QuizBloomStatistic', 'QuizCLOStatistic', 'Quiz', 'QuizViolation',
     'QuizQuestion', 'QuestionBankQuestion', 'PracticeQuiz', 'PracticeQuizQuestion',
+    'CourseSafeExamConfig',
     # activities
     'SectionQuiz', 'SectionQuizQuestion', 'SectionQuizSubmission',
     'SectionActivity', 'SectionAssignment', 'AssignmentSubmission',

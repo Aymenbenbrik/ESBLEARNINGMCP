@@ -8,10 +8,11 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import (
     Program, Classe, Course, User, ClassCourseAssignment,
-    Enrollment, TeacherStudent
+    Enrollment, TeacherStudent, Syllabus, TNChapter
 )
 from app.api.v1.utils import get_current_user, superuser_required
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -613,4 +614,179 @@ def update_class_students(class_id):
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error updating students for class {class_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  SYLLABUS BATCH UPLOAD / EXTRACTION / COURSE STRUCTURE
+# ═══════════════════════════════════════════════════════════════════════
+
+@admin_api_bp.route('/syllabus/batch-upload', methods=['POST'])
+@jwt_required()
+@superuser_required
+def batch_upload_syllabus():
+    """
+    Admin-only: upload and process multiple syllabus files.
+
+    FormData:
+        files[]          – one or more PDF/DOCX files
+        course_mappings  – JSON string: {"filename": course_id, ...}
+        syllabus_type    – optional, default "tn"
+
+    Returns:
+        200: Per-file results list
+        400: Missing files or mappings
+        403: Non-admin user
+    """
+    import json as _json
+    from werkzeug.utils import secure_filename
+    from app.services.admin_syllabus_service import AdminSyllabusService
+
+    files = request.files.getlist('files')
+    if not files or all(f.filename == '' for f in files):
+        return jsonify({'error': 'No files provided'}), 400
+
+    raw_mappings = request.form.get('course_mappings', '{}')
+    try:
+        course_mappings = _json.loads(raw_mappings)
+    except _json.JSONDecodeError:
+        return jsonify({'error': 'Invalid course_mappings JSON'}), 400
+
+    user = get_current_user()
+    admin_id = user.id
+
+    try:
+        results = AdminSyllabusService.process_syllabus_batch(
+            files=files,
+            course_mappings=course_mappings,
+            admin_id=admin_id,
+        )
+
+        success_count = sum(1 for r in results if r.get('success'))
+        return jsonify({
+            'message': f'Processed {success_count}/{len(results)} files successfully',
+            'results': results,
+        }), 200
+    except Exception as e:
+        logger.exception("Batch upload failed")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/syllabus/<int:course_id>/process', methods=['POST'])
+@jwt_required()
+@superuser_required
+def process_syllabus(course_id):
+    """
+    Process a single uploaded syllabus: extract + create structure.
+
+    JSON body (optional):
+        syllabus_type – "tn" (default) or "bga"
+
+    If no file is attached, uses the existing file_path from the Syllabus record.
+    If a file is attached (key "file"), saves it first.
+    """
+    from werkzeug.utils import secure_filename
+    from app.services.admin_syllabus_service import AdminSyllabusService
+
+    course = Course.query.get(course_id)
+    if not course:
+        return jsonify({'error': 'Course not found'}), 404
+
+    user = get_current_user()
+    syllabus_type = (request.form.get('syllabus_type')
+                     or (request.json or {}).get('syllabus_type', 'tn')
+                     if request.is_json else request.form.get('syllabus_type', 'tn'))
+
+    # Determine file path
+    file_path = None
+    uploaded = request.files.get('file')
+    if uploaded and uploaded.filename:
+        from datetime import datetime
+        upload_dir = AdminSyllabusService._ensure_syllabi_folder()
+        filename = secure_filename(uploaded.filename)
+        timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        stored_name = f"{course_id}_{timestamp}_{filename}"
+        file_path = os.path.join(upload_dir, stored_name)
+        uploaded.save(file_path)
+    else:
+        syllabus = Syllabus.query.filter_by(course_id=course_id).first()
+        if syllabus and syllabus.file_path:
+            file_path = syllabus.file_path
+
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({'error': 'No syllabus file available. Upload a file first.'}), 400
+
+    try:
+        result = AdminSyllabusService.process_single_syllabus(
+            file_path=file_path,
+            course_id=course_id,
+            syllabus_type=syllabus_type,
+            admin_id=user.id,
+        )
+        status_code = 200 if result.get('success') else 422
+        return jsonify(result), status_code
+    except Exception as e:
+        db.session.rollback()
+        logger.exception(f"Error processing syllabus for course {course_id}")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/syllabus/<int:course_id>/create-structure', methods=['POST'])
+@jwt_required()
+@superuser_required
+def create_course_structure(course_id):
+    """
+    Create course chapters from existing syllabus TN data.
+    Does NOT re-extract — uses already-persisted TNChapters.
+    """
+    from app.services.admin_syllabus_service import AdminSyllabusService
+
+    course = Course.query.get(course_id)
+    if not course:
+        return jsonify({'error': 'Course not found'}), 404
+
+    syllabus = Syllabus.query.filter_by(course_id=course_id).first()
+    if not syllabus:
+        return jsonify({'error': 'No syllabus found for this course. Upload and extract first.'}), 404
+
+    tn_count = TNChapter.query.filter_by(syllabus_id=syllabus.id).count()
+    if tn_count == 0:
+        return jsonify({'error': 'No TN chapters found. Run extraction first.'}), 422
+
+    try:
+        chapters_created = AdminSyllabusService.create_course_structure(course_id)
+        db.session.commit()
+        return jsonify({
+            'message': f'Course structure created: {chapters_created} new chapter(s)',
+            'chapters_created': chapters_created,
+            'course_id': course_id,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.exception(f"Error creating structure for course {course_id}")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/syllabus/status', methods=['GET'])
+@jwt_required()
+@superuser_required
+def get_syllabus_status():
+    """
+    List all syllabi with their processing status.
+
+    Query params:
+        course_id – optional filter
+    """
+    from app.services.admin_syllabus_service import AdminSyllabusService
+
+    course_id = request.args.get('course_id', type=int)
+
+    try:
+        statuses = AdminSyllabusService.get_processing_status(course_id=course_id)
+        return jsonify({
+            'syllabi': statuses,
+            'total': len(statuses),
+        }), 200
+    except Exception as e:
+        logger.exception("Error fetching syllabus status")
         return jsonify({'error': str(e)}), 500

@@ -91,8 +91,35 @@ def _compute_student_grade(student_id: int, course: Course, weights: GradeWeight
                     pts += 0.5
         attendance_score = (pts / total_sessions) * 20
 
-    # --- Exam grade: not stored per student (teacher sets globally) ---
-    exam_score = None
+    # --- Exam grade: aggregate from ValidatedExam sessions ---
+    exam_scores = []
+    try:
+        from app.models.exam_bank import ValidatedExam, ExamSession
+        published_exams = ValidatedExam.query.filter_by(
+            course_id=course.id,
+            status='active',
+            is_available=True,
+        ).all()
+
+        for exam in published_exams:
+            # Get the best graded session for this student
+            session = (ExamSession.query
+                .filter_by(
+                    exam_id=exam.id,
+                    student_id=student_id,
+                    status='graded',
+                )
+                .order_by(ExamSession.score.desc())
+                .first())
+
+            if session and session.score is not None and session.max_score:
+                # Normalize to /20 scale
+                normalized = (session.score / session.max_score) * 20
+                exam_scores.append(normalized)
+    except Exception as e:
+        logger.warning(f"Exam score aggregation failed: {e}")
+
+    exam_score = (sum(exam_scores) / len(exam_scores)) if exam_scores else None
 
     # --- Final grade ---
     total_w = 0.0
@@ -117,7 +144,8 @@ def _compute_student_grade(student_id: int, course: Course, weights: GradeWeight
         'quiz_avg': round(quiz_avg, 2) if quiz_avg is not None else None,
         'assignment_avg': round(assignment_avg, 2) if assignment_avg is not None else None,
         'attendance_score': round(attendance_score, 2) if attendance_score is not None else None,
-        'exam_score': exam_score,
+        'exam_score': round(exam_score, 2) if exam_score is not None else None,
+        'exam_count': len(exam_scores),
         'final_grade': round(final_grade, 2) if final_grade is not None else None,
         'quiz_count': len(quizzes),
         'assignment_count': len(assignments),

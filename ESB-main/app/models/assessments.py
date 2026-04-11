@@ -258,3 +258,49 @@ class PracticeQuizQuestion(db.Model):
 
     def __repr__(self):
         return f'<PracticeQuizQuestion {self.id} quiz={self.practice_quiz_id}>'
+
+
+# ---------------------------
+# Course SafeExam Configuration
+# ---------------------------
+class CourseSafeExamConfig(db.Model):
+    """Course-level SafeExam configuration for all quizzes.
+    Teacher enables/disables SafeExam mode for the course.
+    """
+    __tablename__ = 'course_safe_exam_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False, unique=True)
+
+    # Global toggle
+    safe_exam_enabled = db.Column(db.Boolean, default=False)
+
+    # Individual settings (teacher configurable)
+    fullscreen_required = db.Column(db.Boolean, default=True)
+    disable_copy_paste = db.Column(db.Boolean, default=True)
+    disable_right_click = db.Column(db.Boolean, default=True)
+    disable_print_screen = db.Column(db.Boolean, default=True)
+    tab_switch_detection = db.Column(db.Boolean, default=True)
+    max_violations_before_disqualify = db.Column(db.Integer, default=3)
+
+    # Teacher who configured
+    configured_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = db.relationship('Course', backref=db.backref('safe_exam_config', uselist=False))
+    configured_by = db.relationship('User', foreign_keys=[configured_by_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'course_id': self.course_id,
+            'safe_exam_enabled': self.safe_exam_enabled,
+            'fullscreen_required': self.fullscreen_required,
+            'disable_copy_paste': self.disable_copy_paste,
+            'disable_right_click': self.disable_right_click,
+            'disable_print_screen': self.disable_print_screen,
+            'tab_switch_detection': self.tab_switch_detection,
+            'max_violations_before_disqualify': self.max_violations_before_disqualify,
+            'configured_by': self.configured_by.username if self.configured_by else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }

@@ -1351,3 +1351,48 @@ def submit_exercise(exercise_id):
         db.session.rollback()
         logger.error(f"Error submitting exercise: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ── Exercise PDF → Quiz extraction ───────────────────────────────────────────
+
+@question_bank_api_bp.route('/courses/<int:course_id>/exercises/extract-to-quiz', methods=['POST'])
+@jwt_required()
+@teacher_required
+def extract_exercises_to_quiz(course_id):
+    """
+    Extract exercises from course documents and generate quiz questions.
+    Teacher-only endpoint.
+
+    Request Body (optional):
+        { "chapter_id": <int> }   — restrict to a single chapter's documents
+
+    Returns:
+        200: { success, stored_count, exercises_found, errors }
+        403: If user is not teacher or not course owner
+        404: Course not found
+    """
+    try:
+        user = get_current_user()
+        course = Course.query.get_or_404(course_id)
+
+        is_owner = user.is_teacher and course.teacher_id == user.id
+        is_admin = user.is_superuser if hasattr(user, 'is_superuser') else False
+        if not is_owner and not is_admin:
+            return jsonify({'error': 'Teacher access required'}), 403
+
+        data = request.get_json() or {}
+        chapter_id = data.get('chapter_id')
+
+        from app.services.exercise_extractor_agent import run_exercise_extraction
+        result = run_exercise_extraction(course_id, user.id, chapter_id)
+
+        return jsonify({
+            'success': True,
+            'stored_count': result.get('stored_count', 0),
+            'exercises_found': len(result.get('exercises', [])),
+            'errors': result.get('errors', []),
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in extract_exercises_to_quiz: {e}")
+        return jsonify({'error': str(e)}), 500
