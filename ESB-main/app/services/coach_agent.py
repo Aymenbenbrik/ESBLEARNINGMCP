@@ -187,7 +187,12 @@ def analyze_student_performance(student_id: int, course_ids: Optional[List[int]]
             agent_id='coach',
         )
         skills_result = skill_manager.compose(
-            skill_ids=['performance-scorer', 'weakness-detector', 'exercise-recommender'],
+            skill_ids=[
+                'performance-scorer',
+                'weakness-detector',
+                'exercise-recommender',
+                'study-planner',
+            ],
             context=ctx,
             initial_input={'student_id': student_id, 'course_ids': course_ids},
         )
@@ -265,12 +270,56 @@ Réponds en JSON strictement avec cette structure:
 
         result = json.loads(text.strip())
 
+        # Enrich with additional skills
+        skill_extras = {}
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            _mgr = SkillManager()
+
+            # bloom-classifier: classify overall student level
+            _ctx = SkillContext(user_id=student_id, role='student', agent_id='coach')
+            bloom_result = _mgr.execute('bloom-classifier', _ctx, {
+                'content': json.dumps(performance.get('weak_areas', []), ensure_ascii=False),
+                'content_type': 'activity',
+            })
+            if bloom_result.success:
+                skill_extras['bloom_analysis'] = bloom_result.data
+
+            # syllabus-mapper: map gaps to AA
+            for cid in course_ids:
+                _ctx_c = _ctx.with_overrides(course_id=cid)
+                gaps_text = json.dumps(result.get('skill_gaps', []), ensure_ascii=False)
+                map_result = _mgr.execute('syllabus-mapper', _ctx_c, {'content': gaps_text})
+                if map_result.success:
+                    skill_extras.setdefault('aa_mappings', {})[cid] = map_result.data
+
+            # feedback-writer: generate motivational feedback
+            fb_result = _mgr.execute('feedback-writer', _ctx, {
+                'performance': performance,
+                'type': 'general',
+                'language': 'fr',
+            })
+            if fb_result.success:
+                skill_extras['feedback'] = fb_result.data
+
+            # language-adapter: detect student language for response adaptation
+            la_result = _mgr.execute('language-adapter', _ctx, {
+                'text': json.dumps(result.get('recommendations', [])[:2], ensure_ascii=False),
+                'detect_only': True,
+            })
+            if la_result.success:
+                skill_extras['language_detection'] = la_result.data
+
+        except Exception as e:
+            logger.debug(f"Coach extra skills enrichment partial/skipped: {e}")
+
         return {
             'performance': performance,
             'skill_gaps': result.get('skill_gaps', []),
             'recommendations': result.get('recommendations', []),
             'study_plan': result.get('study_plan', {'activities': []}),
             'skills_enrichment': skills_enrichment,
+            'skill_extras': skill_extras if skill_extras else None,
         }
 
     except json.JSONDecodeError as e:

@@ -252,6 +252,25 @@ def _node_suggest_adjustments(state: ExamEvaluationState) -> ExamEvaluationState
             state.get('questions') or [],
             state.get('aa_list') or [],
         )
+
+        # Enrich with rubric-builder skill for structured evaluation rubric
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
+            rubric = manager.execute('rubric-builder', ctx, {
+                'type': 'exam',
+                'content': state.get('exam_title', 'Examen'),
+                'max_score': 20,
+            })
+            if rubric.success:
+                if isinstance(adjustments, list):
+                    adjustments.append({'type': 'rubric', 'skill_rubric': rubric.data})
+                elif isinstance(adjustments, dict):
+                    adjustments['skill_rubric'] = rubric.data
+        except Exception as e:
+            logger.debug(f"Skill rubric-builder enrichment skipped: {e}")
+
         return {**state, 'adjustments': adjustments, 'current_node': 'suggest_adjustments'}
     except Exception as e:
         return {**state, 'errors': state.get('errors', []) + [f"suggest_adjustments: {e}"], 'current_node': 'suggest_adjustments'}

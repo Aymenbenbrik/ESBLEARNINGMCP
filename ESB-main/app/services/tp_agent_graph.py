@@ -109,18 +109,37 @@ def _node_generate_statement(state: TPCreationState) -> dict:
             language=state['language'],
             hint=merged_hint,
         )
-        return {
+
+        output = {
             "title": result.get("title", "TP"),
             "statement": result.get("statement", ""),
             "statement_source": "ai",
         }
+
+        # Enrich with quiz-generator skill for practice questions alongside TP
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, role='teacher', agent_id='tp')
+            quiz = manager.execute('quiz-generator', ctx, {
+                'topic': output['title'],
+                'context': output['statement'][:500],
+                'count': 3,
+                'type': 'practice',
+            })
+            if quiz.success:
+                output['skill_practice_questions'] = quiz.data
+        except Exception as e:
+            logger.debug(f"Skill quiz-generator enrichment skipped: {e}")
+
+        return output
     except Exception as e:
         logger.error(f"[TPGraph] generate_statement error: {e}")
         return {"errors": state.get("errors", []) + [str(e)]}
 
 
 def _node_parse_questions(state: TPCreationState) -> dict:
-    """Node: Parse statement into structured questions."""
+    """Node: Parse statement into structured questions, enriched with bloom-classifier skill."""
     from app.services.mcp_tools import parse_tp_questions
     statement = state.get('statement', '')
     if not statement:
@@ -131,14 +150,31 @@ def _node_parse_questions(state: TPCreationState) -> dict:
             language=state['language'],
             max_grade=state.get('max_grade', 20.0),
         )
-        return {'questions': result.get('questions', [])}
+        questions = result.get('questions', [])
+
+        # Enrich each question with bloom-classifier skill
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, role='teacher', agent_id='tp')
+            for q in questions:
+                bloom_result = manager.execute('bloom-classifier', ctx, {
+                    'content': q.get('text', q.get('title', '')),
+                    'content_type': 'question',
+                })
+                if bloom_result.success:
+                    q['skill_bloom'] = bloom_result.data
+        except Exception as e:
+            logger.debug(f"Skill bloom-classifier enrichment skipped: {e}")
+
+        return {'questions': questions}
     except Exception as e:
         logger.error(f"[TPGraph] parse_questions error: {e}")
         return {'questions': [], 'errors': state.get('errors', []) + [str(e)]}
 
 
 def _node_suggest_aa(state: TPCreationState) -> dict:
-    """Node: Suggest AA codes based on section and statement."""
+    """Node: Suggest AA codes based on section and statement, enriched with syllabus-mapper skill."""
     from app.services.mcp_tools import suggest_aa_codes
     statement = state.get('statement', '')
     if not statement:
@@ -148,7 +184,23 @@ def _node_suggest_aa(state: TPCreationState) -> dict:
             section_id=state['section_id'],
             statement=statement,
         )
-        return {"suggested_aa": result.get("aa_codes", [])}
+        suggested = result.get("aa_codes", [])
+
+        # Enrich with syllabus-mapper skill for cross-validation
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, role='teacher', agent_id='tp')
+            map_result = manager.execute('syllabus-mapper', ctx, {'content': statement})
+            if map_result.success:
+                return {
+                    "suggested_aa": suggested,
+                    "skill_aa_mappings": map_result.data.get('mappings', []),
+                }
+        except Exception as e:
+            logger.debug(f"Skill syllabus-mapper enrichment skipped: {e}")
+
+        return {"suggested_aa": suggested}
     except Exception as e:
         logger.error(f"[TPGraph] suggest_aa error: {e}")
         return {"suggested_aa": [], "errors": state.get("errors", []) + [str(e)]}
@@ -241,7 +293,7 @@ def _node_auto_correct(state: TPCorrectionState) -> dict:
 
 
 def _node_propose_grade(state: TPCorrectionState) -> dict:
-    """Node: Refine/confirm the proposed grade."""
+    """Node: Refine/confirm the proposed grade, enriched with feedback-writer skill."""
     from app.services.mcp_tools import propose_grade
     report = state.get('correction_report', '')
     if not report:
@@ -251,10 +303,32 @@ def _node_propose_grade(state: TPCorrectionState) -> dict:
             correction_report=report,
             max_grade=state.get('max_grade', 20.0),
         )
-        return {
+
+        output = {
             "proposed_grade": result.get("proposed_grade", state.get("proposed_grade", 0.0)),
             "confidence":     result.get("confidence", "low"),
         }
+
+        # Enrich with feedback-writer skill for student-facing feedback
+        try:
+            from app.services.skill_manager import SkillManager, SkillContext
+            manager = SkillManager()
+            ctx = SkillContext(user_id=0, role='teacher', agent_id='tp')
+            fb_result = manager.execute('feedback-writer', ctx, {
+                'performance': {
+                    'grade': output['proposed_grade'],
+                    'strengths': state.get('strengths', []),
+                    'weaknesses': state.get('weaknesses', []),
+                },
+                'type': 'tp',
+                'language': state.get('language', 'python'),
+            })
+            if fb_result.success:
+                output['skill_feedback'] = fb_result.data
+        except Exception as e:
+            logger.debug(f"Skill feedback-writer enrichment skipped: {e}")
+
+        return output
     except Exception as e:
         logger.error(f"[TPGraph] propose_grade error: {e}")
         return {"errors": state.get("errors", []) + [str(e)]}
