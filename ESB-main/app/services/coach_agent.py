@@ -1,22 +1,30 @@
 """
 coach_agent.py — Agentic AI Coach for student performance analysis.
 
-Uses LangGraph to orchestrate 4 agents:
-  1. PerformanceAnalyzer: Aggregates scores by module, AA/CLO, Bloom level
-  2. SkillGapDetector: Compares results to syllabus objectives, finds weaknesses
-  3. ExerciseRecommender: Selects/generates reinforcement exercises
-  4. SchedulePlanner: Proposes a personalized study schedule
+Uses a LangGraph StateGraph with ReAct tool-calling nodes to orchestrate
+an autonomous coaching pipeline:
+
+  START → collect_data → analyze_performance → detect_gaps → generate_plan → finalize → END
+
+Nodes:
+  1. collect_data          — Pure function: aggregates scores by module, Bloom level
+  2. analyze_performance   — ReAct agent: performance-scorer, bloom-classifier
+  3. detect_gaps           — ReAct agent: weakness-detector, syllabus-mapper
+  4. generate_plan         — ReAct agent: exercise-recommender, study-planner,
+                             feedback-writer, language-adapter
+  5. finalize              — Pure function: assembles backward-compatible response dict
 """
 from __future__ import annotations
 
 import json
 import logging
 from typing import Any, Dict, List, Optional, TypedDict
-from datetime import datetime, timedelta
 
 from flask import current_app
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import create_react_agent
 
 from app import db
 from app.models.users import User
@@ -28,22 +36,28 @@ from app.models.activities import SectionQuizSubmission
 logger = logging.getLogger(__name__)
 
 
-# ── State ─────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# State
+# ══════════════════════════════════════════════════════════════════════════════
 
 class CoachState(TypedDict):
     student_id: int
     course_ids: List[int]
 
-    # Agent outputs
+    # Node outputs
     performance_data: Optional[Dict[str, Any]]
+    analysis: Optional[Dict[str, Any]]
     skill_gaps: Optional[List[Dict[str, Any]]]
     recommendations: Optional[List[Dict[str, Any]]]
     study_plan: Optional[Dict[str, Any]]
+    feedback: Optional[str]
 
     errors: List[str]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _get_llm(robust: bool = False):
     """Get a Gemini LLM instance."""
@@ -57,6 +71,21 @@ def _get_llm(robust: bool = False):
         google_api_key=api_key,
         temperature=0.3,
     )
+
+
+def _parse_json_or_text(text: str) -> dict:
+    """Parse JSON from LLM response, handling markdown code fences."""
+    text = text.strip()
+    if text.startswith('```'):
+        text = text.split('\n', 1)[1] if '\n' in text else text[3:]
+    if text.endswith('```'):
+        text = text[:-3]
+    if text.startswith('json'):
+        text = text[4:]
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        return {"raw_text": text}
 
 
 def _collect_performance_data(student_id: int, course_ids: List[int]) -> Dict[str, Any]:
@@ -149,12 +178,326 @@ def _collect_performance_data(student_id: int, course_ids: List[int]) -> Dict[st
     return data
 
 
-# ── Main Analysis Function ────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Fallback functions (graceful degradation when ReAct tool-calling fails)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _fallback_analyze(state: CoachState) -> dict:
+    """Direct LLM analysis when ReAct tool-calling is unavailable."""
+    try:
+        llm = _get_llm()
+        perf_json = json.dumps(state.get('performance_data', {}), ensure_ascii=False, indent=2)
+        prompt = (
+            "Tu es un analyseur de performance pédagogique. "
+            "Analyse les données suivantes et produis un JSON avec les clés: "
+            '"overall_level" (str), "bloom_analysis" (dict bloom→note), '
+            '"strengths" (list), "weaknesses" (list), "summary" (str).\n\n'
+            f"Données:\n{perf_json}"
+        )
+        response = llm.invoke([
+            SystemMessage(content="Réponds uniquement en JSON valide."),
+            HumanMessage(content=prompt),
+        ])
+        return {"analysis": _parse_json_or_text(response.content)}
+    except Exception as e:
+        logger.error(f"Fallback analyze failed: {e}")
+        perf = state.get('performance_data', {})
+        return {"analysis": {
+            "overall_level": "unknown",
+            "bloom_analysis": perf.get('bloom_scores', {}),
+            "strengths": [],
+            "weaknesses": [w['name'] for w in perf.get('weak_areas', [])],
+            "summary": "Analyse automatique indisponible.",
+        }}
+
+
+def _fallback_detect_gaps(state: CoachState) -> dict:
+    """Direct LLM gap detection when ReAct tool-calling is unavailable."""
+    try:
+        llm = _get_llm()
+        perf_json = json.dumps(state.get('performance_data', {}), ensure_ascii=False, indent=2)
+        analysis_json = json.dumps(state.get('analysis', {}), ensure_ascii=False, indent=2)
+        prompt = (
+            "Tu es un détecteur de lacunes pédagogiques. "
+            "À partir des données de performance et de l'analyse, identifie les lacunes.\n"
+            "Produis un JSON avec la clé \"skill_gaps\": liste d'objets avec "
+            '"area", "course_title", "course_id", "severity" (high/medium/low), '
+            '"score", "description".\n\n'
+            f"Performance:\n{perf_json}\n\nAnalyse:\n{analysis_json}"
+        )
+        response = llm.invoke([
+            SystemMessage(content="Réponds uniquement en JSON valide."),
+            HumanMessage(content=prompt),
+        ])
+        parsed = _parse_json_or_text(response.content)
+        return {"skill_gaps": parsed.get('skill_gaps', parsed.get('raw_text', []))}
+    except Exception as e:
+        logger.error(f"Fallback detect_gaps failed: {e}")
+        perf = state.get('performance_data', {})
+        return {"skill_gaps": [
+            {"area": w['name'], "severity": "high" if w['score'] < 30 else "medium",
+             "score": w['score'], "description": f"Score faible: {w['score']}%"}
+            for w in perf.get('weak_areas', [])
+        ]}
+
+
+def _fallback_generate_plan(state: CoachState) -> dict:
+    """Direct LLM plan generation when ReAct tool-calling is unavailable."""
+    try:
+        llm = _get_llm()
+        gaps_json = json.dumps(state.get('skill_gaps', []), ensure_ascii=False, indent=2)
+        perf_json = json.dumps(state.get('performance_data', {}), ensure_ascii=False, indent=2)
+        prompt = (
+            "Tu es un planificateur pédagogique. Génère des recommandations et un plan d'étude.\n"
+            "Produis un JSON avec:\n"
+            '- "recommendations": liste d\'objets avec "title", "type", "priority", '
+            '"course_title", "course_id", "target_bloom", "description", "estimated_duration_min"\n'
+            '- "study_plan": {"summary": str, "activities": [{"day_offset", "title", "type", '
+            '"course_title", "duration_min", "description"}]}\n'
+            '- "feedback": str (message motivationnel pour l\'étudiant)\n\n'
+            f"Lacunes:\n{gaps_json}\n\nPerformance:\n{perf_json}"
+        )
+        response = llm.invoke([
+            SystemMessage(content="Réponds uniquement en JSON valide."),
+            HumanMessage(content=prompt),
+        ])
+        parsed = _parse_json_or_text(response.content)
+        return {
+            "recommendations": parsed.get('recommendations', []),
+            "study_plan": parsed.get('study_plan', {'activities': []}),
+            "feedback": parsed.get('feedback'),
+        }
+    except Exception as e:
+        logger.error(f"Fallback generate_plan failed: {e}")
+        return {
+            "recommendations": [],
+            "study_plan": {"summary": "Plan indisponible.", "activities": []},
+            "feedback": None,
+        }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Graph nodes
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _node_collect_data(state: CoachState) -> dict:
+    """Pure function node: collect raw performance data from the database."""
+    try:
+        performance = _collect_performance_data(state['student_id'], state['course_ids'])
+        return {"performance_data": performance}
+    except Exception as e:
+        logger.error(f"[CoachGraph] collect_data error: {e}")
+        return {
+            "performance_data": {
+                'courses': [], 'overall_avg': 0.0,
+                'total_quizzes': 0, 'bloom_scores': {}, 'weak_areas': [],
+            },
+            "errors": state.get("errors", []) + [f"collect_data: {e}"],
+        }
+
+
+def _node_analyze_performance(state: CoachState) -> dict:
+    """ReAct agent that autonomously analyzes student performance."""
+    from app.services.mcp_langchain_bridge import get_skill_langchain_tools
+
+    tools = get_skill_langchain_tools(
+        agent_id='coach', role='student', user_id=state['student_id'],
+    )
+    relevant_tools = [t for t in tools if any(k in t.name for k in ['performance', 'bloom'])]
+
+    if not relevant_tools:
+        logger.info("[CoachGraph] No performance/bloom tools found, using fallback")
+        return _fallback_analyze(state)
+
+    perf_json = json.dumps(state.get('performance_data', {}), ensure_ascii=False, indent=2)
+    system_prompt = (
+        "Tu es un analyseur de performance pédagogique expert. "
+        "Utilise les outils disponibles pour analyser les données de l'étudiant. "
+        "Produis une analyse structurée avec: overall_level, bloom_analysis, "
+        "strengths, weaknesses, summary.\n\n"
+        f"Données de performance:\n{perf_json}"
+    )
+
+    try:
+        llm = _get_llm()
+        agent = create_react_agent(llm, relevant_tools, prompt=system_prompt)
+        result = agent.invoke({
+            "messages": [HumanMessage(
+                content="Analyse les performances de cet étudiant en utilisant les outils disponibles."
+            )],
+        })
+
+        ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+        analysis_text = ai_messages[-1].content if ai_messages else ""
+        return {"analysis": _parse_json_or_text(analysis_text)}
+    except Exception as e:
+        logger.warning(f"[CoachGraph] ReAct analyze failed, using fallback: {e}")
+        return _fallback_analyze(state)
+
+
+def _node_detect_gaps(state: CoachState) -> dict:
+    """ReAct agent that autonomously detects skill gaps and maps to syllabus."""
+    from app.services.mcp_langchain_bridge import get_skill_langchain_tools
+
+    tools = get_skill_langchain_tools(
+        agent_id='coach', role='student', user_id=state['student_id'],
+    )
+    relevant_tools = [t for t in tools if any(k in t.name for k in ['weakness', 'syllabus'])]
+
+    if not relevant_tools:
+        logger.info("[CoachGraph] No weakness/syllabus tools found, using fallback")
+        return _fallback_detect_gaps(state)
+
+    perf_json = json.dumps(state.get('performance_data', {}), ensure_ascii=False, indent=2)
+    analysis_json = json.dumps(state.get('analysis', {}), ensure_ascii=False, indent=2)
+    system_prompt = (
+        "Tu es un détecteur de lacunes pédagogiques. "
+        "Utilise les outils disponibles pour identifier les lacunes de l'étudiant "
+        "et les mapper aux objectifs du syllabus.\n"
+        "Produis une liste de skill_gaps avec: area, course_title, course_id, "
+        "severity (high/medium/low), score, description.\n\n"
+        f"Performance:\n{perf_json}\n\nAnalyse:\n{analysis_json}"
+    )
+
+    try:
+        llm = _get_llm()
+        agent = create_react_agent(llm, relevant_tools, prompt=system_prompt)
+        result = agent.invoke({
+            "messages": [HumanMessage(
+                content=(
+                    "Identifie les lacunes de cet étudiant et mappe-les au syllabus "
+                    "en utilisant les outils disponibles."
+                )
+            )],
+        })
+
+        ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+        gaps_text = ai_messages[-1].content if ai_messages else ""
+        parsed = _parse_json_or_text(gaps_text)
+        gaps = parsed.get('skill_gaps', parsed if isinstance(parsed, list) else [])
+        if isinstance(gaps, dict):
+            gaps = [gaps]
+        return {"skill_gaps": gaps}
+    except Exception as e:
+        logger.warning(f"[CoachGraph] ReAct detect_gaps failed, using fallback: {e}")
+        return _fallback_detect_gaps(state)
+
+
+def _node_generate_plan(state: CoachState) -> dict:
+    """ReAct agent that autonomously generates recommendations and study plan."""
+    from app.services.mcp_langchain_bridge import get_skill_langchain_tools
+
+    tools = get_skill_langchain_tools(
+        agent_id='coach', role='student', user_id=state['student_id'],
+    )
+    relevant_tools = [
+        t for t in tools
+        if any(k in t.name for k in ['exercise', 'recommender', 'planner', 'feedback', 'language'])
+    ]
+
+    if not relevant_tools:
+        logger.info("[CoachGraph] No plan/recommendation tools found, using fallback")
+        return _fallback_generate_plan(state)
+
+    perf_json = json.dumps(state.get('performance_data', {}), ensure_ascii=False, indent=2)
+    gaps_json = json.dumps(state.get('skill_gaps', []), ensure_ascii=False, indent=2)
+    analysis_json = json.dumps(state.get('analysis', {}), ensure_ascii=False, indent=2)
+    system_prompt = (
+        "Tu es un planificateur pédagogique expert. "
+        "Utilise les outils disponibles pour générer des recommandations d'exercices, "
+        "un plan d'étude personnalisé, et un feedback motivationnel.\n"
+        "Produis un JSON avec: recommendations (list), study_plan (dict avec activities), "
+        "feedback (str).\n\n"
+        f"Performance:\n{perf_json}\n\nAnalyse:\n{analysis_json}\n\nLacunes:\n{gaps_json}"
+    )
+
+    try:
+        llm = _get_llm()
+        agent = create_react_agent(llm, relevant_tools, prompt=system_prompt)
+        result = agent.invoke({
+            "messages": [HumanMessage(
+                content=(
+                    "Génère des recommandations, un plan d'étude et un feedback motivationnel "
+                    "en utilisant les outils disponibles."
+                )
+            )],
+        })
+
+        ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+        plan_text = ai_messages[-1].content if ai_messages else ""
+        parsed = _parse_json_or_text(plan_text)
+        return {
+            "recommendations": parsed.get('recommendations', []),
+            "study_plan": parsed.get('study_plan', {'activities': []}),
+            "feedback": parsed.get('feedback'),
+        }
+    except Exception as e:
+        logger.warning(f"[CoachGraph] ReAct generate_plan failed, using fallback: {e}")
+        return _fallback_generate_plan(state)
+
+
+def _node_finalize(state: CoachState) -> dict:
+    """Pure function node: assemble all outputs into the final response dict."""
+    # Ensure study_plan always has an 'activities' key
+    study_plan = state.get('study_plan') or {}
+    if 'activities' not in study_plan:
+        study_plan['activities'] = []
+
+    # Build skill_extras from analysis artifacts
+    skill_extras: Dict[str, Any] = {}
+    analysis = state.get('analysis')
+    if analysis:
+        if 'bloom_analysis' in analysis:
+            skill_extras['bloom_analysis'] = analysis['bloom_analysis']
+        if 'raw_text' not in analysis:
+            skill_extras['performance_analysis'] = analysis
+
+    feedback = state.get('feedback')
+    if feedback:
+        skill_extras['feedback'] = feedback
+
+    return {
+        "errors": state.get("errors", []),
+        # Final state fields are already set by previous nodes;
+        # finalize just ensures consistency via the state updates above.
+        "study_plan": study_plan,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Graph builder
+# ══════════════════════════════════════════════════════════════════════════════
+
+def build_coach_graph():
+    """Build and compile the Coach StateGraph."""
+    g = StateGraph(CoachState)
+
+    g.add_node("collect_data", _node_collect_data)
+    g.add_node("analyze_performance", _node_analyze_performance)
+    g.add_node("detect_gaps", _node_detect_gaps)
+    g.add_node("generate_plan", _node_generate_plan)
+    g.add_node("finalize", _node_finalize)
+
+    g.add_edge(START, "collect_data")
+    g.add_edge("collect_data", "analyze_performance")
+    g.add_edge("analyze_performance", "detect_gaps")
+    g.add_edge("detect_gaps", "generate_plan")
+    g.add_edge("generate_plan", "finalize")
+    g.add_edge("finalize", END)
+
+    return g.compile()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Public API (backward-compatible)
+# ══════════════════════════════════════════════════════════════════════════════
 
 def analyze_student_performance(student_id: int, course_ids: Optional[List[int]] = None) -> Dict[str, Any]:
     """
     Run the full Coach AI analysis pipeline for a student.
     Returns performance data, skill gaps, recommendations, and study plan.
+
+    Uses a LangGraph StateGraph with ReAct tool-calling nodes.
     """
     student = User.query.get(student_id)
     if not student:
@@ -171,175 +514,74 @@ def analyze_student_performance(student_id: int, course_ids: Optional[List[int]]
             'skill_gaps': [],
             'recommendations': [],
             'study_plan': {'activities': []},
+            'skills_enrichment': None,
+            'skill_extras': None,
         }
 
-    # Step 1: Collect performance data
-    performance = _collect_performance_data(student_id, course_ids)
+    # Build and invoke the graph
+    graph = build_coach_graph()
+    initial_state: CoachState = {
+        "student_id": student_id,
+        "course_ids": course_ids,
+        "performance_data": None,
+        "analysis": None,
+        "skill_gaps": None,
+        "recommendations": None,
+        "study_plan": None,
+        "feedback": None,
+        "errors": [],
+    }
 
-    # Step 1b: Enrich with SkillManager skills (compose chain)
-    skills_enrichment = None
     try:
-        from app.services.skill_manager import SkillManager, SkillContext
-        skill_manager = SkillManager()
-        ctx = SkillContext(
-            user_id=student_id,
-            role='student',
-            agent_id='coach',
-        )
-        skills_result = skill_manager.compose(
-            skill_ids=[
-                'performance-scorer',
-                'weakness-detector',
-                'exercise-recommender',
-                'study-planner',
-            ],
-            context=ctx,
-            initial_input={'student_id': student_id, 'course_ids': course_ids},
-        )
-        if skills_result.success:
-            skills_enrichment = skills_result.data
-            logger.info(f"Skills enrichment succeeded for student {student_id}")
+        final_state = graph.invoke(initial_state)
     except Exception as e:
-        logger.warning(f"Skills enrichment skipped: {e}")
-
-    # Step 2 & 3: Use LLM to analyze gaps and generate recommendations
-    try:
-        llm = _get_llm(robust=False)
-
-        prompt = f"""Tu es un coach pédagogique IA. Analyse les performances de l'étudiant et génère:
-1. Les lacunes identifiées (skill_gaps)
-2. Des recommandations d'exercices de renforcement
-3. Un plan d'étude pour les prochaines semaines
-
-Données de performance de l'étudiant:
-{json.dumps(performance, ensure_ascii=False, indent=2)}
-
-Réponds en JSON strictement avec cette structure:
-{{
-  "skill_gaps": [
-    {{
-      "area": "nom du domaine/compétence",
-      "course_title": "nom du module",
-      "course_id": number,
-      "severity": "high" | "medium" | "low",
-      "score": number,
-      "description": "description de la lacune"
-    }}
-  ],
-  "recommendations": [
-    {{
-      "title": "titre de l'exercice recommandé",
-      "type": "quiz" | "revision" | "exercise" | "practice",
-      "priority": "urgent" | "important" | "optional",
-      "course_title": "nom du module",
-      "course_id": number,
-      "target_bloom": "niveau bloom visé",
-      "description": "description de ce qu'il faut travailler",
-      "estimated_duration_min": number
-    }}
-  ],
-  "study_plan": {{
-    "summary": "résumé du plan",
-    "activities": [
-      {{
-        "day_offset": number,
-        "title": "activité",
-        "type": "revision" | "exercise" | "quiz",
-        "course_title": "module",
-        "duration_min": number,
-        "description": "détail"
-      }}
-    ]
-  }}
-}}"""
-
-        response = llm.invoke([
-            SystemMessage(content="Tu es un assistant pédagogique expert. Réponds uniquement en JSON valide."),
-            HumanMessage(content=prompt),
-        ])
-
-        # Parse LLM response
-        text = response.content.strip()
-        # Remove markdown code fences if present
-        if text.startswith('```'):
-            text = text.split('\n', 1)[1] if '\n' in text else text[3:]
-        if text.endswith('```'):
-            text = text[:-3]
-        if text.startswith('json'):
-            text = text[4:]
-
-        result = json.loads(text.strip())
-
-        # Enrich with additional skills
-        skill_extras = {}
+        logger.error(f"Coach graph execution failed: {e}")
+        # Emergency fallback: collect data directly and return minimal result
         try:
-            from app.services.skill_manager import SkillManager, SkillContext
-            _mgr = SkillManager()
-
-            # bloom-classifier: classify overall student level
-            _ctx = SkillContext(user_id=student_id, role='student', agent_id='coach')
-            bloom_result = _mgr.execute('bloom-classifier', _ctx, {
-                'content': json.dumps(performance.get('weak_areas', []), ensure_ascii=False),
-                'content_type': 'activity',
-            })
-            if bloom_result.success:
-                skill_extras['bloom_analysis'] = bloom_result.data
-
-            # syllabus-mapper: map gaps to AA
-            for cid in course_ids:
-                _ctx_c = _ctx.with_overrides(course_id=cid)
-                gaps_text = json.dumps(result.get('skill_gaps', []), ensure_ascii=False)
-                map_result = _mgr.execute('syllabus-mapper', _ctx_c, {'content': gaps_text})
-                if map_result.success:
-                    skill_extras.setdefault('aa_mappings', {})[cid] = map_result.data
-
-            # feedback-writer: generate motivational feedback
-            fb_result = _mgr.execute('feedback-writer', _ctx, {
-                'performance': performance,
-                'type': 'general',
-                'language': 'fr',
-            })
-            if fb_result.success:
-                skill_extras['feedback'] = fb_result.data
-
-            # language-adapter: detect student language for response adaptation
-            la_result = _mgr.execute('language-adapter', _ctx, {
-                'text': json.dumps(result.get('recommendations', [])[:2], ensure_ascii=False),
-                'detect_only': True,
-            })
-            if la_result.success:
-                skill_extras['language_detection'] = la_result.data
-
-        except Exception as e:
-            logger.debug(f"Coach extra skills enrichment partial/skipped: {e}")
-
+            perf = _collect_performance_data(student_id, course_ids)
+        except Exception:
+            perf = {'courses': [], 'overall_avg': 0, 'total_quizzes': 0,
+                    'bloom_scores': {}, 'weak_areas': []}
         return {
-            'performance': performance,
-            'skill_gaps': result.get('skill_gaps', []),
-            'recommendations': result.get('recommendations', []),
-            'study_plan': result.get('study_plan', {'activities': []}),
-            'skills_enrichment': skills_enrichment,
-            'skill_extras': skill_extras if skill_extras else None,
-        }
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse LLM response: {e}")
-        return {
-            'performance': performance,
-            'skill_gaps': performance.get('weak_areas', []),
+            'performance': perf,
+            'skill_gaps': perf.get('weak_areas', []),
             'recommendations': [],
             'study_plan': {'activities': []},
-            'llm_error': 'Failed to parse AI response',
-        }
-    except Exception as e:
-        logger.error(f"Coach agent error: {e}")
-        return {
-            'performance': performance,
-            'skill_gaps': performance.get('weak_areas', []),
-            'recommendations': [],
-            'study_plan': {'activities': []},
+            'skills_enrichment': None,
+            'skill_extras': None,
             'llm_error': str(e),
         }
+
+    # Assemble backward-compatible response from final graph state
+    performance = final_state.get('performance_data', {})
+    analysis = final_state.get('analysis')
+    skill_extras: Optional[Dict[str, Any]] = {}
+
+    if analysis:
+        if 'bloom_analysis' in analysis:
+            skill_extras['bloom_analysis'] = analysis['bloom_analysis']
+        if 'raw_text' not in analysis:
+            skill_extras['performance_analysis'] = analysis
+
+    feedback = final_state.get('feedback')
+    if feedback:
+        skill_extras['feedback'] = feedback
+
+    if not skill_extras:
+        skill_extras = None
+
+    errors = final_state.get('errors', [])
+    if errors:
+        logger.warning(f"Coach graph completed with errors: {errors}")
+
+    return {
+        'performance': performance,
+        'skill_gaps': final_state.get('skill_gaps', performance.get('weak_areas', [])),
+        'recommendations': final_state.get('recommendations', []),
+        'study_plan': final_state.get('study_plan', {'activities': []}),
+        'skills_enrichment': None,
+        'skill_extras': skill_extras,
+    }
 
 
 def generate_skill_map(student_id: int, course_id: int) -> Dict[str, Any]:

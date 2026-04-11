@@ -7,7 +7,7 @@ Unified MCP (Model Context Protocol) server that exposes ALL AI tools:
   - SkillManager skills (skill_manager.py)
 
 Usage (standalone):
-    python -m app.services.tp_mcp_server
+    python -m app.services.mcp_server
 
 Protocol: stdio (default) or HTTP/SSE (set MCP_TRANSPORT=sse)
 """

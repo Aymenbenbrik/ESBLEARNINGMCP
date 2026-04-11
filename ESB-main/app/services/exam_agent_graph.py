@@ -6,12 +6,23 @@ Pipeline:
   → assess_difficulty → compare_content → analyze_feedback
   → suggest_adjustments → generate_latex → evaluate_proposal → END
 
+Architecture:
+  - 4 **agentic nodes** (classify_aa, classify_bloom, analyze_feedback,
+    suggest_adjustments) use ReAct sub-agents via ``create_react_agent``.
+    Each receives both MCP tools and AI skills as LangChain tools so the
+    LLM can autonomously decide which tools/skills to invoke.  A fallback
+    to the original direct-call logic is triggered when tool-calling fails.
+  - 6 **deterministic nodes** (extract_text, extract_questions,
+    assess_difficulty, compare_content, generate_latex, evaluate_proposal)
+    call MCP tool functions directly — they don't need autonomy.
+
 Each node updates the shared ExamEvaluationState and persists progress
 to ExamAnalysisSession in the DB.
 """
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from typing import Any, Dict, List, Optional, TypedDict
 
@@ -19,6 +30,8 @@ from langgraph.graph import StateGraph, START, END
 
 from app import db
 from app.models import ExamAnalysisSession, ExamExtractedQuestion
+
+logger = logging.getLogger(__name__)
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -90,6 +103,31 @@ def _persist_progress(session_id: int, node_name: str, state: ExamEvaluationStat
         db.session.rollback()
 
 
+# ── ReAct helpers ─────────────────────────────────────────────────────────────
+
+def _get_react_llm():
+    """Get LLM configured for tool-calling in ReAct agents."""
+    from flask import current_app
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    api_key = current_app.config.get('GOOGLE_API_KEY')
+    model = current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash')
+    return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=0.1)
+
+
+def _extract_tool_results(messages) -> list:
+    """Extract tool call results from agent message history."""
+    results = []
+    for m in messages:
+        if hasattr(m, 'content') and m.content:
+            try:
+                data = json.loads(m.content) if isinstance(m.content, str) else m.content
+                if isinstance(data, (list, dict)):
+                    results.append(data)
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return results
+
+
 # ── Node Implementations ──────────────────────────────────────────────────────
 
 def _node_extract_text(state: ExamEvaluationState) -> ExamEvaluationState:
@@ -122,54 +160,110 @@ def _node_extract_questions(state: ExamEvaluationState) -> ExamEvaluationState:
 
 
 def _node_classify_aa(state: ExamEvaluationState) -> ExamEvaluationState:
-    from app.services.exam_mcp_tools import classify_questions_aa
     _persist_progress(state['session_id'], 'classify_aa', state)
     try:
-        questions = classify_questions_aa(state.get('questions') or [], state.get('aa_list') or [])
+        from app.services.mcp_langchain_bridge import get_exam_langchain_tools, get_skill_langchain_tools
 
-        # Enrich with syllabus-mapper skill for cross-validation
-        try:
-            from app.services.skill_manager import SkillManager, SkillContext
-            manager = SkillManager()
-            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
-            for q in questions:
-                result = manager.execute('syllabus-mapper', ctx, {
-                    'content': q.get('text', ''),
-                })
-                if result.success:
-                    q['skill_aa_mappings'] = result.data.get('mappings', [])
-        except Exception as e:
-            logger.debug(f"Skill syllabus-mapper enrichment skipped: {e}")
+        mcp_tools = get_exam_langchain_tools(include=['classify_questions_aa'])
+        skill_tools = get_skill_langchain_tools(agent_id='exam', role='teacher', course_id=state['course_id'])
+        relevant_skills = [t for t in skill_tools if 'syllabus' in t.name or 'mapper' in t.name]
 
-        return {**state, 'questions': questions, 'current_node': 'classify_aa'}
+        all_tools = mcp_tools + relevant_skills
+
+        if all_tools:
+            from langgraph.prebuilt import create_react_agent
+            from langchain_core.messages import HumanMessage, AIMessage
+
+            llm = _get_react_llm()
+
+            system_prompt = (
+                "Tu es un expert en classification pédagogique. "
+                "Utilise les outils disponibles pour classifier les questions d'examen "
+                "par Apprentissages Attendus (AA). Tu as accès aux outils MCP et aux skills AI."
+            )
+
+            questions_json = json.dumps(state.get('questions', []), ensure_ascii=False)
+            aa_json = json.dumps(state.get('aa_list', []), ensure_ascii=False)
+
+            agent = create_react_agent(llm, all_tools, prompt=system_prompt)
+            result = agent.invoke({
+                "messages": [HumanMessage(content=f"Classifie ces questions par AA:\nQuestions: {questions_json}\nAA disponibles: {aa_json}")]
+            })
+
+            ai_msgs = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+            tool_results = _extract_tool_results(result.get("messages", []))
+            classified = None
+            for r in tool_results:
+                if isinstance(r, list) and r:
+                    classified = r
+                    break
+            if classified is None:
+                classified = state.get('questions', [])
+            return {**state, 'questions': classified, 'current_node': 'classify_aa'}
+
+        raise RuntimeError("No tools available, using fallback")
+
     except Exception as e:
-        return {**state, 'errors': state.get('errors', []) + [f"classify_aa: {e}"], 'current_node': 'classify_aa'}
+        logger.info(f"ReAct classify_aa fallback to direct call: {e}")
+        try:
+            from app.services.exam_mcp_tools import classify_questions_aa
+            questions = classify_questions_aa(state.get('questions') or [], state.get('aa_list') or [])
+            return {**state, 'questions': questions, 'current_node': 'classify_aa'}
+        except Exception as e2:
+            return {**state, 'errors': state.get('errors', []) + [f"classify_aa: {e2}"], 'current_node': 'classify_aa'}
 
 
 def _node_classify_bloom(state: ExamEvaluationState) -> ExamEvaluationState:
-    from app.services.exam_mcp_tools import classify_questions_bloom
     _persist_progress(state['session_id'], 'classify_bloom', state)
     try:
-        questions = classify_questions_bloom(state.get('questions') or [])
+        from app.services.mcp_langchain_bridge import get_exam_langchain_tools, get_skill_langchain_tools
 
-        # Enrich with bloom-classifier skill for cross-validation
-        try:
-            from app.services.skill_manager import SkillManager, SkillContext
-            manager = SkillManager()
-            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
-            for q in questions:
-                result = manager.execute('bloom-classifier', ctx, {
-                    'content': q.get('text', ''),
-                    'content_type': 'question',
-                })
-                if result.success:
-                    q['skill_bloom'] = result.data
-        except Exception as e:
-            logger.debug(f"Skill bloom-classifier enrichment skipped: {e}")
+        mcp_tools = get_exam_langchain_tools(include=['classify_questions_bloom'])
+        skill_tools = get_skill_langchain_tools(agent_id='exam', role='teacher', course_id=state['course_id'])
+        relevant_skills = [t for t in skill_tools if 'bloom' in t.name or 'classifier' in t.name]
 
-        return {**state, 'questions': questions, 'current_node': 'classify_bloom'}
+        all_tools = mcp_tools + relevant_skills
+
+        if all_tools:
+            from langgraph.prebuilt import create_react_agent
+            from langchain_core.messages import HumanMessage, AIMessage
+
+            llm = _get_react_llm()
+
+            system_prompt = (
+                "Tu es un expert en taxonomie de Bloom. "
+                "Utilise les outils disponibles pour classifier les questions d'examen "
+                "selon les niveaux de la taxonomie de Bloom. Tu as accès aux outils MCP et aux skills AI."
+            )
+
+            questions_json = json.dumps(state.get('questions', []), ensure_ascii=False)
+
+            agent = create_react_agent(llm, all_tools, prompt=system_prompt)
+            result = agent.invoke({
+                "messages": [HumanMessage(content=f"Classifie ces questions selon la taxonomie de Bloom:\nQuestions: {questions_json}")]
+            })
+
+            ai_msgs = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+            tool_results = _extract_tool_results(result.get("messages", []))
+            classified = None
+            for r in tool_results:
+                if isinstance(r, list) and r:
+                    classified = r
+                    break
+            if classified is None:
+                classified = state.get('questions', [])
+            return {**state, 'questions': classified, 'current_node': 'classify_bloom'}
+
+        raise RuntimeError("No tools available, using fallback")
+
     except Exception as e:
-        return {**state, 'errors': state.get('errors', []) + [f"classify_bloom: {e}"], 'current_node': 'classify_bloom'}
+        logger.info(f"ReAct classify_bloom fallback to direct call: {e}")
+        try:
+            from app.services.exam_mcp_tools import classify_questions_bloom
+            questions = classify_questions_bloom(state.get('questions') or [])
+            return {**state, 'questions': questions, 'current_node': 'classify_bloom'}
+        except Exception as e2:
+            return {**state, 'errors': state.get('errors', []) + [f"classify_bloom: {e2}"], 'current_node': 'classify_bloom'}
 
 
 def _node_assess_difficulty(state: ExamEvaluationState) -> ExamEvaluationState:
@@ -212,68 +306,130 @@ def _node_compare_content(state: ExamEvaluationState) -> ExamEvaluationState:
 
 
 def _node_analyze_feedback(state: ExamEvaluationState) -> ExamEvaluationState:
-    from app.services.exam_mcp_tools import generate_exam_feedback
     _persist_progress(state['session_id'], 'analyze_feedback', state)
     try:
-        feedback = generate_exam_feedback(
-            state.get('comparison_report') or {},
-            state.get('questions') or [],
-        )
+        from app.services.mcp_langchain_bridge import get_exam_langchain_tools, get_skill_langchain_tools
 
-        # Enrich with feedback-writer skill for pedagogical recommendations
-        try:
-            from app.services.skill_manager import SkillManager, SkillContext
-            manager = SkillManager()
-            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
-            result = manager.execute('feedback-writer', ctx, {
-                'performance': state.get('comparison_report', {}),
-                'type': 'exam',
-                'language': 'fr',
+        mcp_tools = get_exam_langchain_tools(include=['generate_exam_feedback'])
+        skill_tools = get_skill_langchain_tools(agent_id='exam', role='teacher', course_id=state['course_id'])
+        relevant_skills = [t for t in skill_tools if 'feedback' in t.name or 'writer' in t.name]
+
+        all_tools = mcp_tools + relevant_skills
+
+        if all_tools:
+            from langgraph.prebuilt import create_react_agent
+            from langchain_core.messages import HumanMessage, AIMessage
+
+            llm = _get_react_llm()
+
+            system_prompt = (
+                "Tu es un expert en évaluation pédagogique. "
+                "Utilise les outils disponibles pour générer un feedback détaillé "
+                "sur l'examen. Tu as accès aux outils MCP et aux skills AI."
+            )
+
+            report_json = json.dumps(state.get('comparison_report', {}), ensure_ascii=False)
+            questions_json = json.dumps(state.get('questions', []), ensure_ascii=False)
+
+            agent = create_react_agent(llm, all_tools, prompt=system_prompt)
+            result = agent.invoke({
+                "messages": [HumanMessage(content=(
+                    f"Génère un feedback pédagogique pour cet examen:\n"
+                    f"Rapport de comparaison: {report_json}\n"
+                    f"Questions: {questions_json}"
+                ))]
             })
-            if result.success:
-                if isinstance(feedback, dict):
-                    feedback['skill_feedback'] = result.data
-                elif isinstance(feedback, str):
-                    feedback = {'original': feedback, 'skill_feedback': result.data}
-        except Exception as e:
-            logger.debug(f"Skill feedback-writer enrichment skipped: {e}")
 
-        return {**state, 'feedback': feedback, 'current_node': 'analyze_feedback'}
+            ai_msgs = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+            tool_results = _extract_tool_results(result.get("messages", []))
+            feedback = None
+            for r in tool_results:
+                if isinstance(r, (dict, str)):
+                    feedback = r
+                    break
+            if feedback is None and ai_msgs:
+                feedback = ai_msgs[-1].content
+            if feedback is None:
+                feedback = ''
+            return {**state, 'feedback': feedback, 'current_node': 'analyze_feedback'}
+
+        raise RuntimeError("No tools available, using fallback")
+
     except Exception as e:
-        return {**state, 'errors': state.get('errors', []) + [f"analyze_feedback: {e}"], 'current_node': 'analyze_feedback'}
+        logger.info(f"ReAct analyze_feedback fallback to direct call: {e}")
+        try:
+            from app.services.exam_mcp_tools import generate_exam_feedback
+            feedback = generate_exam_feedback(
+                state.get('comparison_report') or {},
+                state.get('questions') or [],
+            )
+            return {**state, 'feedback': feedback, 'current_node': 'analyze_feedback'}
+        except Exception as e2:
+            return {**state, 'errors': state.get('errors', []) + [f"analyze_feedback: {e2}"], 'current_node': 'analyze_feedback'}
 
 
 def _node_suggest_adjustments(state: ExamEvaluationState) -> ExamEvaluationState:
-    from app.services.exam_mcp_tools import suggest_exam_adjustments
     _persist_progress(state['session_id'], 'suggest_adjustments', state)
     try:
-        adjustments = suggest_exam_adjustments(
-            state.get('feedback') or '',
-            state.get('questions') or [],
-            state.get('aa_list') or [],
-        )
+        from app.services.mcp_langchain_bridge import get_exam_langchain_tools, get_skill_langchain_tools
 
-        # Enrich with rubric-builder skill for structured evaluation rubric
-        try:
-            from app.services.skill_manager import SkillManager, SkillContext
-            manager = SkillManager()
-            ctx = SkillContext(user_id=0, course_id=state['course_id'], role='teacher', agent_id='exam')
-            rubric = manager.execute('rubric-builder', ctx, {
-                'type': 'exam',
-                'content': state.get('exam_title', 'Examen'),
-                'max_score': 20,
+        mcp_tools = get_exam_langchain_tools(include=['suggest_exam_adjustments'])
+        skill_tools = get_skill_langchain_tools(agent_id='exam', role='teacher', course_id=state['course_id'])
+        relevant_skills = [t for t in skill_tools if 'rubric' in t.name or 'builder' in t.name]
+
+        all_tools = mcp_tools + relevant_skills
+
+        if all_tools:
+            from langgraph.prebuilt import create_react_agent
+            from langchain_core.messages import HumanMessage, AIMessage
+
+            llm = _get_react_llm()
+
+            system_prompt = (
+                "Tu es un expert en conception d'examens. "
+                "Utilise les outils disponibles pour proposer des ajustements "
+                "à l'examen. Tu as accès aux outils MCP et aux skills AI."
+            )
+
+            feedback_json = json.dumps(state.get('feedback', ''), ensure_ascii=False)
+            questions_json = json.dumps(state.get('questions', []), ensure_ascii=False)
+            aa_json = json.dumps(state.get('aa_list', []), ensure_ascii=False)
+
+            agent = create_react_agent(llm, all_tools, prompt=system_prompt)
+            result = agent.invoke({
+                "messages": [HumanMessage(content=(
+                    f"Propose des ajustements pour cet examen:\n"
+                    f"Feedback: {feedback_json}\n"
+                    f"Questions: {questions_json}\n"
+                    f"AA disponibles: {aa_json}"
+                ))]
             })
-            if rubric.success:
-                if isinstance(adjustments, list):
-                    adjustments.append({'type': 'rubric', 'skill_rubric': rubric.data})
-                elif isinstance(adjustments, dict):
-                    adjustments['skill_rubric'] = rubric.data
-        except Exception as e:
-            logger.debug(f"Skill rubric-builder enrichment skipped: {e}")
 
-        return {**state, 'adjustments': adjustments, 'current_node': 'suggest_adjustments'}
+            ai_msgs = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
+            tool_results = _extract_tool_results(result.get("messages", []))
+            adjustments = None
+            for r in tool_results:
+                if isinstance(r, (list, dict)):
+                    adjustments = r
+                    break
+            if adjustments is None:
+                adjustments = []
+            return {**state, 'adjustments': adjustments, 'current_node': 'suggest_adjustments'}
+
+        raise RuntimeError("No tools available, using fallback")
+
     except Exception as e:
-        return {**state, 'errors': state.get('errors', []) + [f"suggest_adjustments: {e}"], 'current_node': 'suggest_adjustments'}
+        logger.info(f"ReAct suggest_adjustments fallback to direct call: {e}")
+        try:
+            from app.services.exam_mcp_tools import suggest_exam_adjustments
+            adjustments = suggest_exam_adjustments(
+                state.get('feedback') or '',
+                state.get('questions') or [],
+                state.get('aa_list') or [],
+            )
+            return {**state, 'adjustments': adjustments, 'current_node': 'suggest_adjustments'}
+        except Exception as e2:
+            return {**state, 'errors': state.get('errors', []) + [f"suggest_adjustments: {e2}"], 'current_node': 'suggest_adjustments'}
 
 
 def _node_generate_latex(state: ExamEvaluationState) -> ExamEvaluationState:
