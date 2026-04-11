@@ -121,6 +121,16 @@ from app.models.program_learning import (
     StudentAAPScore,
 )
 
+from app.models.skills import (
+    skill_agent_link,
+    skill_role_link,
+    AgentRegistry,
+    Skill,
+    SkillCourseConfig,
+    SkillDependency,
+    SkillExecution,
+)
+
 __all__ = [
     # users
     'UserSession', 'TeacherStudent', 'User', 'load_user', 'create_superuser',
@@ -159,4 +169,7 @@ __all__ = [
     # program_learning
     'aap_competence_link', 'ProgramAAP', 'ProgramCompetence',
     'AAAapLink', 'StudentAAScore', 'StudentAAPScore',
+    # skills
+    'skill_agent_link', 'skill_role_link', 'AgentRegistry', 'Skill',
+    'SkillCourseConfig', 'SkillDependency', 'SkillExecution',
 ]
