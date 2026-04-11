@@ -6,7 +6,7 @@ import React from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 import {
 
@@ -2720,6 +2720,19 @@ function QuestionsTab({
     }
   };
 
+  // Auto-start extraction when exam is freshly uploaded (no questions yet)
+  const autoExtractAttempted = useRef(false);
+  useEffect(() => {
+    const ar = exam.analysis_results as Record<string, unknown> | null | undefined;
+    const isAnalyzed = ar && Object.keys(ar).length > 0;
+    if (!autoExtractAttempted.current && questions.length === 0 && !isAnalyzed && exam.file_path) {
+      autoExtractAttempted.current = true;
+      toast.info('Examen détecté — lancement automatique de l\'extraction…');
+      handleExtractQuestions();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Stats
   const totalPoints = questions.reduce((s, q) => s + (q.points ?? 0), 0);
   const totalTime = questions.reduce((s, q) => s + (q.estimated_time_min ?? 0), 0);
@@ -2771,11 +2784,23 @@ function QuestionsTab({
         <CardContent className="p-6">
           {questions.length === 0 ? (
             <div className="text-center py-12">
-              <Target className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Aucune question extraite</h3>
-              <p className="text-sm text-muted-foreground">
-                Cliquez sur &quot;Extraire les questions&quot; pour analyser l&apos;épreuve.
-              </p>
+              {isExtracting ? (
+                <>
+                  <Loader2 className="h-16 w-16 text-amber-500 mx-auto mb-4 animate-spin" />
+                  <h3 className="text-lg font-semibold mb-2">Extraction en cours…</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Gemini analyse le PDF — classification Bloom, AA et difficulté seront lancées automatiquement.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Target className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Aucune question extraite</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Cliquez sur &quot;Extraire les questions&quot; pour analyser l&apos;épreuve.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-6">
