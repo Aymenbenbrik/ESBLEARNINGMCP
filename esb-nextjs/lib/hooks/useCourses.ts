@@ -685,6 +685,36 @@ export function useSyncQuestionTags(courseId: number, examId: number) {
   });
 }
 
+export function useCorrectionRules(courseId: number, examId: number) {
+  return useQuery({
+    queryKey: ['tn-exam-correction-rules', courseId, examId],
+    queryFn: () => tnExamsApi.getCorrectionRules(courseId, examId).then(r => r.data.correction_rules ?? ''),
+    enabled: !!courseId && !!examId,
+  });
+}
+
+export function useSaveCorrectionRules(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: string) => tnExamsApi.saveCorrectionRules(courseId, examId, rules),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam-correction-rules', courseId, examId] });
+    },
+  });
+}
+
+export function useRegenerateCorrections(courseId: number, examId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (questionIndices: number[]) =>
+      tnExamsApi.regenerateCorrections(courseId, examId, questionIndices),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tn-exam-corrections', courseId, examId] });
+      qc.invalidateQueries({ queryKey: ['tn-exam', courseId, examId] });
+    },
+  });
+}
+
 export function useAutoClassify(courseId: number, examId: number) {
   const qc = useQueryClient();
   return useMutation({

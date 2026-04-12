@@ -294,12 +294,17 @@ Réponds UNIQUEMENT avec un tableau JSON valide, sans commentaires:
 
 
 def classify_questions_aa(questions: List[Dict], aa_list: List[Dict]) -> List[Dict]:
-    """Classify each question by AA codes."""
+    """Classify each question by AA codes.
+
+    Uses sequential 1-based indices to avoid key mismatches when question
+    numbers are non-integer (e.g. '1.1').
+    """
     if not questions or not aa_list:
         return questions
     llm = _llm_robust(0.1)
     aa_str = "\n".join([f"AA{a['AA#']}: {a['AA Description']}" for a in aa_list])
-    q_str = "\n".join([f"Q{q['number']}: {q['text'][:300]}" for q in questions])
+    # Use sequential indices so the response keys match our mapping
+    q_str = "\n".join([f"Q{i+1}: {q.get('text', q.get('Text', ''))[:300]}" for i, q in enumerate(questions)])
     prompt = f"""Pour chaque question d'examen, identifie les Apprentissages Attendus (AA) couverts.
 
 LISTE DES AA DU MODULE:
@@ -308,7 +313,7 @@ LISTE DES AA DU MODULE:
 QUESTIONS DE L'EXAMEN:
 {q_str}
 
-Réponds UNIQUEMENT avec un objet JSON mapping numéro de question → liste d'AA:
+Réponds UNIQUEMENT avec un objet JSON mapping numéro séquentiel → liste d'AA:
 {{"1": [1, 2], "2": [3], "3": [1, 3, 4], ...}}
 
 Règle: assigne au moins 1 AA par question. Si aucun AA ne correspond, assigne l'AA le plus proche."""
@@ -319,8 +324,9 @@ Règle: assigne au moins 1 AA par question. Si aucun AA ne correspond, assigne l
         match = re.search(r'\{.*\}', content, re.DOTALL)
         if match:
             mapping = json.loads(match.group())
-            for q in questions:
-                codes = mapping.get(str(q['number']), [])
+            for i, q in enumerate(questions):
+                # Key is sequential 1-based index
+                codes = mapping.get(str(i + 1), [])
                 q['aa_codes'] = [int(c) for c in codes] if codes else []
     except Exception as e:
         current_app.logger.error(f"classify_questions_aa error: {e}")
@@ -328,11 +334,17 @@ Règle: assigne au moins 1 AA par question. Si aucun AA ne correspond, assigne l
 
 
 def classify_questions_bloom(questions: List[Dict]) -> List[Dict]:
-    """Classify each question by Bloom's Taxonomy level."""
+    """Classify each question by Bloom's Taxonomy level.
+
+    Uses sequential 1-based indices as prompt keys to avoid mismatches
+    when question_number is non-integer (e.g. '1.1', '2.3').
+    Never overwrites an existing valid classification with 'Non classifié'.
+    """
     if not questions:
         return questions
     llm = _llm_robust(0.1)
-    q_str = "\n".join([f"Q{q['number']}: {q['text'][:300]}" for q in questions])
+    # Use sequential indices so the prompt example matches the actual keys
+    q_str = "\n".join([f"Q{i+1}: {q.get('text', '')[:300]}" for i, q in enumerate(questions)])
     prompt = f"""Classifie chaque question selon la Taxonomie de Bloom.
 
 Niveaux (du plus bas au plus haut):
@@ -346,54 +358,117 @@ Niveaux (du plus bas au plus haut):
 QUESTIONS:
 {q_str}
 
-Réponds UNIQUEMENT avec un objet JSON:
+Réponds UNIQUEMENT avec un objet JSON dont les clés sont les numéros séquentiels des questions:
 {{"1": "Appliquer", "2": "Analyser", "3": "Mémoriser", ...}}"""
 
+    VALID_LEVELS = {'Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer'}
     try:
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, 'content') else str(response)
         match = re.search(r'\{.*\}', content, re.DOTALL)
         if match:
             mapping = json.loads(match.group())
-            for q in questions:
-                q['bloom_level'] = mapping.get(str(q['number']), 'Non classifié')
+            for i, q in enumerate(questions):
+                classified = mapping.get(str(i + 1), '')
+                if classified in VALID_LEVELS:
+                    # Only update if Gemini returned a valid level
+                    q['bloom_level'] = classified
+                # If Gemini didn't classify it, keep the existing value (may come from extraction step)
     except Exception as e:
         current_app.logger.error(f"classify_questions_bloom error: {e}")
     return questions
 
 
 def assess_question_difficulty(questions: List[Dict], course_context: str) -> List[Dict]:
-    """Assess difficulty of each question relative to course content."""
+    """Backward-compatible wrapper — delegates to assess_difficulty_and_duration."""
+    return assess_difficulty_and_duration(questions, course_context)
+
+
+def assess_difficulty_and_duration(questions: List[Dict], course_context: str = '') -> List[Dict]:
+    """Assess difficulty AND estimate time for each question via a single Gemini call.
+
+    Uses sequential 1-based indices to avoid key mismatches.
+    Enriches each question with:
+      - difficulty              : one of the 5 VALID_DIFF values
+      - difficulty_justification: short explanation
+      - estimated_time_min      : integer (minutes), updated even if already set
+      - time_justification      : short explanation of the time estimate
+    Never overwrites a valid field with an empty/invalid value.
+    """
     if not questions:
         return questions
+
+    VALID_DIFF = {'Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile'}
     llm = _llm_robust(0.2)
-    q_str = "\n".join([f"Q{q['number']}: {q['text'][:300]}" for q in questions])
-    context_preview = course_context[:4000]
-    prompt = f"""Évalue la difficulté de chaque question d'examen par rapport au contenu du cours.
+    context_preview = course_context[:3000] if course_context else '(non fourni)'
+
+    # Build question list with rich context
+    q_lines = []
+    for i, q in enumerate(questions):
+        q_type  = q.get('question_type', '?')
+        bloom   = q.get('bloom_level', '?')
+        pts     = q.get('points', '?')
+        text    = q.get('text', '')[:300]
+        q_lines.append(f"Q{i+1} [type={q_type}, bloom={bloom}, pts={pts}]: {text}")
+    q_str = "\n".join(q_lines)
+
+    prompt = f"""Tu es un expert en évaluation pédagogique. Pour chaque question d'examen :
+1. Évalue la **difficulté** en tenant compte du type, du niveau Bloom, des points alloués et du contenu du cours.
+2. Estime le **temps de réponse** réaliste en minutes (entier) selon ces règles :
+   - QCM simple : 1-2 min | QCM avec calcul : 3-5 min | Vrai/Faux : 1-2 min
+   - Question ouverte courte : 3-5 min | longue : 8-15 min
+   - Calcul simple : 3-5 min | complexe : 8-15 min
+   - Démonstration : 10-20 min | Étude de cas : 15-25 min
+   - Multiplicateur selon difficulté : Très facile ×0.7 | Facile ×0.85 | Moyen ×1.0 | Difficile ×1.3 | Très difficile ×1.5
+   - Multiplicateur selon Bloom : Mémoriser/Comprendre ×0.8 | Appliquer/Analyser ×1.0 | Évaluer/Créer ×1.2
 
 CONTENU DU COURS (extrait):
 {context_preview}
 
-QUESTIONS:
+QUESTIONS (format: Qn [type=..., bloom=..., pts=...]: texte):
 {q_str}
 
-Niveaux de difficulté: Très facile | Facile | Moyen | Difficile | Très difficile
+Niveaux de difficulté valides: Très facile | Facile | Moyen | Difficile | Très difficile
 
-Réponds UNIQUEMENT avec un objet JSON:
-{{"1": {{"difficulty": "Moyen", "justification": "La question teste l'application directe du cours"}}, "2": {{"difficulty": "Difficile", "justification": "..."}}, ...}}"""
+Réponds UNIQUEMENT avec un objet JSON (clés = indices séquentiels des questions):
+{{
+  "1": {{
+    "difficulty": "Moyen",
+    "difficulty_justification": "Teste l'application directe sans détour",
+    "estimated_time_min": 8,
+    "time_justification": "Question ouverte ×1.0 (Moyen) ×1.0 (Appliquer)"
+  }},
+  "2": {{...}},
+  ...
+}}"""
 
     try:
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, 'content') else str(response)
-        match = re.search(r'\{.*\}', content, re.DOTALL)
-        if match:
-            mapping = json.loads(match.group())
-            for q in questions:
-                info = mapping.get(str(q['number']), {})
-                q['difficulty'] = info.get('difficulty', 'Moyen')
-                q['difficulty_justification'] = info.get('justification', '')
+        raw = re.search(r'\{.*\}', content, re.DOTALL)
+        if not raw:
+            raise ValueError('No JSON object found in Gemini response')
+        mapping = json.loads(raw.group())
+        for i, q in enumerate(questions):
+            info = mapping.get(str(i + 1), {})
+            # ── difficulty ──
+            new_diff = str(info.get('difficulty', '')).strip()
+            if new_diff in VALID_DIFF:
+                q['difficulty'] = new_diff
+                q['difficulty_justification'] = str(info.get('difficulty_justification', '')).strip()
+            elif q.get('difficulty', '') not in VALID_DIFF:
+                q['difficulty'] = 'Moyen'
+            # ── estimated_time_min ──
+            raw_time = info.get('estimated_time_min')
+            try:
+                new_time = int(raw_time)
+                if new_time > 0:
+                    q['estimated_time_min'] = new_time
+                    q['time_justification'] = str(info.get('time_justification', '')).strip()
+            except (TypeError, ValueError):
+                pass  # keep existing value
     except Exception as e:
-        current_app.logger.error(f"assess_question_difficulty error: {e}")
+        current_app.logger.error(f"assess_difficulty_and_duration error: {e}")
     return questions
 
 
@@ -696,13 +771,16 @@ def generate_question_correction(
     difficulty: str = '',
     aa_codes: List[str] = None,
     course_context: str = '',
+    correction_rules: str = '',
 ) -> Dict[str, Any]:
     """Generate a model correction for a single exam question using unified LLM."""
     llm = _llm_robust(0.2)
 
     context_section = f"\nContexte du cours:\n{course_context[:2000]}" if course_context else ""
+    rules_section = f"\nRègles de correction à respecter:\n{correction_rules[:1000]}" if correction_rules else ""
 
     prompt = f"""Tu es un enseignant expert. Génère une correction modèle complète pour cette question d'examen.
+La correction doit utiliser la notation LaTeX pour les formules mathématiques (délimiteurs $...$ ou $$...$$).
 
 Question: {question_text}
 Type: {question_type}
@@ -710,11 +788,11 @@ Bloom: {bloom_level or 'Non classifié'}
 Difficulté: {difficulty or 'Non évaluée'}
 Barème: {points} points
 AA concernés: {', '.join(aa_codes or [])}
-{context_section}
+{context_section}{rules_section}
 
 Retourne un objet JSON avec:
 {{
-    "correction": "<correction modèle détaillée>",
+    "correction": "<correction modèle détaillée avec formules LaTeX si nécessaire>",
     "points_detail": "<répartition des points: ex. 1pt pour X, 2pts pour Y>",
     "criteres": ["<critère d'évaluation 1>", "<critère 2>", ...],
     "mots_cles": ["<mot-clé attendu 1>", "<mot-clé 2>", ...],

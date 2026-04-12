@@ -255,6 +255,12 @@ export const tnExamsApi = {
       data
     ),
 
+  saveExtractedQuestions: (courseId: number, examId: number, questions: ExtractedQuestion[]) =>
+    apiClient.post<{ ok: boolean; message: string; exam: TnExamDocument }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/save-extracted-questions`,
+      { questions }
+    ),
+
   extractHeader: (courseId: number, examId: number) =>
     apiClient.post<{ success: boolean; header: ExamHeaderData; message: string }>(
       `/api/v1/courses/${courseId}/tn-exams/${examId}/extract-header`
@@ -278,9 +284,9 @@ export const tnExamsApi = {
       responseType: 'blob',
     }),
 
-  matchSources: (courseId: number, examId: number, questionIds?: number[]) =>
-    apiClient.post<{ matches: QuestionSourceMatch[] }>(
-      `/api/v1/courses/${courseId}/tn-exams/${examId}/match-sources`,
+  matchSources: (courseId: number, examId: number, force = false, questionIds?: number[]) =>
+    apiClient.post<{ matches: QuestionSourceMatch[]; chapter_coverage_rate?: number; skipped?: boolean }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/match-sources${force ? '?force=true' : ''}`,
       questionIds ? { question_ids: questionIds } : {}
     ),
 
@@ -332,9 +338,9 @@ export const tnExamsApi = {
     ),
 
   /** Generate AI correction for each extracted question */
-  generateCorrection: (courseId: number, examId: number) =>
+  generateCorrection: (courseId: number, examId: number, useAllQuestions = false) =>
     apiClient.post<{ corrections: TnExamCorrection[]; count: number }>(
-      `/api/v1/courses/${courseId}/tn-exams/${examId}/generate-correction`
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/generate-correction${useAllQuestions ? '?use_all_questions=true' : ''}`
     ),
 
   /** Retrieve generated corrections */
@@ -372,11 +378,46 @@ export const tnExamsApi = {
   },
 
   /** Auto-classify all extracted questions (Bloom, AA, difficulty) */
-  autoClassify: (courseId: number, examId: number) =>
+  autoClassify: (courseId: number, examId: number, force = false) =>
     apiClient.post<{
       success: boolean;
       classified_count: number;
       results: Record<string, string>;
       questions: any[];
-    }>(`/api/v1/courses/${courseId}/tn-exams/${examId}/auto-classify`),
+      skipped?: boolean;
+    }>(`/api/v1/courses/${courseId}/tn-exams/${examId}/auto-classify${force ? '?force=true' : ''}`),
+
+  /** Sync corrections with the latest extracted questions (marks stale ones as outdated) */
+  syncCorrections: (courseId: number, examId: number) =>
+    apiClient.post<{ ok: boolean; synced: number; outdated: number }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/sync-corrections`
+    ),
+
+  /** Get saved correction rules */
+  getCorrectionRules: (courseId: number, examId: number) =>
+    apiClient.get<{ correction_rules: string }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/correction-rules`
+    ),
+
+  /** Save correction rules to DB */
+  saveCorrectionRules: (courseId: number, examId: number, rules: string) =>
+    apiClient.put<{ success: boolean; correction_rules: string }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/correction-rules`,
+      { correction_rules: rules }
+    ),
+
+  /** Download correction as .tex file */
+  getExportCorrectionTexUrl: (courseId: number, examId: number) =>
+    `/api/v1/courses/${courseId}/tn-exams/${examId}/export-correction-tex`,
+
+  /** Download correction as PDF */
+  getExportCorrectionPdfUrl: (courseId: number, examId: number) =>
+    `/api/v1/courses/${courseId}/tn-exams/${examId}/export-correction-pdf`,
+
+  /** Regenerate corrections for selected question indices */
+  regenerateCorrections: (courseId: number, examId: number, questionIndices: number[]) =>
+    apiClient.post<{ regenerated: any[]; count: number }>(
+      `/api/v1/courses/${courseId}/tn-exams/${examId}/regenerate-corrections`,
+      { question_indices: questionIndices }
+    ),
 };

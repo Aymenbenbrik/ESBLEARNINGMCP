@@ -1,5 +1,5 @@
-﻿'use client';
-import { useState } from 'react';
+'use client';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,8 +10,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { GraduationCap, Wand2, CheckCircle2, Pencil, Save, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { GraduationCap, Wand2, CheckCircle2, Pencil, Save, Loader2, AlertCircle, RefreshCw, Download, Settings2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import { InlineMath, BlockMath } from 'react-katex';
+import 'katex/dist/katex.min.css';
 import {
   useGenerateCorrection,
   useTnExamCorrections,
@@ -19,7 +21,11 @@ import {
   useExamTags,
   useSyncQuestionTags,
   useSyncCorrections,
+  useCorrectionRules,
+  useSaveCorrectionRules,
+  useRegenerateCorrections,
 } from '@/lib/hooks/useCourses';
+import { tnExamsApi } from '@/lib/api/courses';
 import type { TnExamDocument, TnExamCorrection } from '@/lib/types/course';
 
 const BLOOM_LEVELS_FALLBACK = ['Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer'];
@@ -31,35 +37,111 @@ interface CorrectionTabProps {
   examId: number;
 }
 
+/** Renders a string that may contain $...$ (inline) and $$...$$ (block) LaTeX. */
+function LatexRenderer({ text }: { text: string }) {
+  if (!text) return <span className="text-gray-400 italic">Non générée</span>;
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+  while (remaining.length > 0) {
+    const blockIdx = remaining.indexOf('$$');
+    const inlineIdx = remaining.indexOf('$');
+    if (blockIdx !== -1 && (inlineIdx === -1 || blockIdx <= inlineIdx)) {
+      if (blockIdx > 0) parts.push(<span key={key++}>{remaining.slice(0, blockIdx)}</span>);
+      const end = remaining.indexOf('$$', blockIdx + 2);
+      if (end === -1) { parts.push(<span key={key++}>{remaining.slice(blockIdx)}</span>); break; }
+      const math = remaining.slice(blockIdx + 2, end);
+      try { parts.push(<BlockMath key={key++} math={math} />); } catch { parts.push(<code key={key++}>{math}</code>); }
+      remaining = remaining.slice(end + 2);
+    } else if (inlineIdx !== -1) {
+      if (inlineIdx > 0) parts.push(<span key={key++}>{remaining.slice(0, inlineIdx)}</span>);
+      const end = remaining.indexOf('$', inlineIdx + 1);
+      if (end === -1) { parts.push(<span key={key++}>{remaining.slice(inlineIdx)}</span>); break; }
+      const math = remaining.slice(inlineIdx + 1, end);
+      try { parts.push(<InlineMath key={key++} math={math} />); } catch { parts.push(<code key={key++}>{math}</code>); }
+      remaining = remaining.slice(end + 1);
+    } else {
+      parts.push(<span key={key++}>{remaining}</span>);
+      break;
+    }
+  }
+  return <span className="whitespace-pre-wrap">{parts}</span>;
+}
+
 export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const [editPointsDetail, setEditPointsDetail] = useState('');
   const [editBloom, setEditBloom] = useState('');
   const [editDifficulty, setEditDifficulty] = useState('');
+  const [localRules, setLocalRules] = useState('');
+  const [showRules, setShowRules] = useState(false);
+  const [isSavingRules, setIsSavingRules] = useState(false);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
   const { data: corrections = [], isLoading } = useTnExamCorrections(courseId, examId);
+  const { data: savedRules = '' } = useCorrectionRules(courseId, examId);
   const generateMutation = useGenerateCorrection(courseId, examId);
   const updateMutation = useUpdateCorrection(courseId, examId);
   const { data: tagConstants } = useExamTags();
   const syncTagsMutation = useSyncQuestionTags(courseId, examId);
   const syncMutation = useSyncCorrections(courseId, examId);
+  const saveRulesMutation = useSaveCorrectionRules(courseId, examId);
+  const regenMutation = useRegenerateCorrections(courseId, examId);
+
+  useEffect(() => { setLocalRules(savedRules); }, [savedRules]);
 
   const hasOutdated = corrections.some((c) => c.outdated);
 
   const ar = exam.analysis_results as Record<string, unknown> | null | undefined;
-  const rawQuestions = (ar?.extracted_questions ?? ar?.questions ?? []) as Array<Record<string, unknown>>;
-  const validatedQuestions = rawQuestions.filter((q) => q.validated);
+  const extractedQs = (ar?.extracted_questions ?? []) as Array<Record<string, unknown>>;
+  const propositionQs = (ar?.questions ?? []) as Array<Record<string, unknown>>;
+  const sourceQuestions = extractedQs.length > 0 ? extractedQs.filter((q) => q.validated) : propositionQs;
+
+  function handleSaveRules() {
+    setIsSavingRules(true);
+    saveRulesMutation.mutate(localRules, {
+      onSuccess: () => { toast.success('Règles sauvegardées'); setIsSavingRules(false); },
+      onError: () => { toast.error('Erreur lors de la sauvegarde'); setIsSavingRules(false); },
+    });
+  }
 
   function handleGenerate() {
-    if (validatedQuestions.length === 0) {
-      toast.error('Aucune question validée. Validez des questions dans l\'onglet Questions d\'abord.');
-      return;
-    }
     generateMutation.mutate(undefined, {
       onSuccess: () => toast.success('Corrections générées avec succès'),
       onError: () => toast.error('Erreur lors de la génération'),
     });
+  }
+
+  function handleRegenSelected() {
+    if (selectedIndices.size === 0) { toast.error('Sélectionnez au moins une question'); return; }
+    regenMutation.mutate(Array.from(selectedIndices), {
+      onSuccess: (data) => {
+        toast.success(`${data.data.count} correction(s) régénérée(s)`);
+        setSelectedIndices(new Set());
+      },
+      onError: () => toast.error('Erreur lors de la régénération'),
+    });
+  }
+
+  function toggleSelect(idx: number) {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  }
+
+  function handleExport(format: 'tex' | 'pdf') {
+    const url = format === 'pdf'
+      ? tnExamsApi.getExportCorrectionPdfUrl(courseId, examId)
+      : tnExamsApi.getExportCorrectionTexUrl(courseId, examId);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `correction_${examId}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   function startEdit(c: TnExamCorrection) {
@@ -72,19 +154,8 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
 
   function saveEdit(c: TnExamCorrection) {
     updateMutation.mutate(
-      {
-        index: c.index,
-        data: {
-          correction: editText,
-          points_detail: editPointsDetail,
-          bloom_level: editBloom || c.bloom_level,
-          difficulty: editDifficulty || c.difficulty,
-        },
-      },
-      {
-        onSuccess: () => { toast.success('Correction mise à jour'); setEditingIndex(null); },
-        onError: () => toast.error('Erreur lors de la sauvegarde'),
-      }
+      { index: c.index, data: { correction: editText, points_detail: editPointsDetail, bloom_level: editBloom || c.bloom_level, difficulty: editDifficulty || c.difficulty } },
+      { onSuccess: () => { toast.success('Correction mise à jour'); setEditingIndex(null); }, onError: () => toast.error('Erreur') }
     );
   }
 
@@ -100,60 +171,106 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             <GraduationCap className="h-5 w-5 text-indigo-600" />
             Correction de l&apos;épreuve
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {validatedQuestions.length} question(s) validée(s) disponibles
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{sourceQuestions.length} question(s) disponibles</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setShowRules(!showRules)} className="gap-2">
+            <Settings2 className="h-4 w-4" />Règles
+          </Button>
           {corrections.length > 0 && (
-            <Button
-              onClick={() => syncMutation.mutate(undefined, {
-                onSuccess: () => toast.success('Corrections synchronisées'),
-                onError: () => toast.error('Erreur lors de la synchronisation'),
-              })}
-              disabled={syncMutation.isPending}
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              {syncMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Synchroniser corrections
-            </Button>
+            <>
+              <Button
+                onClick={() => syncMutation.mutate(undefined, { onSuccess: () => toast.success('Synchronisé'), onError: () => toast.error('Erreur') })}
+                disabled={syncMutation.isPending} variant="outline" size="sm" className="gap-2">
+                {syncMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Sync
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleExport('tex')} className="gap-2">
+                <Download className="h-4 w-4" />.tex
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} className="gap-2">
+                <Download className="h-4 w-4" />PDF
+              </Button>
+            </>
           )}
-          <Button onClick={handleGenerate} disabled={generateMutation.isPending || validatedQuestions.length === 0} className="gap-2">
+          <Button onClick={handleGenerate} disabled={generateMutation.isPending} className="gap-2">
             {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            Générer la correction
+            Générer
           </Button>
         </div>
       </div>
 
-      {validatedQuestions.length === 0 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="pt-4 flex items-center gap-3 text-amber-700">
-            <AlertCircle className="h-5 w-5 flex-shrink-0" />
-            <p className="text-sm">Aucune question validée. Rendez-vous dans l&apos;onglet <strong>Questions</strong> pour valider des questions.</p>
+      {/* ── Correction rules panel ── */}
+      {showRules && (
+        <Card className="border-indigo-200 bg-indigo-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-indigo-600" />
+              Règles de correction automatique
+              <span className="text-xs font-normal text-muted-foreground ml-2">(utilisées par Gemini)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Textarea
+              value={localRules}
+              onChange={(e) => setLocalRules(e.target.value)}
+              rows={5}
+              placeholder="Ex: Accorder les points partiels si la démarche est correcte. Chaque étape vaut 0.5 pt..."
+              className="text-sm"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSaveRules} disabled={isSavingRules}>
+                {isSavingRules ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                Sauvegarder
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowRules(false)}>Fermer</Button>
+            </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* ── Selection toolbar ── */}
+      {corrections.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg border bg-slate-50 flex-wrap">
+          <span className="text-sm font-medium text-slate-600">Sélection :</span>
+          <Button size="sm" variant="ghost" className="h-7 text-xs"
+            onClick={() => setSelectedIndices(new Set(corrections.map((c) => c.index)))}>
+            Tout sélectionner
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs"
+            onClick={() => setSelectedIndices(new Set())} disabled={selectedIndices.size === 0}>
+            Désélectionner
+          </Button>
+          {selectedIndices.size > 0 && (
+            <Button size="sm" variant="outline"
+              className="h-7 text-xs gap-1 ml-auto border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={handleRegenSelected} disabled={regenMutation.isPending}>
+              {regenMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              Régénérer {selectedIndices.size} sélection(s)
+            </Button>
+          )}
+        </div>
       )}
 
       {hasOutdated && (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="pt-4 flex items-center gap-3 text-amber-700">
             <AlertCircle className="h-5 w-5 flex-shrink-0" />
-            <p className="text-sm">Certaines corrections sont périmées suite à une modification des questions. Cliquez sur <strong>Synchroniser corrections</strong> pour les régénérer.</p>
+            <p className="text-sm">Certaines corrections sont périmées. Cliquez sur <strong>Sync</strong> pour les régénérer.</p>
           </CardContent>
         </Card>
       )}
 
+      {/* ── Stats ── */}
       {corrections.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
-          <Card><CardContent className="pt-4"><div className="text-2xl font-bold text-indigo-600">{corrections.length}</div><div className="text-sm text-muted-foreground">Corrections générées</div></CardContent></Card>
+          <Card><CardContent className="pt-4"><div className="text-2xl font-bold text-indigo-600">{corrections.length}</div><div className="text-sm text-muted-foreground">Générées</div></CardContent></Card>
           <Card><CardContent className="pt-4"><div className="text-2xl font-bold text-emerald-600">{validatedCount}</div><div className="text-sm text-muted-foreground">Validées</div></CardContent></Card>
           <Card><CardContent className="pt-4"><div className="text-2xl font-bold text-orange-500">{corrections.length - validatedCount}</div><div className="text-sm text-muted-foreground">En attente</div></CardContent></Card>
         </div>
@@ -165,16 +282,17 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
         </div>
       )}
 
-      {!isLoading && corrections.length === 0 && validatedQuestions.length > 0 && (
+      {!isLoading && corrections.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center text-muted-foreground">
             <GraduationCap className="h-10 w-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">Aucune correction générée</p>
-            <p className="text-sm mt-1">Cliquez sur &quot;Générer la correction&quot; pour créer les corrections avec Gemini AI.</p>
+            <p className="text-sm mt-1">Cliquez sur &quot;Générer&quot; pour créer les corrections avec Gemini AI.</p>
           </CardContent>
         </Card>
       )}
 
+      {/* ── Corrections grouped by exercise ── */}
       {corrections.length > 0 && (
         <Accordion type="multiple" defaultValue={exerciseGroups.map(n => `ex-${n}`)}>
           {exerciseGroups.map((exNum) => {
@@ -188,145 +306,140 @@ export function CorrectionTab({ exam, courseId, examId }: CorrectionTabProps) {
                     <span className="font-semibold">{exTitle}</span>
                     <Badge variant="outline" className="text-xs">{exCorrections.length} question(s)</Badge>
                     {exValidated === exCorrections.length && exCorrections.length > 0 && (
-                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Toutes validées</Badge>
+                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />Toutes validées
+                      </Badge>
                     )}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
                   <div className="space-y-4 pt-2">
-                    {exCorrections.map((c) => (
-                      <Card key={c.index} className={c.outdated ? 'border-amber-200 bg-amber-50/30' : c.validated ? 'border-emerald-200 bg-emerald-50/30' : ''}>
-                        <CardHeader className="pb-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1">
-                              <CardTitle className="text-sm font-medium text-gray-700">
-                                Q{c.index + 1}. {c.question_text}
-                                {c.outdated && <Badge variant="destructive" className="text-xs ml-2">⚠️ Périmée</Badge>}
-                              </CardTitle>
-                              <div className="flex gap-2 mt-1 flex-wrap items-center">
-                                <Badge variant="outline" className="text-xs">{c.question_type}</Badge>
-                                {editingIndex === c.index ? (
-                                  <select
-                                    value={editBloom}
-                                    onChange={(e) => setEditBloom(e.target.value)}
-                                    className="text-xs border rounded px-1 py-0.5"
-                                  >
-                                    <option value="">—</option>
-                                    {(tagConstants?.bloom_levels || BLOOM_LEVELS_FALLBACK).map(level => (
-                                      <option key={level} value={level}>{level}</option>
+                    {exCorrections.map((c) => {
+                      const isSelected = selectedIndices.has(c.index);
+                      return (
+                        <Card key={c.index} className={[
+                          'transition-all',
+                          isSelected ? 'ring-2 ring-orange-400 ring-offset-1' : '',
+                          c.outdated ? 'border-amber-200 bg-amber-50/30' : c.validated ? 'border-emerald-200 bg-emerald-50/30' : '',
+                        ].filter(Boolean).join(' ')}>
+                          <CardHeader className="pb-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2 flex-1 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelect(c.index)}
+                                  className="mt-1 h-4 w-4 rounded border-gray-300 accent-orange-500 cursor-pointer flex-shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <CardTitle className="text-sm font-medium text-gray-700 break-words">
+                                    Q{c.index + 1}. {c.question_text}
+                                    {c.outdated && <Badge variant="destructive" className="text-xs ml-2">⚠️ Périmée</Badge>}
+                                  </CardTitle>
+                                  <div className="flex gap-2 mt-1 flex-wrap items-center">
+                                    <Badge variant="outline" className="text-xs">{c.question_type}</Badge>
+                                    {editingIndex === c.index ? (
+                                      <select value={editBloom} onChange={(e) => setEditBloom(e.target.value)} className="text-xs border rounded px-1 py-0.5">
+                                        <option value="">—</option>
+                                        {(tagConstants?.bloom_levels || BLOOM_LEVELS_FALLBACK).map(l => <option key={l} value={l}>{l}</option>)}
+                                      </select>
+                                    ) : (c.bloom_level && (
+                                      <Badge variant="secondary" className="text-xs"
+                                        style={{ backgroundColor: (tagConstants?.bloom_colors?.[c.bloom_level] || '') + '20', color: tagConstants?.bloom_colors?.[c.bloom_level] || undefined }}>
+                                        {c.bloom_level}
+                                      </Badge>
                                     ))}
-                                  </select>
-                                ) : (
-                                  c.bloom_level && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs"
-                                      style={{
-                                        backgroundColor: (tagConstants?.bloom_colors?.[c.bloom_level] || '') + '20',
-                                        color: tagConstants?.bloom_colors?.[c.bloom_level] || undefined,
-                                      }}
-                                    >
-                                      {c.bloom_level}
-                                    </Badge>
-                                  )
-                                )}
-                                {editingIndex === c.index ? (
-                                  <select
-                                    value={editDifficulty}
-                                    onChange={(e) => setEditDifficulty(e.target.value)}
-                                    className="text-xs border rounded px-1 py-0.5"
-                                  >
-                                    <option value="">—</option>
-                                    {(tagConstants?.difficulty_levels || DIFFICULTY_LEVELS_FALLBACK).map(level => (
-                                      <option key={level} value={level}>{level}</option>
+                                    {editingIndex === c.index ? (
+                                      <select value={editDifficulty} onChange={(e) => setEditDifficulty(e.target.value)} className="text-xs border rounded px-1 py-0.5">
+                                        <option value="">—</option>
+                                        {(tagConstants?.difficulty_levels || DIFFICULTY_LEVELS_FALLBACK).map(l => <option key={l} value={l}>{l}</option>)}
+                                      </select>
+                                    ) : (c.difficulty && (
+                                      <Badge variant="secondary" className="text-xs"
+                                        style={{ backgroundColor: (tagConstants?.difficulty_colors?.[c.difficulty] || '') + '20', color: tagConstants?.difficulty_colors?.[c.difficulty] || undefined }}>
+                                        {c.difficulty}
+                                      </Badge>
                                     ))}
-                                  </select>
-                                ) : (
-                                  c.difficulty && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs"
-                                      style={{
-                                        backgroundColor: (tagConstants?.difficulty_colors?.[c.difficulty] || '') + '20',
-                                        color: tagConstants?.difficulty_colors?.[c.difficulty] || undefined,
-                                      }}
-                                    >
-                                      {c.difficulty}
-                                    </Badge>
-                                  )
-                                )}
-                                <Badge className="text-xs bg-blue-100 text-blue-700">{c.points} pts</Badge>
+                                    <Badge className="text-xs bg-blue-100 text-blue-700">{c.points} pts</Badge>
+                                    {editingIndex !== c.index && (
+                                      <button onClick={() => syncTagsMutation.mutate(c.index)} title="Sync tags"
+                                        className="text-muted-foreground hover:text-foreground ml-1" disabled={syncTagsMutation.isPending}>
+                                        {syncTagsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex gap-2 flex-shrink-0">
                                 {editingIndex !== c.index && (
-                                  <button
-                                    onClick={() => syncTagsMutation.mutate(c.index)}
-                                    title="Synchroniser les tags"
-                                    className="text-xs text-muted-foreground hover:text-foreground ml-1"
-                                    disabled={syncTagsMutation.isPending}
-                                  >
-                                    {syncTagsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                                  </button>
+                                  <Button size="sm" variant="ghost" onClick={() => startEdit(c)}>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
                                 )}
-                              </div>
-                            </div>
-                            <div className="flex gap-2 flex-shrink-0">
-                              {!editingIndex || editingIndex !== c.index ? (
-                                <Button size="sm" variant="ghost" onClick={() => startEdit(c)}><Pencil className="h-3.5 w-3.5" /></Button>
-                              ) : null}
-                              <Button size="sm" variant={c.validated ? 'default' : 'outline'}
-                                className={c.validated ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
-                                onClick={() => toggleValidate(c)}>
-                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />{c.validated ? 'Validée' : 'Valider'}
-                              </Button>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          {editingIndex === c.index ? (
-                            <>
-                              <div>
-                                <label className="text-xs font-medium text-gray-600 mb-1 block">Correction modèle</label>
-                                <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={5} className="text-sm" />
-                              </div>
-                              <div>
-                                <label className="text-xs font-medium text-gray-600 mb-1 block">Décomposition des points</label>
-                                <Textarea value={editPointsDetail} onChange={(e) => setEditPointsDetail(e.target.value)} rows={2} className="text-sm" />
-                              </div>
-                              <div className="flex gap-2">
-                                <Button size="sm" onClick={() => saveEdit(c)} disabled={updateMutation.isPending}>
-                                  {updateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}Sauvegarder
+                                <Button size="sm" variant={c.validated ? 'default' : 'outline'}
+                                  className={c.validated ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                                  onClick={() => toggleValidate(c)}>
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />{c.validated ? 'Validée' : 'Valider'}
                                 </Button>
-                                <Button size="sm" variant="outline" onClick={() => setEditingIndex(null)}>Annuler</Button>
                               </div>
-                            </>
-                          ) : (
-                            <>
-                              <div>
-                                <p className="text-xs font-medium text-gray-600 mb-1">Correction modèle :</p>
-                                <p className="text-sm text-gray-800 whitespace-pre-wrap bg-white rounded p-2 border">{c.correction || <span className="text-gray-400 italic">Non générée</span>}</p>
-                              </div>
-                              {c.points_detail && (
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {editingIndex === c.index ? (
+                              <>
                                 <div>
-                                  <p className="text-xs font-medium text-gray-600 mb-1">Points :</p>
-                                  <p className="text-sm text-gray-700 bg-blue-50 rounded p-2">{c.points_detail}</p>
+                                  <label className="text-xs font-medium text-gray-600 mb-1 block">
+                                    Correction modèle <span className="text-gray-400">(supporte LaTeX: $...$ et $$...$$)</span>
+                                  </label>
+                                  <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={6} className="text-sm font-mono" />
                                 </div>
-                              )}
-                              {c.criteres && c.criteres.length > 0 && (
                                 <div>
-                                  <p className="text-xs font-medium text-gray-600 mb-1">Critères :</p>
-                                  <ul className="space-y-1">
-                                    {c.criteres.map((cr, i) => (
-                                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                                        <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-emerald-500 flex-shrink-0" />{cr}
-                                      </li>
-                                    ))}
-                                  </ul>
+                                  <label className="text-xs font-medium text-gray-600 mb-1 block">Décomposition des points</label>
+                                  <Textarea value={editPointsDetail} onChange={(e) => setEditPointsDetail(e.target.value)} rows={2} className="text-sm" />
                                 </div>
-                              )}
-                            </>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
+                                <div className="flex gap-2">
+                                  <Button size="sm" onClick={() => saveEdit(c)} disabled={updateMutation.isPending}>
+                                    {updateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                                    Sauvegarder
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setEditingIndex(null)}>Annuler</Button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  <p className="text-xs font-medium text-gray-600 mb-1">Correction modèle :</p>
+                                  <div className="text-sm text-gray-800 bg-white rounded p-3 border leading-relaxed">
+                                    <LatexRenderer text={c.correction} />
+                                  </div>
+                                </div>
+                                {c.points_detail && (
+                                  <div>
+                                    <p className="text-xs font-medium text-gray-600 mb-1">Points :</p>
+                                    <div className="text-sm text-gray-700 bg-blue-50 rounded p-2">
+                                      <LatexRenderer text={c.points_detail} />
+                                    </div>
+                                  </div>
+                                )}
+                                {c.criteres && c.criteres.length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-medium text-gray-600 mb-1">Critères :</p>
+                                    <ul className="space-y-1">
+                                      {c.criteres.map((cr, i) => (
+                                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                                          <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-emerald-500 flex-shrink-0" />
+                                          <LatexRenderer text={cr} />
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </AccordionContent>
               </AccordionItem>

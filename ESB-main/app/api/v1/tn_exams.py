@@ -46,6 +46,15 @@ def _log_route_access(action: str, course_id: int, document_id: int | None = Non
 
 def _serialize_exam(doc: Document) -> dict:
     analysis = doc.analysis_results or {}
+    extracted_qs = analysis.get('extracted_questions') or []
+    nb_questions = len(extracted_qs) or analysis.get('total_questions')
+    nb_exercises = len({q.get('exercise_number', 1) for q in extracted_qs}) if extracted_qs else None
+    # Exam type: prefer exam_header > exam_metadata > stored value
+    exam_type = (
+        (analysis.get('exam_header') or {}).get('exam_type')
+        or (analysis.get('exam_metadata') or {}).get('exam_type')
+        or analysis.get('exam_type')
+    )
     return {
         'id': doc.id,
         'title': doc.title,
@@ -60,10 +69,13 @@ def _serialize_exam(doc: Document) -> dict:
         'has_report': bool(doc.analysis_report_path),
         'analysis_report_path': doc.analysis_report_path,
         'analysis_results': analysis,
-        'total_questions': analysis.get('total_questions'),
+        'total_questions': nb_questions,
+        'nb_exercises': nb_exercises,
+        'exam_type': exam_type,
         'source_coverage_rate': analysis.get('source_coverage_rate'),
         'difficulty_index': analysis.get('difficulty_index'),
         'bloom_index': analysis.get('bloom_index'),
+        'chapter_coverage_rate': analysis.get('chapter_coverage_rate'),
     }
 
 
@@ -361,7 +373,49 @@ def save_analysis(course_id: int, document_id: int):
     return jsonify({'ok': True, 'message': 'Modifications sauvegardées.', 'exam': _serialize_exam(doc)}), 200
 
 
-@tn_exams_api_bp.route('/<int:document_id>/validation', methods=['GET'])
+@tn_exams_api_bp.route('/<int:document_id>/save-extracted-questions', methods=['POST'])
+@jwt_required()
+def save_extracted_questions(course_id: int, document_id: int):
+    """Save teacher-edited extracted_questions back to the database."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from collections import Counter
+
+    _, course, error = _get_teacher_course(course_id)
+    if error:
+        return error
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.course_id != course.id or doc.document_type != 'tn_exam':
+        return jsonify({'error': 'Exam not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    questions = data.get('questions')
+    if not isinstance(questions, list):
+        return jsonify({'error': 'questions must be a list'}), 400
+
+    ar = dict(doc.analysis_results or {})
+    ar['extracted_questions'] = questions
+
+    # Recompute aggregate stats
+    total = len(questions) or 1
+    bloom_counts = Counter(q.get('bloom_level', 'Non classifié') for q in questions)
+    ar['bloom_percentages'] = {k: round(v / total * 100) for k, v in bloom_counts.items()}
+
+    diff_counts = Counter(q.get('difficulty', 'Non classifié') for q in questions)
+    ar['difficulty_percentages'] = {k: round(v / total * 100) for k, v in diff_counts.items()}
+
+    total_pts = sum(float(q.get('points') or 0) for q in questions)
+    ar['total_max_points'] = round(total_pts, 2)
+
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    doc.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({'ok': True, 'message': 'Questions sauvegardées.', 'exam': _serialize_exam(doc)}), 200
+
+
+
 @jwt_required()
 def get_validation(course_id: int, document_id: int):
     """Return 8-criterion validation for a TN exam."""
@@ -801,6 +855,8 @@ Texte de l'examen:
             return jsonify({'error': 'Could not parse questions from Gemini response', 'raw': resp_text[:500]}), 500
 
         # ── Step 5: Post-process ──
+        _VALID_BLOOM = {'Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer'}
+        _VALID_DIFF  = {'Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile'}
         for i, q in enumerate(questions):
             q.setdefault('id', i + 1)
             # Normalize points
@@ -825,6 +881,17 @@ Texte de l'examen:
                 q['aa_numbers'] = [int(a) for a in aa_raw if str(a).isdigit() or isinstance(a, int)]
             else:
                 q['aa_numbers'] = []
+            # ── Normalize bloom_level — Gemini may return slightly different casing/spacing ──
+            raw_bloom = str(q.get('bloom_level', '')).strip()
+            if raw_bloom not in _VALID_BLOOM:
+                # Try case-insensitive match
+                matched_bloom = next((v for v in _VALID_BLOOM if v.lower() == raw_bloom.lower()), None)
+                q['bloom_level'] = matched_bloom if matched_bloom else 'Non classifié'
+            # ── Normalize difficulty ──
+            raw_diff = str(q.get('difficulty', '')).strip()
+            if raw_diff not in _VALID_DIFF:
+                matched_diff = next((v for v in _VALID_DIFF if v.lower() == raw_diff.lower()), None)
+                q['difficulty'] = matched_diff if matched_diff else 'Moyen'
 
         # ── Step 5b: If Gemini didn't fill aa_numbers, run dedicated AA classification ──
         if aa_targets and not any(q.get('aa_numbers') for q in questions):
@@ -849,6 +916,23 @@ Texte de l'examen:
         flag_modified(doc, 'analysis_results')
         doc.updated_at = datetime.utcnow()
         db.session.commit()
+
+        # ── Step 7: Auto-extract header (non-fatal) ──────────────────────────
+        try:
+            from app.services.tn_exam_evaluation_service import _extract_exam_metadata
+            header_data = _extract_exam_metadata(exam_text)
+            if header_data:
+                ar2 = dict(doc.analysis_results or {})
+                # Don't overwrite an existing vision-extracted header
+                if not ar2.get('exam_header'):
+                    ar2['exam_header'] = header_data
+                    doc.analysis_results = ar2
+                    flag_modified(doc, 'analysis_results')
+                    db.session.commit()
+                    current_app.logger.info(f'[QUESTIONS] Auto-extracted header for doc {document_id}')
+        except Exception as header_err:
+            current_app.logger.warning(f'[QUESTIONS] Auto-header extraction failed (non-blocking): {header_err}')
+        # ─────────────────────────────────────────────────────────────────────
 
         current_app.logger.info(f'[QUESTIONS EXTRACTION] course={course_id} doc={document_id} count={len(questions)}')
 
@@ -1064,11 +1148,12 @@ def get_proposals(course_id, document_id):
 def match_sources(course_id: int, document_id: int):
     """Match each extracted question to the most relevant course documents using RAG (ChromaDB + VectorStore).
 
-    Searches through:
-      - Documents attached to course chapters (Contenu des modules)
-      - Course-level PDF documents (e.g., textbooks without chapter assignment)
+    Query params:
+        force (bool): if 'true', re-run even if already matched. Default: false.
     """
     from app.services.vector_store import VectorStore
+
+    force = request.args.get('force', 'false').lower() == 'true'
 
     _, course, error = _get_teacher_course(course_id)
     if error:
@@ -1082,6 +1167,18 @@ def match_sources(course_id: int, document_id: int):
     questions = ar.get('extracted_questions', [])
     if not questions:
         return jsonify({'error': 'No extracted questions found. Run question extraction first.'}), 400
+
+    # Idempotency check — skip if all questions already have chapter_matches
+    all_matched = all('chapter_matches' in q for q in questions)
+    if all_matched and not force:
+        existing_rate = ar.get('chapter_coverage_rate', 0)
+        return jsonify({
+            'matches': [{'question_id': q.get('id', 0), 'question_number': str(q.get('question_number', '')), 'sources': q.get('chapter_matches', [])} for q in questions],
+            'total_questions': len(questions),
+            'chapter_coverage_rate': existing_rate,
+            'skipped': True,
+            'message': 'Already matched — use force=true to recompute',
+        }), 200
 
     # ── Get all course documents for RAG: chapter docs + course-level PDFs ──
     # Priority: documents belonging to chapters (module content) + course-level PDFs
@@ -1101,16 +1198,50 @@ def match_sources(course_id: int, document_id: int):
         for ch in Chapter.query.filter(Chapter.id.in_(chapter_ids)).all():
             chapters_map[ch.id] = {'title': ch.title, 'order': ch.order}
 
-    # Separate into chapter docs and course-level docs (textbooks etc.)
+    # Separate into chapter docs only (exclude course-level reference docs)
     chapter_docs = [d for d in course_docs if d.chapter_id is not None]
-    course_level_docs = [d for d in course_docs if d.chapter_id is None]
+
+    if not chapter_docs:
+        return jsonify({'matches': [], 'message': 'No chapter documents found for RAG matching. Upload documents to chapters first.'}), 200
 
     current_app.logger.info(
-        f'[MATCH-SOURCES] {len(questions)} questions vs {len(chapter_docs)} chapter docs + '
-        f'{len(course_level_docs)} course-level docs'
+        f'[MATCH-SOURCES] {len(questions)} questions vs {len(chapter_docs)} chapter docs (course-level references excluded)'
     )
 
     matches = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _search_doc_for_question(cdoc, q_text):
+        """Return list of source dicts for one (question, document) pair."""
+        local_sources = []
+        try:
+            vs = VectorStore(document_id=str(cdoc.id))
+            if not vs.collection_exists():
+                return local_sources
+            if vs.get_vector_count() == 0:
+                return local_sources
+            chunks = vs.search_text_chunks(q_text, n_results=3)
+            for chunk in chunks:
+                distance = chunk.get('distance', 1.0)
+                similarity = max(0.0, 1.0 - distance / 2.0)
+                if similarity < 0.20:
+                    continue
+                meta = chunk.get('metadata', {})
+                chapter_info = chapters_map.get(cdoc.chapter_id) if cdoc.chapter_id else None
+                local_sources.append({
+                    'document_id': cdoc.id,
+                    'document_name': cdoc.title or f'Document {cdoc.id}',
+                    'chapter_id': cdoc.chapter_id,
+                    'chapter_name': chapter_info['title'] if chapter_info else None,
+                    'chapter_order': chapter_info['order'] if chapter_info else None,
+                    'page': int(meta.get('page_number', 1)),
+                    'section': meta.get('section_title') or meta.get('section_number') or None,
+                    'excerpt': (chunk.get('content', '')[:300]).strip() or None,
+                    'similarity': round(similarity, 3),
+                })
+        except Exception as doc_err:
+            current_app.logger.warning(f'[MATCH-SOURCES] Error searching doc {cdoc.id}: {doc_err}')
+        return local_sources
 
     for q in questions:
         q_id = q.get('id', 0)
@@ -1122,40 +1253,11 @@ def match_sources(course_id: int, document_id: int):
 
         sources = []
 
-        # Search chapter documents first (higher priority)
-        for cdoc in chapter_docs + course_level_docs:
-            try:
-                vs = VectorStore(document_id=str(cdoc.id))
-                if not vs.collection_exists():
-                    continue
-                if vs.get_vector_count() == 0:
-                    continue
-
-                chunks = vs.search_text_chunks(q_text, n_results=3)
-
-                for chunk in chunks:
-                    distance = chunk.get('distance', 1.0)
-                    similarity = max(0.0, 1.0 - distance / 2.0)
-                    if similarity < 0.20:  # slightly lower threshold for broader matching
-                        continue
-
-                    meta = chunk.get('metadata', {})
-                    chapter_info = chapters_map.get(cdoc.chapter_id) if cdoc.chapter_id else None
-                    sources.append({
-                        'document_id': cdoc.id,
-                        'document_name': cdoc.title or f'Document {cdoc.id}',
-                        'chapter_id': cdoc.chapter_id,
-                        'chapter_name': chapter_info['title'] if chapter_info else None,
-                        'chapter_order': chapter_info['order'] if chapter_info else None,
-                        'page': int(meta.get('page_number', 1)),
-                        'section': meta.get('section_title') or meta.get('section_number') or None,
-                        'excerpt': (chunk.get('content', '')[:300]).strip() or None,
-                        'similarity': round(similarity, 3),
-                    })
-
-            except Exception as doc_err:
-                current_app.logger.warning(f'[MATCH-SOURCES] Error searching doc {cdoc.id}: {doc_err}')
-                continue
+        # Parallelise per-document VectorStore searches for this question
+        with ThreadPoolExecutor(max_workers=min(8, len(chapter_docs))) as pool:
+            futures = {pool.submit(_search_doc_for_question, cdoc, q_text): cdoc for cdoc in chapter_docs}
+            for future in as_completed(futures):
+                sources.extend(future.result())
 
         # Sort by similarity descending, keep top 3
         sources.sort(key=lambda s: s['similarity'], reverse=True)
@@ -1167,15 +1269,39 @@ def match_sources(course_id: int, document_id: int):
             'sources': sources,
         })
 
+    total_match_count = sum(len(m['sources']) for m in matches)
     current_app.logger.info(
-        f'[MATCH-SOURCES] Done — {sum(len(m["sources"]) for m in matches)} total source matches'
+        f'[MATCH-SOURCES] Done — {total_match_count} total source matches'
     )
+
+    # ── Persist chapter matches back into extracted_questions ────────────────
+    from sqlalchemy.orm.attributes import flag_modified as _flag_modified
+    matches_by_id = {m['question_id']: m['sources'] for m in matches}
+    matched_questions = 0
+    for q in questions:
+        q_id = q.get('id', 0)
+        chapter_matches = matches_by_id.get(q_id, [])
+        q['chapter_matches'] = chapter_matches
+        q['has_chapter_match'] = len(chapter_matches) > 0
+        if q['has_chapter_match']:
+            matched_questions += 1
+
+    chapter_coverage_rate = round((matched_questions / max(len(questions), 1)) * 100, 1)
+    ar['extracted_questions'] = questions
+    ar['chapter_coverage_rate'] = chapter_coverage_rate
+    doc.analysis_results = ar
+    _flag_modified(doc, 'analysis_results')
+    doc.updated_at = datetime.utcnow()
+    db.session.commit()
+    # ────────────────────────────────────────────────────────────────────────
+
     return jsonify({
         'matches': matches,
         'total_questions': len(questions),
-        'documents_searched': len(course_docs),
+        'documents_searched': len(chapter_docs),
         'chapter_docs': len(chapter_docs),
-        'course_level_docs': len(course_level_docs),
+        'course_level_docs': 0,
+        'chapter_coverage_rate': chapter_coverage_rate,
     }), 200
 
 
@@ -1200,15 +1326,41 @@ def get_report_data(course_id: int, document_id: int):
     header = ar.get('exam_header') or ar.get('exam_metadata') or {}
     questions = ar.get('questions') or extracted
 
+    # Compute difficulty/bloom percentages from extracted questions when full analysis hasn't run
+    def _compute_percentages_from_questions(qs, field_candidates):
+        if not qs:
+            return {}
+        counts: dict = {}
+        for q in qs:
+            for f in field_candidates:
+                val = q.get(f)
+                if val:
+                    counts[val] = counts.get(val, 0) + 1
+                    break
+        total = len(qs)
+        return {k: round(v * 100 / total, 1) for k, v in counts.items()}
+
+    diff_pct = ar.get('difficulty_percentages') or _compute_percentages_from_questions(
+        questions, ['difficulty', 'Difficulty'])
+    bloom_pct = ar.get('bloom_percentages') or _compute_percentages_from_questions(
+        questions, ['bloom_level', 'Bloom_Level', 'Bloom Level'])
+
+    # Compute total_max_points from questions if not stored
+    stored_total = ar.get('total_max_points')
+    if not stored_total and questions:
+        stored_total = sum(float(q.get('points') or q.get('Points') or 0) for q in questions) or None
+
     analysis_for_val = {
         'exam_metadata': header,
         'questions': questions,
+        'extracted_questions': extracted,
         'time_analysis': ar.get('time_analysis') or {},
-        'difficulty_percentages': ar.get('difficulty_percentages') or {},
-        'bloom_percentages': ar.get('bloom_percentages') or {},
+        'difficulty_percentages': diff_pct,
+        'bloom_percentages': bloom_pct,
         'aa_percentages': ar.get('aa_percentages') or {},
         'source_coverage_rate': ar.get('source_coverage_rate') or 0,
-        'total_max_points': ar.get('total_max_points'),
+        'chapter_coverage_rate': ar.get('chapter_coverage_rate') or ar.get('source_coverage_rate') or 0,
+        'total_max_points': stored_total,
     }
 
     validation = validate_exam(analysis_for_val)
@@ -1270,14 +1422,15 @@ def get_report_data(course_id: int, document_id: int):
             'quality': quality_score,
             'total': total_score,
         },
-        'bloom_percentages': ar.get('bloom_percentages') or {},
-        'difficulty_percentages': ar.get('difficulty_percentages') or {},
+        'bloom_percentages': bloom_pct,
+        'difficulty_percentages': diff_pct,
         'aa_percentages': ar.get('aa_percentages') or {},
         'type_distribution': type_dist,
         'aa_mapping': aa_mapping,
         'question_classification': classification,
         'time_analysis': ar.get('time_analysis') or {},
         'source_coverage_rate': ar.get('source_coverage_rate') or 0,
+        'chapter_coverage_rate': ar.get('chapter_coverage_rate') or ar.get('source_coverage_rate') or 0,
         'total_questions': len(questions),
         'has_full_analysis': bool(ar.get('questions')),
     }), 200
@@ -1514,17 +1667,24 @@ def generate_correction(course_id: int, document_id: int):
 
     ar = doc.analysis_results
     questions = ar.get('extracted_questions') or ar.get('questions') or []
-    validated_questions = [q for q in questions if q.get('validated')]
 
-    if not validated_questions:
-        return jsonify({'error': 'Aucune question validée trouvée'}), 400
+    # In auto-flow (use_all_questions=true), generate for all questions regardless of validation
+    use_all = request.args.get('use_all_questions', 'false').lower() == 'true'
+    if use_all:
+        target_questions = questions
+    else:
+        target_questions = [q for q in questions if q.get('validated')]
+
+    if not target_questions:
+        return jsonify({'error': 'Aucune question trouvée (ni validées, ni extraites)'}), 400
 
     try:
         module = (ar.get('exam_metadata') or {}).get('module', '')
         course_context = f"Module: {module}" if module else ''
+        correction_rules = ar.get('correction_rules', '')
 
         corrections = []
-        for i, q in enumerate(validated_questions):
+        for i, q in enumerate(target_questions):
             q_text = q.get('text') or q.get('question_text') or ''
             q_type = q.get('question_type') or q.get('type') or 'Ouvert'
             points = float(q.get('points') or q.get('bareme') or 2)
@@ -1542,6 +1702,7 @@ def generate_correction(course_id: int, document_id: int):
                 difficulty=difficulty,
                 aa_codes=[str(a) for a in aa_numbers],
                 course_context=course_context,
+                correction_rules=correction_rules,
             )
 
             corrections.append({
@@ -1573,10 +1734,318 @@ def generate_correction(course_id: int, document_id: int):
         return jsonify({'error': str(e)}), 500
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RÈGLES DE CORRECTION (GET / PUT)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/correction-rules', methods=['GET'])
+@jwt_required()
+def get_correction_rules(course_id: int, document_id: int):
+    """Return the saved correction rules for this exam."""
+    _, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+    ar = doc.analysis_results or {}
+    return jsonify({'correction_rules': ar.get('correction_rules', '')}), 200
+
+
+@tn_exams_api_bp.route('/<int:document_id>/correction-rules', methods=['PUT'])
+@jwt_required()
+def save_correction_rules(course_id: int, document_id: int):
+    """Save correction rules to analysis_results for reuse in auto-correction."""
+    from sqlalchemy.orm.attributes import flag_modified
+    _, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+    rules = (request.get_json() or {}).get('correction_rules', '')
+    ar = dict(doc.analysis_results or {})
+    ar['correction_rules'] = rules
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    doc.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'success': True, 'correction_rules': rules}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RÉGÉNÉRER CORRECTIONS SÉLECTIONNÉES
+# ─────────────────────────────────────────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/regenerate-corrections', methods=['POST'])
+@jwt_required()
+def regenerate_corrections(course_id: int, document_id: int):
+    """
+    Régénère les corrections pour une liste de questions sélectionnées.
+    Body JSON: { "question_indices": [0, 2, 5] }  — indices dans extracted_questions/questions
+    """
+    from app.services.exam_mcp_tools import generate_question_correction
+    from sqlalchemy.orm.attributes import flag_modified
+
+    _, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    body = request.get_json() or {}
+    question_indices = body.get('question_indices', [])
+    if not isinstance(question_indices, list) or not question_indices:
+        return jsonify({'error': 'question_indices doit être une liste non vide'}), 400
+
+    ar = dict(doc.analysis_results or {})
+    questions = ar.get('extracted_questions') or ar.get('questions') or []
+    corrections = list(ar.get('corrections') or [])
+
+    module = (ar.get('exam_metadata') or {}).get('module', '')
+    course_context = f"Module: {module}" if module else ''
+    correction_rules = ar.get('correction_rules', '')
+
+    regenerated = []
+    for idx in question_indices:
+        if idx < 0 or idx >= len(questions):
+            continue
+        q = questions[idx]
+        q_text = q.get('text') or q.get('question_text') or ''
+        q_type = q.get('question_type') or q.get('type') or 'Ouvert'
+        points = float(q.get('points') or q.get('bareme') or 2)
+        bloom = q.get('bloom_level') or q.get('Bloom_Level') or ''
+        difficulty = q.get('difficulty') or q.get('Difficulty') or ''
+        exercise_num = q.get('exercise_number') or q.get('exercice') or (idx + 1)
+        exercise_title = q.get('exercise_title') or f'Exercice {exercise_num}'
+        aa_numbers = q.get('aa_numbers') or []
+
+        parsed = generate_question_correction(
+            question_text=q_text,
+            question_type=q_type,
+            points=points,
+            bloom_level=bloom,
+            difficulty=difficulty,
+            aa_codes=[str(a) for a in aa_numbers],
+            course_context=course_context,
+            correction_rules=correction_rules,
+        )
+
+        new_corr = {
+            'index': idx,
+            'exercise_number': exercise_num,
+            'exercise_title': exercise_title,
+            'question_text': q_text,
+            'question_type': q_type,
+            'points': points,
+            'bloom_level': bloom,
+            'difficulty': difficulty,
+            'aa_numbers': aa_numbers,
+            'correction': parsed.get('correction', ''),
+            'points_detail': parsed.get('points_detail', ''),
+            'criteres': parsed.get('criteres', []),
+            'validated': False,
+        }
+
+        # Replace existing correction at same index or append
+        replaced = False
+        for i, c in enumerate(corrections):
+            if c.get('index') == idx:
+                corrections[i] = new_corr
+                replaced = True
+                break
+        if not replaced:
+            corrections.append(new_corr)
+
+        regenerated.append(new_corr)
+
+    # Sort corrections by index
+    corrections.sort(key=lambda c: c.get('index', 0))
+    ar['corrections'] = corrections
+    doc.analysis_results = ar
+    flag_modified(doc, 'analysis_results')
+    db.session.commit()
+
+    return jsonify({'regenerated': regenerated, 'count': len(regenerated)}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPORT EXAM & CORRECTION (LaTeX source + PDF)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@tn_exams_api_bp.route('/<int:document_id>/export-correction-tex', methods=['GET'])
+@jwt_required()
+def export_correction_tex(course_id: int, document_id: int):
+    """Return a LaTeX source file for the exam correction."""
+    import io
+    _, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    tex_content = _build_correction_latex(doc, course)
+    safe_name = (doc.title or 'correction').replace(' ', '_')
+    buf = io.BytesIO(tex_content.encode('utf-8'))
+    buf.seek(0)
+    from flask import send_file
+    return send_file(buf, as_attachment=True,
+                     download_name=f'correction_{safe_name}.tex',
+                     mimetype='text/plain; charset=utf-8')
+
+
+@tn_exams_api_bp.route('/<int:document_id>/export-correction-pdf', methods=['GET'])
+@jwt_required()
+def export_correction_pdf(course_id: int, document_id: int):
+    """Compile correction to PDF and return it. Requires pdflatex on server."""
+    import tempfile, subprocess, os as _os
+    from flask import send_file
+    _, course, err = _get_teacher_course(course_id)
+    if err:
+        return err
+    doc = Document.query.get_or_404(document_id)
+    if doc.document_type != 'tn_exam' or doc.course_id != course_id:
+        return jsonify({'error': 'Épreuve TN introuvable'}), 404
+
+    tex_content = _build_correction_latex(doc, course)
+    safe_name = (doc.title or 'correction').replace(' ', '_')
+
+    tmp_dir = tempfile.mkdtemp()
+    tex_path = _os.path.join(tmp_dir, 'correction.tex')
+    pdf_path = _os.path.join(tmp_dir, 'correction.pdf')
+    try:
+        with open(tex_path, 'w', encoding='utf-8') as f:
+            f.write(tex_content)
+        # Run pdflatex twice for proper references
+        for _ in range(2):
+            result = subprocess.run(
+                ['pdflatex', '-interaction=nonstopmode', '-output-directory', tmp_dir, tex_path],
+                capture_output=True, timeout=60
+            )
+        if _os.path.exists(pdf_path):
+            return send_file(pdf_path, as_attachment=True,
+                             download_name=f'correction_{safe_name}.pdf',
+                             mimetype='application/pdf')
+        else:
+            # Return .tex as fallback with error detail
+            buf = __import__('io').BytesIO(tex_content.encode('utf-8'))
+            buf.seek(0)
+            current_app.logger.warning(f'[PDF-CORRECTION] pdflatex failed: {result.stderr[:500] if result else ""}')
+            return send_file(buf, as_attachment=True,
+                             download_name=f'correction_{safe_name}.tex',
+                             mimetype='text/plain; charset=utf-8')
+    except FileNotFoundError:
+        # pdflatex not installed — return .tex
+        buf = __import__('io').BytesIO(tex_content.encode('utf-8'))
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name=f'correction_{safe_name}.tex',
+                         mimetype='text/plain; charset=utf-8')
+    except Exception as e:
+        current_app.logger.error(f'[PDF-CORRECTION] Error: {e}', exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+def _build_correction_latex(doc, course) -> str:
+    """Build LaTeX source for the correction document."""
+    ar = doc.analysis_results or {}
+    corrections = ar.get('corrections') or []
+    header = ar.get('exam_header') or ar.get('exam_metadata') or {}
+
+    lines = [
+        r'\documentclass[12pt,a4paper]{article}',
+        r'\usepackage[utf8]{inputenc}',
+        r'\usepackage[T1]{fontenc}',
+        r'\usepackage[french]{babel}',
+        r'\usepackage{amsmath,amssymb,amsfonts}',
+        r'\usepackage{geometry}',
+        r'\geometry{margin=2.5cm}',
+        r'\usepackage{enumitem}',
+        r'\usepackage{xcolor}',
+        r'\usepackage{titlesec}',
+        r'\usepackage{parskip}',
+        r'\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]',
+        r'\begin{document}',
+        r'\begin{center}',
+        r'{\Large\bfseries Corrigé type --- ' + _tex_safe(header.get('exam_name') or doc.title or 'Épreuve') + r'}\\[0.4em]',
+        r'{\normalsize ' + _tex_safe(header.get('class_name') or course.title or '') + r'}\\',
+        r'{\small ' + _tex_safe(str(header.get('exam_date') or '')) + r' \quad Durée\,: ' + str(header.get('declared_duration_min') or '') + r' min}',
+        r'\end{center}',
+        r'\hrule\vspace{1em}',
+        r'\noindent\textbf{Règles de correction :}\\[0.3em]',
+    ]
+
+    correction_rules = ar.get('correction_rules', '').strip()
+    if correction_rules:
+        # Treat rules as plain text — escape but keep newlines
+        escaped_rules = _tex_safe(correction_rules).replace('\n', r'\\' + '\n')
+        lines.append(escaped_rules + r'\\[1em]')
+    else:
+        lines.append(r'\textit{(Aucune règle spécifique définie.)}\\[1em]')
+
+    # Group by exercise
+    by_ex: dict = {}
+    for c in corrections:
+        ex_n = c.get('exercise_number', 1)
+        by_ex.setdefault(ex_n, []).append(c)
+
+    for ex_n in sorted(by_ex.keys(), key=lambda x: (0, x) if isinstance(x, int) else (1, str(x))):
+        ex_corrs = by_ex[ex_n]
+        ex_title = ex_corrs[0].get('exercise_title') or f'Exercice {ex_n}'
+        total_pts = sum(float(c.get('points') or 0) for c in ex_corrs)
+        section_header = _tex_safe(ex_title) + (f' \\hfill {total_pts:.4g} pts' if total_pts else '')
+        lines.append(r'\section*{' + section_header + r'}')
+        lines.append(r'\begin{enumerate}[leftmargin=*,label=\textbf{Q\arabic*.},itemsep=1.5em]')
+        for c in ex_corrs:
+            q_text = _tex_safe(str(c.get('question_text', '')))
+            pts = c.get('points', '')
+            # Correction body: generated by Gemini as LaTeX — do NOT escape
+            corr_body = (c.get('correction') or '').strip()
+            pts_detail = (c.get('points_detail') or '').strip()
+            criteres = c.get('criteres') or []
+
+            lines.append(
+                r'\item \textbf{Énoncé :} \textit{' + q_text[:300] + r'}'
+                + (r' \hfill\textbf{' + str(pts) + r' pts}' if pts else '')
+            )
+            if corr_body:
+                lines.append(r'\par\textbf{Correction :}')
+                lines.append(r'\par ' + corr_body)
+            if pts_detail:
+                lines.append(r'\par\smallskip\textbf{Barème :} ' + pts_detail)
+            if criteres:
+                lines.append(r'\par\smallskip\textbf{Critères d\'évaluation :}')
+                lines.append(r'\begin{itemize}[nosep,topsep=0pt]')
+                for cr in criteres:
+                    # Criteria may be plain text — escape
+                    lines.append(r'\item ' + _tex_safe(str(cr)))
+                lines.append(r'\end{itemize}')
+        lines.append(r'\end{enumerate}')
+
+    lines.append(r'\end{document}')
+    return '\n'.join(lines)
+
+
+def _tex_safe(value) -> str:
+    """Minimal LaTeX escaping for user-provided strings."""
+    if not value:
+        return ''
+    s = str(value)
+    for ch, repl in [
+        ('\\', r'\textbackslash{}'), ('&', r'\&'), ('%', r'\%'),
+        ('#', r'\#'), ('_', r'\_'), ('{', r'\{'), ('}', r'\}'),
+        ('~', r'\textasciitilde{}'), ('^', r'\textasciicircum{}'),
+    ]:
+        s = s.replace(ch, repl)
+    return s
+
+
 @tn_exams_api_bp.route('/<int:document_id>/corrections', methods=['GET'])
 @jwt_required()
 def get_corrections(course_id: int, document_id: int):
-    """Retourne les corrections générées pour cette épreuve TN."""
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     if not user:
@@ -1788,13 +2257,19 @@ def sync_corrections(course_id: int, document_id: int):
 @tn_exams_api_bp.route('/<int:document_id>/auto-classify', methods=['POST'])
 @jwt_required()
 def auto_classify_questions(course_id: int, document_id: int):
-    """Auto-classify all extracted questions: Bloom, AA, difficulty."""
+    """Auto-classify all extracted questions: Bloom, AA, difficulty.
+
+    Query params:
+        force (bool): if 'true', re-run even if already classified. Default: false.
+    """
     from app.services.exam_mcp_tools import (
         classify_questions_bloom, classify_questions_aa,
-        assess_question_difficulty,
+        assess_difficulty_and_duration,
     )
     from app.models.syllabus import Syllabus, TNAA
     from sqlalchemy.orm.attributes import flag_modified
+
+    force = request.args.get('force', 'false').lower() == 'true'
 
     user, course, err = _get_teacher_course(course_id)
     if err:
@@ -1810,6 +2285,37 @@ def auto_classify_questions(course_id: int, document_id: int):
     if not questions:
         return jsonify({'error': 'No questions to classify'}), 400
 
+    VALID_BLOOM = {'Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer'}
+    VALID_DIFF = {'Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile'}
+
+    # Normalize bloom/difficulty in-place before idempotency check
+    # (handles Gemini returning values with extra spaces or wrong casing)
+    for q in questions:
+        raw_b = str(q.get('bloom_level', '')).strip()
+        if raw_b not in VALID_BLOOM:
+            match_b = next((v for v in VALID_BLOOM if v.lower() == raw_b.lower()), None)
+            if match_b:
+                q['bloom_level'] = match_b
+        raw_d = str(q.get('difficulty', '')).strip()
+        if raw_d not in VALID_DIFF:
+            match_d = next((v for v in VALID_DIFF if v.lower() == raw_d.lower()), None)
+            if match_d:
+                q['difficulty'] = match_d
+
+    # Idempotency check — skip if already fully classified and force not requested
+    all_bloom_done = all(q.get('bloom_level', '') in VALID_BLOOM for q in questions)
+    all_diff_done  = all(q.get('difficulty', '') in VALID_DIFF for q in questions)
+    all_time_done  = all(isinstance(q.get('estimated_time_min'), int) and q['estimated_time_min'] > 0 for q in questions)
+
+    if all_bloom_done and all_diff_done and all_time_done and not force:
+        return jsonify({
+            'success': True,
+            'classified_count': len(questions),
+            'results': {'bloom': 'skipped (already done)', 'aa': 'skipped', 'difficulty': 'skipped (already done)', 'duration': 'skipped (already done)'},
+            'questions': questions,
+            'skipped': True,
+        }), 200
+
     # Ensure each question has a 'number' key for classification functions
     for i, q in enumerate(questions):
         if 'number' not in q:
@@ -1822,15 +2328,31 @@ def auto_classify_questions(course_id: int, document_id: int):
         aas = TNAA.query.filter_by(syllabus_id=syllabus.id).all()
         aa_list = [{'AA#': aa.number, 'AA Description': aa.description} for aa in aas]
 
+    # Build course context from course description + syllabus objectives
+    course_context_parts = []
+    if course.description:
+        course_context_parts.append(course.description)
+    if syllabus:
+        if syllabus.objectives:
+            course_context_parts.append(f"Objectifs: {syllabus.objectives}")
+        if aa_list:
+            course_context_parts.append("Apprentissages attendus: " + "; ".join(
+                f"AA{a['AA#']}: {a['AA Description']}" for a in aa_list
+            ))
+    course_context = "\n".join(course_context_parts)
+
     results = {}
 
-    # Bloom classification
-    try:
-        classify_questions_bloom(questions)
-        results['bloom'] = 'success'
-    except Exception as e:
-        current_app.logger.error(f"auto_classify bloom error: {e}")
-        results['bloom'] = f'error: {e}'
+    # Bloom classification (skip if already done and not forced)
+    if not all_bloom_done or force:
+        try:
+            classify_questions_bloom(questions)
+            results['bloom'] = 'success'
+        except Exception as e:
+            current_app.logger.error(f"auto_classify bloom error: {e}")
+            results['bloom'] = f'error: {e}'
+    else:
+        results['bloom'] = 'skipped (already done)'
 
     # AA classification
     try:
@@ -1843,13 +2365,19 @@ def auto_classify_questions(course_id: int, document_id: int):
         current_app.logger.error(f"auto_classify aa error: {e}")
         results['aa'] = f'error: {e}'
 
-    # Difficulty assessment
-    try:
-        assess_question_difficulty(questions, '')
-        results['difficulty'] = 'success'
-    except Exception as e:
-        current_app.logger.error(f"auto_classify difficulty error: {e}")
-        results['difficulty'] = f'error: {e}'
+    # Difficulty + duration assessment (combined Gemini call, skip if both already done)
+    if not all_diff_done or not all_time_done or force:
+        try:
+            assess_difficulty_and_duration(questions, course_context)
+            results['difficulty'] = 'success'
+            results['duration'] = 'success'
+        except Exception as e:
+            current_app.logger.error(f"auto_classify difficulty/duration error: {e}")
+            results['difficulty'] = f'error: {e}'
+            results['duration'] = f'error: {e}'
+    else:
+        results['difficulty'] = 'skipped (already done)'
+        results['duration']   = 'skipped (already done)'
 
     # Persist
     ar['extracted_questions'] = questions

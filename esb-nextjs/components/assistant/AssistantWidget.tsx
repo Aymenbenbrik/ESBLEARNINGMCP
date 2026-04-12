@@ -51,7 +51,7 @@ export function AssistantWidget() {
     if (audioEnabled && messages.length > 0) {
       const last = messages[messages.length - 1];
       if (last.role === 'assistant' && last.content) {
-        playAudio(last.content, last.language || 'fr');
+        playAudio(last.content as string, last.language || 'fr');
       }
     }
   }, [messages, audioEnabled, playAudio]);
@@ -201,7 +201,7 @@ export function AssistantWidget() {
                 key={i}
                 message={msg}
                 isTunisian={msg.language === 'tn'}
-                onPlayAudio={audioEnabled ? () => playAudio(msg.content, msg.language || 'fr') : undefined}
+                onPlayAudio={audioEnabled ? () => playAudio(msg.content as string, msg.language || 'fr') : undefined}
               />
             ))}
 

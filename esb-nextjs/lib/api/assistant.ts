@@ -2,7 +2,8 @@ import { apiClient } from './client';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
-  content: string;
+  /** Backend (Gemini) may return structured content instead of a plain string */
+  content: string | unknown;
   timestamp?: string;
   language?: string;
   tools_used?: string[];
@@ -10,7 +11,8 @@ export interface ChatMessage {
 }
 
 export interface ChatResponse {
-  response: string;
+  /** Backend (Gemini) may return structured content instead of a plain string */
+  response: string | unknown;
   language: string;
   tools_used: string[];
   tunbert_intents?: { intent: string; confidence: number; description_fr: string }[];

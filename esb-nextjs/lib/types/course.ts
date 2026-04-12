@@ -558,9 +558,12 @@ export interface TnExamDocument {
   analysis_report_path: string | null;
   analysis_results: TnExamAnalysisResults | null;
   total_questions: number | null;
+  nb_exercises: number | null;
+  exam_type: string | null;
   source_coverage_rate: number | null;
   difficulty_index: number | null;
   bloom_index: number | null;
+  chapter_coverage_rate: number | null;
 }
 
 // ─── TN Exam Analysis Types ───────────────────────────────────────────────────
@@ -634,6 +637,8 @@ export interface TnExamCorrection {
   points_detail: string;
   criteres: string[];
   validated: boolean;
+  /** True when the source question was edited after this correction was generated */
+  outdated?: boolean;
 }
 
 export interface ValidationCriterion {
@@ -685,10 +690,18 @@ export interface ExtractedQuestion {
   points: number | null;
   question_type: string;
   difficulty: string;
+  /** Gemini justification for the difficulty rating */
+  difficulty_justification?: string;
   bloom_level: string;
   estimated_time_min: number | null;
+  /** Gemini justification for the time estimate */
+  time_justification?: string;
   /** AA numbers covered by this question (from extract-questions endpoint) */
   aa_numbers?: number[];
+  /** Chapter/document correspondence from match-sources */
+  chapter_matches?: QuestionSourceMatch['sources'];
+  /** Whether this question has at least one chapter match */
+  has_chapter_match?: boolean;
 }
 
 export interface QuestionSourceMatch {
@@ -706,6 +719,8 @@ export interface QuestionSourceMatch {
     chapter?: string | null;
     excerpt?: string | null;
     similarity?: number | null;
+    /** Score returned by match-sources bulk endpoint */
+    similarity_score?: number | null;
   }[];
 }
 

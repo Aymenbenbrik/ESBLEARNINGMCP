@@ -131,6 +131,7 @@ import {
   Globe,
   GraduationCap,
   Wand2,
+  RefreshCw,
 
 } from 'lucide-react';
 
@@ -1015,11 +1016,13 @@ function DurationBarChart({ estimated, buffer, declared }: {
 function PointsPerExerciseChart({ questions }: { questions: any[] }) {
   const ex: Record<string, number> = {};
   const exOrder: string[] = [];
-  questions.forEach((q, idx) => {
-    const exNum = (q as any).exercise_number ?? Math.floor(idx / 3) + 1;
-    const t = (q as any).exercise_title ?? `Exercice ${exNum}`;
+  questions.forEach((q) => {
+    // Support both extracted format (exercise_number/points) and AI-analysis format (Exercise#/Points)
+    const exNum = q.exercise_number ?? (q as any)['Exercise#'] ?? 1;
+    const pts = parseFloat(q.points ?? q.Points ?? 0) || 0;
+    const t = q.exercise_title ?? (q as any)['Exercise Title'] ?? `Exercice ${exNum}`;
     if (!ex[t]) exOrder.push(t);
-    ex[t] = (ex[t] ?? 0) + (parseFloat((q as any).points) || 0);
+    ex[t] = (ex[t] ?? 0) + pts;
   });
   const labels = exOrder;
   const data = labels.map((l) => ex[l]);
@@ -1995,6 +1998,7 @@ function computeScores({
   typePercentages,
   totalAA,
   sourceCoverageRate,
+  chapterCoverageRate,
 }: {
   bloomPercentages: Record<string, number>;
   difficultyPercentages: Record<string, number>;
@@ -2003,6 +2007,7 @@ function computeScores({
   typePercentages: Record<string, number>;
   totalAA: number;
   sourceCoverageRate: number;
+  chapterCoverageRate?: number;
 }) {
   const coveredAA = Object.keys(aaPercentages).length;
   const totalAACount = coveredAA + aaMissing.length;
@@ -2025,7 +2030,10 @@ function computeScores({
   const typeCount = Object.keys(typePercentages).length;
   const typeScore = Math.min(100, typeCount * 20);
 
-  const sourceScore = Math.round(sourceCoverageRate);
+  // Blend sourceCoverageRate (full pipeline) with chapterCoverageRate (chapter RAG) when both available
+  const sourceScore = chapterCoverageRate != null
+    ? Math.round(sourceCoverageRate * 0.4 + chapterCoverageRate * 0.6)
+    : Math.round(sourceCoverageRate);
 
   const overall = Math.round(
     aaCoverageScore * 0.30 +
@@ -2081,6 +2089,7 @@ function EvaluationScoreCards({
   typePercentages,
   totalAA,
   sourceCoverageRate,
+  chapterCoverageRate,
 }: {
   bloomPercentages: Record<string, number>;
   difficultyPercentages: Record<string, number>;
@@ -2089,10 +2098,11 @@ function EvaluationScoreCards({
   typePercentages: Record<string, number>;
   totalAA: number;
   sourceCoverageRate: number;
+  chapterCoverageRate?: number;
 }) {
   const scores = computeScores({
     bloomPercentages, difficultyPercentages, aaPercentages,
-    aaMissing, typePercentages, totalAA, sourceCoverageRate,
+    aaMissing, typePercentages, totalAA, sourceCoverageRate, chapterCoverageRate,
   });
 
   const getOverallLabel = (s: number) =>
@@ -2649,86 +2659,161 @@ function QuestionsTab({
   onQuestionsUpdated: () => void;
 }) {
   const questions: ExtractedQuestion[] = (exam.analysis_results as any)?.extracted_questions ?? [];
-  const [isExtracting, setIsExtracting] = useState(false);
+  const ar = exam.analysis_results as Record<string, unknown> | null | undefined;
+
+  // ── Progress tracking ──────────────────────────────────────────────────────
+  type StepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
+  interface AutoStep { id: string; label: string; status: StepStatus; detail?: string }
+
+  const STEP_DEFS: Pick<AutoStep, 'id' | 'label'>[] = [
+    { id: 'extract',  label: 'Extraction des questions (Gemini Vision)' },
+    { id: 'classify', label: 'Classification Bloom / AA / Difficulté / Durée' },
+    { id: 'header',   label: "Extraction de l'en-tête" },
+    { id: 'match',    label: 'Correspondance avec les chapitres (RAG)' },
+    { id: 'correct',  label: 'Génération des corrections' },
+  ];
+
+  const [steps, setSteps] = useState<AutoStep[]>(
+    STEP_DEFS.map((s) => ({ ...s, status: 'pending' }))
+  );
+  const [isRunning, setIsRunning] = useState(false);
+
+  const setStep = (id: string, status: StepStatus, detail?: string) =>
+    setSteps((prev) => prev.map((s) => s.id === id ? { ...s, status, detail } : s));
 
   // On mount: sync to localStorage
   useEffect(() => {
     const storageKey = `exam_questions_${courseId}_${examId}`;
     if (questions.length > 0) {
       localStorage.setItem(storageKey, JSON.stringify(questions));
-      console.log(`[EXAM QUESTIONS] Loaded from DB for exam ${examId}:`, questions);
-    } else {
-      const cached = localStorage.getItem(storageKey);
-      if (cached) {
-        console.log(`[EXAM QUESTIONS] Loaded from localStorage for exam ${examId}:`, JSON.parse(cached));
-      }
     }
   }, [questions, courseId, examId]);
 
-  const handleExtractQuestions = async () => {
-    setIsExtracting(true);
+  // Idempotency helpers
+  const VALID_BLOOM = new Set(['Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer']);
+  const VALID_DIFF  = new Set(['Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile']);
+
+  const isBloomDone    = questions.length > 0 && questions.every((q) => VALID_BLOOM.has(q.bloom_level ?? ''));
+  const isDiffDone     = questions.length > 0 && questions.every((q) => VALID_DIFF.has(q.difficulty ?? ''));
+  const isHeaderDone   = Boolean(ar?.exam_header);
+  const isMatchDone    = questions.length > 0 && questions.every((q) => 'chapter_matches' in q);
+  const isCorrectDone  = Boolean((ar?.corrections as any[])?.length);
+
+  const isTimeDone     = questions.length > 0 && questions.every((q) => q.estimated_time_min != null && q.estimated_time_min > 0);
+
+  const handleExtractQuestions = async (forceAll = false) => {
+    setIsRunning(true);
+    setSteps(STEP_DEFS.map((s) => ({ ...s, status: 'pending' })));
+    let didChange = false;
+
     try {
-      const response = await tnExamsApi.extractQuestions(courseId, examId);
-      const extracted = response.data.questions;
-
-      // Save to localStorage
-      const storageKey = `exam_questions_${courseId}_${examId}`;
-      localStorage.setItem(storageKey, JSON.stringify(extracted));
-
-      // Console log
-      console.log(`[EXAM QUESTIONS] Extraction réussie pour exam ${examId}: ${extracted.length} questions`);
-      console.table(extracted.map((q) => ({
-        '#': q.question_number,
-        'Exercice': q.exercise_title,
-        'Texte': q.text?.substring(0, 60) + '...',
-        'Figure': q.has_figure ? '📊 Oui' : 'Non',
-        'Points': q.points ?? '-',
-        'Type': q.question_type,
-        'Difficulté': q.difficulty,
-        'Bloom': q.bloom_level,
-        'Temps (min)': q.estimated_time_min ?? '-',
-      })));
-
-      toast.success(`${extracted.length} questions extraites avec succès !`);
-      onQuestionsUpdated();
-
-      // Auto-trigger classification after extraction
-      try {
-        toast.info('Classification automatique en cours…');
-        await tnExamsApi.autoClassify(courseId, examId);
-        toast.success('Classification automatique terminée');
-        onQuestionsUpdated(); // Refresh with classified data
-      } catch (classifyErr) {
-        console.warn('[EXAM QUESTIONS] Auto-classify failed (non-blocking):', classifyErr);
+      // ── Step 1: Extract questions ──────────────────────────────────────────
+      const alreadyExtracted = questions.length > 0 && !forceAll;
+      if (alreadyExtracted) {
+        setStep('extract', 'skipped', `${questions.length} questions déjà extraites`);
+      } else {
+        setStep('extract', 'running');
+        try {
+          const res = await tnExamsApi.extractQuestions(courseId, examId);
+          const extracted = res.data.questions;
+          localStorage.setItem(`exam_questions_${courseId}_${examId}`, JSON.stringify(extracted));
+          setStep('extract', 'done', `${extracted.length} questions extraites`);
+          didChange = true;
+        } catch (e: any) {
+          setStep('extract', 'error', e?.response?.data?.error ?? e?.message);
+          // Fatal — can't continue without questions
+          return;
+        }
       }
 
-      // Auto-trigger correction generation after classification
-      try {
-        toast.info('Génération des corrections en cours…');
-        await tnExamsApi.generateCorrection(courseId, examId);
-        toast.success('Corrections générées automatiquement');
-        onQuestionsUpdated();
-      } catch (corrErr) {
-        console.warn('[EXAM QUESTIONS] Auto-correction failed (non-blocking):', corrErr);
+      // ── Step 2: Bloom / AA / Difficulty / Duration classification ───────────
+      const classifyDone = (isBloomDone && isDiffDone && isTimeDone) && !forceAll;
+      if (classifyDone) {
+        setStep('classify', 'skipped', 'Déjà classifié');
+      } else {
+        setStep('classify', 'running');
+        try {
+          const res = await tnExamsApi.autoClassify(courseId, examId, forceAll);
+          if (res.data.skipped) {
+            setStep('classify', 'skipped', 'Déjà classifié (backend)');
+          } else {
+            const r = res.data.results ?? {};
+            setStep('classify', 'done',
+              `Bloom: ${r.bloom ?? '?'} | AA: ${r.aa ?? '?'} | Diff: ${r.difficulty ?? '?'} | Durée: ${r.duration ?? '?'}`);
+            didChange = true;
+          }
+        } catch (e: any) {
+          setStep('classify', 'error', e?.response?.data?.error ?? e?.message);
+          // Non-fatal — continue
+        }
       }
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Erreur lors de l'extraction";
-      console.error('[EXAM QUESTIONS] Extraction failed:', err);
-      toast.error(msg);
+
+      // ── Step 3: Header extraction ─────────────────────────────────────────
+      if (isHeaderDone && !forceAll) {
+        setStep('header', 'skipped', 'En-tête déjà extrait');
+      } else {
+        setStep('header', 'running');
+        try {
+          await tnExamsApi.extractHeader(courseId, examId);
+          setStep('header', 'done', 'En-tête extrait');
+          didChange = true;
+        } catch (e: any) {
+          setStep('header', 'error', e?.response?.data?.error ?? e?.message);
+        }
+      }
+
+      // ── Step 4: Chapter correspondence (RAG) ─────────────────────────────
+      if (isMatchDone && !forceAll) {
+        setStep('match', 'skipped', 'Correspondance déjà calculée');
+      } else {
+        setStep('match', 'running');
+        try {
+          const res = await tnExamsApi.matchSources(courseId, examId, forceAll);
+          if (res.data.skipped) {
+            setStep('match', 'skipped', 'Déjà calculé (backend)');
+          } else {
+            const rate = res.data.chapter_coverage_rate ?? 0;
+            setStep('match', 'done', `${Math.round(rate)}% de couverture chapitres`);
+            didChange = true;
+          }
+        } catch (e: any) {
+          setStep('match', 'error', e?.response?.data?.error ?? e?.message);
+        }
+      }
+
+      // ── Step 5: Corrections ───────────────────────────────────────────────
+      if (isCorrectDone && !forceAll) {
+        setStep('correct', 'skipped', 'Corrections déjà générées');
+      } else {
+        setStep('correct', 'running');
+        try {
+          await tnExamsApi.generateCorrection(courseId, examId, true);
+          setStep('correct', 'done', 'Corrections générées');
+          didChange = true;
+        } catch (e: any) {
+          const status = e?.response?.status;
+          if (status === 400) {
+            // No questions found — skip gracefully
+            setStep('correct', 'skipped', 'Aucune question disponible');
+          } else {
+            setStep('correct', 'error', e?.response?.data?.error ?? e?.message);
+          }
+        }
+      }
+
     } finally {
-      setIsExtracting(false);
+      if (didChange) onQuestionsUpdated();
+      setIsRunning(false);
     }
   };
 
   // Auto-start extraction when exam is freshly uploaded (no questions yet)
   const autoExtractAttempted = useRef(false);
   useEffect(() => {
-    const ar = exam.analysis_results as Record<string, unknown> | null | undefined;
     const isAnalyzed = ar && Object.keys(ar).length > 0;
     if (!autoExtractAttempted.current && questions.length === 0 && !isAnalyzed && exam.file_path) {
       autoExtractAttempted.current = true;
-      toast.info('Examen détecté — lancement automatique de l\'extraction…');
-      handleExtractQuestions();
+      handleExtractQuestions(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2738,14 +2823,65 @@ function QuestionsTab({
   const totalTime = questions.reduce((s, q) => s + (q.estimated_time_min ?? 0), 0);
   const figureCount = questions.filter((q) => q.has_figure).length;
 
+  // ── Edit mode ─────────────────────────────────────────────────────────────
+  const [editMode, setEditMode] = useState(false);
+  const [localQuestions, setLocalQuestions] = useState<ExtractedQuestion[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [selectedForCorrespondance, setSelectedForCorrespondance] = useState<ExtractedQuestion | null>(null);
+
+  const VALID_BLOOM_LIST = ['Mémoriser', 'Comprendre', 'Appliquer', 'Analyser', 'Évaluer', 'Créer'];
+  const VALID_DIFF_LIST  = ['Très facile', 'Facile', 'Moyen', 'Difficile', 'Très difficile'];
+  const VALID_TYPES_LIST = ['QCM', 'Ouvert', 'Pratique', 'Vrai/Faux', 'Calcul', 'Étude de cas', 'Démonstration'];
+
+  const toggleEditMode = () => {
+    if (!editMode) {
+      setLocalQuestions(JSON.parse(JSON.stringify(questions))); // deep copy
+      setEditMode(true);
+    } else {
+      setEditMode(false);
+    }
+  };
+
+  const updateLocalQ = (qIdx: number, field: string, value: unknown) => {
+    setLocalQuestions((prev) => prev.map((q, i) => i === qIdx ? { ...q, [field]: value } : q));
+  };
+
+  const handleSaveQuestions = async () => {
+    setIsSaving(true);
+    try {
+      await tnExamsApi.saveExtractedQuestions(courseId, examId, localQuestions);
+      setEditMode(false);
+      onQuestionsUpdated();
+    } catch {
+      // error toast handled upstream
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Use localQuestions when editing, else original questions
+  const displayedQuestions = editMode ? localQuestions : questions;
+
   // Group by exercise
-  const exercises: Record<number, { title: string; questions: ExtractedQuestion[] }> = {};
-  questions.forEach((q) => {
+  const exercises: Record<number, { title: string; questions: ExtractedQuestion[]; indices: number[] }> = {};
+  displayedQuestions.forEach((q, i) => {
     const n = q.exercise_number ?? 1;
-    if (!exercises[n]) exercises[n] = { title: q.exercise_title ?? `Exercice ${n}`, questions: [] };
+    if (!exercises[n]) exercises[n] = { title: q.exercise_title ?? `Exercice ${n}`, questions: [], indices: [] };
     exercises[n].questions.push(q);
+    exercises[n].indices.push(i);
   });
   const sortedExercises = Object.keys(exercises).map(Number).sort();
+
+  // ── Progress UI helpers ────────────────────────────────────────────────────
+  const doneCount  = steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
+  const progress   = isRunning ? Math.round((doneCount / steps.length) * 100) : 0;
+  const STEP_ICON: Record<StepStatus, string> = {
+    pending: '○', running: '◌', done: '✓', skipped: '⤼', error: '✗',
+  };
+  const STEP_COLOR: Record<StepStatus, string> = {
+    pending: 'text-gray-400', running: 'text-amber-500 animate-pulse',
+    done: 'text-emerald-600', skipped: 'text-slate-400', error: 'text-red-500',
+  };
 
   return (
     <div className="space-y-6">
@@ -2757,39 +2893,125 @@ function QuestionsTab({
               <Target className="w-7 h-7 text-white" />
               <div>
                 <h2 className="text-xl font-bold text-white">Questions de l&apos;épreuve</h2>
-                <p className="text-sm text-amber-100">Extraction des formules LaTeX, figures, barème, Bloom, difficulté, temps</p>
+                <p className="text-sm text-amber-100">Extraction · Classification Bloom · Correspondance chapitres · Corrections</p>
               </div>
             </div>
-            <Button
-              onClick={handleExtractQuestions}
-              disabled={isExtracting}
-              variant="secondary"
-              className="bg-white text-amber-700 hover:bg-amber-50 font-semibold shadow-md"
-            >
-              {isExtracting ? (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleExtractQuestions(false)}
+                disabled={isRunning}
+                variant="secondary"
+                className="bg-white text-amber-700 hover:bg-amber-50 font-semibold shadow-md"
+              >
+                {isRunning ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analyse en cours…</>
+                ) : (
+                  <><Download className="w-4 h-4 mr-2" />{questions.length > 0 ? 'Compléter l\'analyse' : 'Extraire les questions'}</>
+                )}
+              </Button>
+              {questions.length > 0 && !isRunning && (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Extraction en cours...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  {questions.length > 0 ? 'Réextraire les questions' : 'Extraire les questions'}
+                  <Button
+                    onClick={() => handleExtractQuestions(true)}
+                    variant="outline"
+                    className="bg-white/20 border-white/40 text-white hover:bg-white/30 text-xs"
+                    title="Forcer la ré-exécution de toutes les étapes"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />Forcer
+                  </Button>
+                  {!editMode ? (
+                    <Button
+                      onClick={toggleEditMode}
+                      variant="outline"
+                      className="bg-white/20 border-white/40 text-white hover:bg-white/30 text-xs"
+                    >
+                      ✏️ Modifier
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={handleSaveQuestions}
+                        disabled={isSaving}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs"
+                        size="sm"
+                      >
+                        {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '💾 Sauvegarder'}
+                      </Button>
+                      <Button
+                        onClick={toggleEditMode}
+                        variant="outline"
+                        className="bg-white/20 border-white/40 text-white hover:bg-white/30 text-xs"
+                        size="sm"
+                      >
+                        Annuler
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
-            </Button>
+            </div>
           </div>
         </div>
 
+        {/* Progress stepper — visible while running OR if at least one step has been run */}
+        {(isRunning || steps.some((s) => s.status !== 'pending')) && (
+          <div className="border-b border-amber-100 bg-amber-50/40 px-6 py-4">
+            {isRunning && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-amber-700">Analyse automatique</span>
+                  <span className="text-xs text-amber-600">{doneCount}/{steps.length} étapes</span>
+                </div>
+                <div className="w-full h-2 bg-amber-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+              {steps.map((step, i) => (
+                <div key={step.id} className="flex items-start gap-1.5">
+                  <span className={`mt-0.5 text-sm font-bold shrink-0 ${STEP_COLOR[step.status]}`}>
+                    {step.status === 'running' ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : STEP_ICON[step.status]}
+                  </span>
+                  <div>
+                    <p className={`text-xs font-medium leading-tight ${step.status === 'running' ? 'text-amber-700' : step.status === 'error' ? 'text-red-600' : 'text-slate-600'}`}>
+                      {i + 1}. {step.label}
+                    </p>
+                    {step.detail && (
+                      <p className={`text-[10px] leading-tight mt-0.5 ${step.status === 'error' ? 'text-red-500' : 'text-slate-400'}`}>
+                        {step.detail}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <CardContent className="p-6">
+          {editMode && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between">
+              <span className="text-sm font-semibold text-amber-800">✏️ Mode édition actif — modifiez les cellules puis sauvegardez</span>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveQuestions} disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  {isSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />Sauvegarde…</> : '💾 Sauvegarder'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={toggleEditMode}>Annuler</Button>
+              </div>
+            </div>
+          )}
           {questions.length === 0 ? (
             <div className="text-center py-12">
-              {isExtracting ? (
+              {isRunning ? (
                 <>
                   <Loader2 className="h-16 w-16 text-amber-500 mx-auto mb-4 animate-spin" />
-                  <h3 className="text-lg font-semibold mb-2">Extraction en cours…</h3>
+                  <h3 className="text-lg font-semibold mb-2">Analyse en cours…</h3>
                   <p className="text-sm text-muted-foreground">
-                    Gemini analyse le PDF — classification Bloom, AA et difficulté seront lancées automatiquement.
+                    Gemini analyse le PDF — Bloom, correspondance chapitres et corrections seront générés automatiquement.
                   </p>
                 </>
               ) : (
@@ -2805,9 +3027,9 @@ function QuestionsTab({
           ) : (
             <div className="space-y-6">
               {/* KPIs */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
-                  <p className="text-2xl font-bold text-amber-700">{questions.length}</p>
+                  <p className="text-2xl font-bold text-amber-700">{displayedQuestions.length}</p>
                   <p className="text-xs text-amber-600">Questions</p>
                 </div>
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
@@ -2826,10 +3048,30 @@ function QuestionsTab({
                   <p className="text-2xl font-bold text-slate-700">{figureCount}</p>
                   <p className="text-xs text-slate-600">Avec figures</p>
                 </div>
+                {(() => {
+                  const coverage = ar?.chapter_coverage_rate as number | undefined;
+                  const nonConformeCount = questions.filter((q) => q.has_chapter_match === false).length;
+                  return (
+                    <div className={`p-3 border rounded-lg text-center ${coverage != null ? (coverage >= 80 ? 'bg-emerald-50 border-emerald-200' : coverage >= 50 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200') : 'bg-slate-50 border-slate-200'}`}>
+                      <p className={`text-2xl font-bold ${coverage != null ? (coverage >= 80 ? 'text-emerald-700' : coverage >= 50 ? 'text-yellow-700' : 'text-red-700') : 'text-slate-400'}`}>
+                        {coverage != null ? `${Math.round(coverage)}%` : '—'}
+                      </p>
+                      <p className={`text-xs ${coverage != null ? (coverage >= 80 ? 'text-emerald-600' : coverage >= 50 ? 'text-yellow-600' : 'text-red-600') : 'text-slate-400'}`}>
+                        Couverture chapitres
+                        {nonConformeCount > 0 && <span className="block font-semibold">{nonConformeCount} non conforme{nonConformeCount > 1 ? 's' : ''}</span>}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Questions Table */}
               <div className="overflow-x-auto rounded-lg border border-slate-200">
+                {editMode && (
+                  <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
+                    <p className="text-xs text-blue-700">💡 Cliquez sur une cellule pour la modifier. Bloom, Difficulté, Type : menu déroulant. Points, Temps : saisie libre. AAs : ex. <code>1,2,3</code></p>
+                  </div>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50">
@@ -2842,17 +3084,18 @@ function QuestionsTab({
                       <TableHead className="w-28">Bloom</TableHead>
                       <TableHead className="w-24">AAs</TableHead>
                       <TableHead className="w-24">Temps</TableHead>
+                      <TableHead className="w-40">Correspondance</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {sortedExercises.map((exNum) => {
-                      const { title, questions: exQs } = exercises[exNum];
+                      const { title, questions: exQs, indices: exIndices } = exercises[exNum];
                       const exPts = exQs.reduce((s, q) => s + (q.points ?? 0), 0);
                       const exTime = exQs.reduce((s, q) => s + (q.estimated_time_min ?? 0), 0);
                       return (
                         <React.Fragment key={exNum}>
                           <TableRow className="bg-amber-50/50 border-t-2 border-amber-200">
-                            <TableCell colSpan={9} className="py-2 px-4">
+                            <TableCell colSpan={10} className="py-2 px-4">
                               <div className="flex items-center gap-3">
                                 <span className="text-sm font-bold text-amber-800">{title}</span>
                                 {exPts > 0 && <Badge className="bg-amber-100 text-amber-800 text-xs">{exPts} pts</Badge>}
@@ -2861,11 +3104,25 @@ function QuestionsTab({
                               </div>
                             </TableCell>
                           </TableRow>
-                          {exQs.map((q, idx) => (
-                            <TableRow key={q.id ?? idx} className="hover:bg-slate-50/50">
+                          {exQs.map((q, localIdx) => {
+                            const globalIdx = exIndices[localIdx];
+                            return (
+                            <TableRow
+                              key={q.id ?? localIdx}
+                              className={`hover:bg-slate-50/50 ${q.has_chapter_match === false ? 'bg-red-50 border-l-4 border-l-red-400' : ''}`}
+                            >
                               <TableCell className="font-mono text-sm text-muted-foreground">{q.question_number}</TableCell>
                               <TableCell className="text-sm">
-                                <div className="whitespace-pre-wrap break-words max-w-md">{q.text}</div>
+                                {editMode ? (
+                                  <textarea
+                                    className="w-full min-w-[280px] text-xs border border-slate-300 rounded p-1 resize-y focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    rows={3}
+                                    value={q.text ?? ''}
+                                    onChange={(e) => updateLocalQ(globalIdx, 'text', e.target.value)}
+                                  />
+                                ) : (
+                                  <div className="whitespace-pre-wrap break-words max-w-md">{q.text}</div>
+                                )}
                               </TableCell>
                               <TableCell className="text-center">
                                 {q.has_figure ? (
@@ -2875,41 +3132,268 @@ function QuestionsTab({
                                 )}
                               </TableCell>
                               <TableCell className="font-semibold text-sm">
-                                {q.points != null ? `${q.points} pts` : <span className="text-gray-400">—</span>}
+                                {editMode ? (
+                                  <input
+                                    type="number"
+                                    className="w-16 text-xs border border-slate-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    value={q.points ?? ''}
+                                    min={0}
+                                    step={0.5}
+                                    onChange={(e) => updateLocalQ(globalIdx, 'points', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                  />
+                                ) : (
+                                  q.points != null ? `${q.points} pts` : <span className="text-gray-400">—</span>
+                                )}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className="text-xs whitespace-nowrap">{q.question_type}</Badge>
+                                {editMode ? (
+                                  <select
+                                    className="text-xs border border-slate-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    value={q.question_type ?? ''}
+                                    onChange={(e) => updateLocalQ(globalIdx, 'question_type', e.target.value)}
+                                  >
+                                    {VALID_TYPES_LIST.map((t) => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs whitespace-nowrap">{q.question_type}</Badge>
+                                )}
                               </TableCell>
                               <TableCell>
-                                <Badge className={`text-xs whitespace-nowrap ${DIFF_BADGE_COLORS[q.difficulty] ?? 'bg-gray-100 text-gray-800'}`}>
-                                  {q.difficulty}
-                                </Badge>
+                                {editMode ? (
+                                  <select
+                                    className="text-xs border border-slate-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    value={q.difficulty ?? ''}
+                                    onChange={(e) => updateLocalQ(globalIdx, 'difficulty', e.target.value)}
+                                  >
+                                    <option value="">—</option>
+                                    {VALID_DIFF_LIST.map((d) => <option key={d} value={d}>{d}</option>)}
+                                  </select>
+                                ) : (
+                                  <Badge
+                                    className={`text-xs whitespace-nowrap cursor-help ${DIFF_BADGE_COLORS[q.difficulty] ?? 'bg-gray-100 text-gray-800'}`}
+                                    title={q.difficulty_justification ?? q.difficulty}
+                                  >
+                                    {q.difficulty}
+                                  </Badge>
+                                )}
                               </TableCell>
                               <TableCell>
-                                <Badge className={`text-xs whitespace-nowrap ${BLOOM_BADGE_COLORS[q.bloom_level] ?? 'bg-gray-100 text-gray-800'}`}>
-                                  {q.bloom_level}
-                                </Badge>
+                                {editMode ? (
+                                  <select
+                                    className="text-xs border border-slate-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    value={q.bloom_level ?? ''}
+                                    onChange={(e) => updateLocalQ(globalIdx, 'bloom_level', e.target.value)}
+                                  >
+                                    <option value="">—</option>
+                                    {VALID_BLOOM_LIST.map((b) => <option key={b} value={b}>{b}</option>)}
+                                  </select>
+                                ) : (
+                                  <Badge className={`text-xs whitespace-nowrap ${BLOOM_BADGE_COLORS[q.bloom_level] ?? 'bg-gray-100 text-gray-800'}`}>
+                                    {q.bloom_level || 'Non classifié'}
+                                  </Badge>
+                                )}
                               </TableCell>
                               <TableCell>
-                                {q.aa_numbers && q.aa_numbers.length > 0 ? (
-                                  <div className="flex flex-wrap gap-0.5">
-                                    {q.aa_numbers.map((n) => (
-                                      <Badge key={n} className="text-[10px] px-1 py-0 bg-teal-100 text-teal-700 border-teal-200">AA{n}</Badge>
-                                    ))}
-                                  </div>
-                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                {editMode ? (
+                                  <input
+                                    type="text"
+                                    className="w-20 text-xs border border-slate-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    placeholder="1,2,3"
+                                    value={(q.aa_numbers ?? []).join(',')}
+                                    onChange={(e) => {
+                                      const nums = e.target.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+                                      updateLocalQ(globalIdx, 'aa_numbers', nums);
+                                    }}
+                                  />
+                                ) : (
+                                  q.aa_numbers && q.aa_numbers.length > 0 ? (
+                                    <div className="flex flex-wrap gap-0.5">
+                                      {q.aa_numbers.map((n) => (
+                                        <Badge key={n} className="text-[10px] px-1 py-0 bg-teal-100 text-teal-700 border-teal-200">AA{n}</Badge>
+                                      ))}
+                                    </div>
+                                  ) : <span className="text-gray-300 text-xs">—</span>
+                                )}
                               </TableCell>
-                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                                {q.estimated_time_min != null ? `${q.estimated_time_min} min` : '—'}
+                              <TableCell
+                                className="text-sm text-muted-foreground whitespace-nowrap cursor-help"
+                                title={q.time_justification ?? undefined}
+                              >
+                                {editMode ? (
+                                  <input
+                                    type="number"
+                                    className="w-16 text-xs border border-slate-300 rounded p-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    value={q.estimated_time_min ?? ''}
+                                    min={1}
+                                    onChange={(e) => updateLocalQ(globalIdx, 'estimated_time_min', e.target.value === '' ? null : parseInt(e.target.value))}
+                                  />
+                                ) : (
+                                  q.estimated_time_min != null ? `${q.estimated_time_min} min` : '—'
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {q.has_chapter_match === false ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedForCorrespondance(q)}
+                                    className="text-left"
+                                  >
+                                    <Badge className="text-[10px] bg-red-100 text-red-700 border border-red-300 whitespace-nowrap hover:bg-red-200 cursor-pointer">
+                                      ✗ Non conforme
+                                    </Badge>
+                                  </button>
+                                ) : q.chapter_matches && q.chapter_matches.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedForCorrespondance(q)}
+                                    className="text-left space-y-0.5"
+                                  >
+                                    <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-300 whitespace-nowrap block truncate max-w-[140px] hover:bg-emerald-200 cursor-pointer" title={q.chapter_matches[0].chapter_name ?? q.chapter_matches[0].document_name ?? ''}>
+                                      ✓ {q.chapter_matches[0].chapter_name ?? q.chapter_matches[0].document_name}
+                                    </Badge>
+                                    {(q.chapter_matches[0].similarity_score ?? q.chapter_matches[0].similarity) != null && (
+                                      <span className="text-[10px] text-gray-500">{Math.round(((q.chapter_matches[0].similarity_score ?? q.chapter_matches[0].similarity) as number) * 100)}%</span>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">—</span>
+                                )}
                               </TableCell>
                             </TableRow>
-                          ))}
+                            );
+                          })}
                         </React.Fragment>
                       );
                     })}
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Correspondance detail modal */}
+              {selectedForCorrespondance && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSelectedForCorrespondance(null)}>
+                  <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-base">Correspondance — Q{selectedForCorrespondance.question_number}</h3>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{selectedForCorrespondance.text}</p>
+                      </div>
+                      <button type="button" onClick={() => setSelectedForCorrespondance(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none shrink-0">✕</button>
+                    </div>
+                    {selectedForCorrespondance.chapter_matches && selectedForCorrespondance.chapter_matches.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedForCorrespondance.chapter_matches.map((m, i) => {
+                          const sim = (m.similarity_score ?? m.similarity) as number | undefined;
+                          return (
+                            <div key={i} className="border border-slate-200 rounded-lg p-3 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-semibold text-slate-700">{m.chapter_name ?? m.document_name ?? '—'}</span>
+                                {sim != null && (
+                                  <Badge className={`text-xs ${sim >= 0.7 ? 'bg-emerald-100 text-emerald-700' : sim >= 0.5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                    {Math.round(sim * 100)}% similarité
+                                  </Badge>
+                                )}
+                              </div>
+                              {m.section && <p className="text-xs text-muted-foreground">Section : {m.section}</p>}
+                              {m.page && <p className="text-xs text-muted-foreground">Page : {m.page}</p>}
+                              {m.excerpt && (
+                                <p className="text-xs text-slate-500 italic border-l-2 border-slate-300 pl-2 mt-1">
+                                  &ldquo;{m.excerpt}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6">
+                        <p className="text-sm text-red-600 font-medium">✗ Aucune correspondance dans les documents des chapitres</p>
+                        <p className="text-xs text-muted-foreground mt-1">Cette question n&apos;est pas couverte par les documents uploadés.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tableau de correspondance */}
+              {displayedQuestions.some((q) => q.chapter_matches !== undefined || q.has_chapter_match !== undefined) && (() => {
+                const arLocal = exam.analysis_results as Record<string, unknown> | null | undefined;
+                const coverage = arLocal?.chapter_coverage_rate as number | undefined;
+                const nonConformes = displayedQuestions.filter((q) => q.has_chapter_match === false);
+                return (
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-700">📋 Tableau de correspondance documentaire</span>
+                        {coverage != null && (
+                          <Badge className={`text-xs ${coverage >= 80 ? 'bg-emerald-100 text-emerald-700' : coverage >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {Math.round(coverage)}% couverture
+                          </Badge>
+                        )}
+                        {nonConformes.length > 0 && (
+                          <Badge className="text-xs bg-red-100 text-red-700 border border-red-200">
+                            {nonConformes.length} question{nonConformes.length > 1 ? 's' : ''} non conforme{nonConformes.length > 1 ? 's' : ''}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-slate-50/50">
+                            <TableHead className="w-16">#</TableHead>
+                            <TableHead className="w-40">Exercice</TableHead>
+                            <TableHead>Chapitre correspondant</TableHead>
+                            <TableHead className="w-24">Similarité</TableHead>
+                            <TableHead className="w-28">Conformité</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {displayedQuestions.map((q, idx) => {
+                            const topMatch = q.chapter_matches?.[0];
+                            const isNonConforme = q.has_chapter_match === false;
+                            return (
+                              <TableRow
+                                key={q.id ?? idx}
+                                className={`cursor-pointer hover:bg-slate-50 ${isNonConforme ? 'bg-red-50' : ''}`}
+                                onClick={() => (q.chapter_matches !== undefined || q.has_chapter_match !== undefined) && setSelectedForCorrespondance(q)}
+                              >
+                                <TableCell className="font-mono text-xs text-muted-foreground">{q.question_number}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground truncate max-w-[160px]" title={q.exercise_title}>{q.exercise_title}</TableCell>
+                                <TableCell className="text-sm">
+                                  {topMatch ? (
+                                    <span className="text-slate-700">{topMatch.chapter_name ?? topMatch.document_name ?? '—'}</span>
+                                  ) : isNonConforme ? (
+                                    <span className="text-red-500 italic text-xs">Aucune correspondance</span>
+                                  ) : (
+                                    <span className="text-gray-300 text-xs">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {(topMatch?.similarity_score ?? topMatch?.similarity) != null ? (
+                                    <span className={`text-xs font-semibold ${((topMatch?.similarity_score ?? topMatch?.similarity) as number) >= 0.7 ? 'text-emerald-600' : ((topMatch?.similarity_score ?? topMatch?.similarity) as number) >= 0.5 ? 'text-yellow-600' : 'text-red-500'}`}>
+                                      {Math.round(((topMatch?.similarity_score ?? topMatch?.similarity) as number) * 100)}%
+                                    </span>
+                                  ) : <span className="text-gray-300 text-xs">—</span>}
+                                </TableCell>
+                                <TableCell>
+                                  {isNonConforme ? (
+                                    <Badge className="text-[10px] bg-red-100 text-red-700 border border-red-300">✗ Non conforme</Badge>
+                                  ) : q.has_chapter_match === true ? (
+                                    <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-300">✓ Conforme</Badge>
+                                  ) : (
+                                    <span className="text-gray-300 text-xs">—</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Footer */}
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -2920,7 +3404,7 @@ function QuestionsTab({
               </div>
 
               {/* RAG Source Matching */}
-              <SourceMatchingSection courseId={courseId} examId={examId} questions={questions} />
+              <SourceMatchingSection courseId={courseId} examId={examId} questions={displayedQuestions} />
 
             </div>
           )}
@@ -3229,11 +3713,16 @@ function AnalyseAITab({
 
   const [showLatex, setShowLatex] = useState(false);
 
-  const [latexContent, setLatexContent] = useState<string>(() =>
-
-    buildLatexFromQuestions(exam.title ?? 'Épreuve', (ar?.exam_metadata as any) ?? {}, (ar?.questions as any[]) ?? [])
-
-  );
+  const [latexContent, setLatexContent] = useState<string>(() => {
+    const meta = (ar?.exam_metadata as any) ?? (ar as any)?.exam_header ?? {};
+    // Use extracted_questions as fallback when questions[] is empty
+    const initQs: any[] = (ar?.questions as any[])?.length
+      ? (ar?.questions as any[])
+      : ((ar as any)?.extracted_questions as any[] | undefined)?.map
+        ? ((ar as any).extracted_questions as any[])
+        : [];
+    return buildLatexFromQuestions(exam.title ?? 'Épreuve', meta, initQs);
+  });
 
   const [latexVersion, setLatexVersion] = useState(0);
 
@@ -4273,6 +4762,7 @@ function AnalyseAITab({
             typePercentages={typePercentages}
             totalAA={Object.keys(aaPercentages).length + ((ar?.aa_missing as number[]) ?? []).length}
             sourceCoverageRate={sourceCoverageRate}
+            chapterCoverageRate={ar?.chapter_coverage_rate as number | undefined}
           />
         )}
         {/* ── 6. Analytics section ── */}
@@ -5182,6 +5672,61 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
     return r;
   })();
 
+  // Auto-generated actionable suggestions: which questions to delete and what types to add
+  const autoActionSuggestions: Array<{ type: 'delete' | 'add'; text: string; reason: string }> = (() => {
+    const suggestions: Array<{ type: 'delete' | 'add'; text: string; reason: string }> = [];
+    if (!extractedRaw || extractedRaw.length === 0) return suggestions;
+
+    // Questions to consider removing (no chapter match + no AA)
+    const noMatch = extractedRaw.filter((q) => q.has_chapter_match === false || !q.chapter_matches?.length);
+    if (noMatch.length > 0) {
+      const nums = noMatch.slice(0, 3).map((q, i) => `Q${(q.question_number ?? i + 1)}`).join(', ');
+      suggestions.push({
+        type: 'delete',
+        text: `Supprimer ou remplacer : ${nums}`,
+        reason: `Ces questions ne correspondent à aucun document de chapitre fourni — elles risquent d'être hors programme.`,
+      });
+    }
+
+    // Questions without AA
+    const noAA = extractedRaw.filter((q) => !q.aa_numbers?.length);
+    if (noAA.length > 0) {
+      const nums = noAA.slice(0, 3).map((q, i) => `Q${(q.question_number ?? i + 1)}`).join(', ');
+      suggestions.push({
+        type: 'delete',
+        text: `Revoir : ${nums}`,
+        reason: `Ces questions ne sont liées à aucun AA — vérifiez leur alignement pédagogique.`,
+      });
+    }
+
+    // Uncovered AAs → suggest adding questions
+    if (effectiveMissingCount > 0 && aaDistribution.length > 0) {
+      const coveredAANums = new Set(
+        extractedRaw.flatMap((q) => (q.aa_numbers as number[] | undefined) ?? [])
+      );
+      const missing = aaDistribution.filter((aa) => !coveredAANums.has(aa.number)).slice(0, 3);
+      for (const aa of missing) {
+        suggestions.push({
+          type: 'add',
+          text: `Ajouter une question couvrant AA${aa.number}`,
+          reason: `AA${aa.number} (${aa.description || ''}) représente ${aa.percent}% du cours mais n'est pas évalué.`,
+        });
+      }
+    }
+
+    // Too many memorization questions → suggest replacing some with analysis
+    const memPct = effectiveBloom['Mémorisation'] ?? effectiveBloom['Mémoriser'] ?? 0;
+    if (memPct > 30) {
+      suggestions.push({
+        type: 'add',
+        text: 'Remplacer des questions de mémorisation par des questions d\'analyse',
+        reason: `${memPct}% de questions de mémorisation — déséquilibre Bloom. Visez des questions Analyser/Évaluer.`,
+      });
+    }
+
+    return suggestions;
+  })();
+
   const hasData = (ar && (Object.keys(bloomPercentages).length > 0 || displayQuestions.length > 0))
     || evalHeaderData !== null
     || (extractedRaw && extractedRaw.length > 0);
@@ -5240,7 +5785,9 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
           {(Object.keys(effectiveBloom).length > 0 || Object.keys(effectiveAAPercentages).length > 0) && (
             <EvaluationScoreCards bloomPercentages={effectiveBloom} difficultyPercentages={effectiveDiff}
               aaPercentages={effectiveAAPercentages} aaMissing={effectiveAAMissing}
-              typePercentages={typePercentages} totalAA={effectiveCoveredCount + effectiveMissingCount} sourceCoverageRate={sourceCoverageRate} />
+              typePercentages={typePercentages} totalAA={effectiveCoveredCount + effectiveMissingCount}
+              sourceCoverageRate={sourceCoverageRate}
+              chapterCoverageRate={(exam.analysis_results as any)?.chapter_coverage_rate as number | undefined} />
           )}
 
           {/* Durée */}
@@ -5335,12 +5882,44 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
           </div>
 
           {/* Barème par exercice */}
-          {displayQuestions.length > 0 && (
+          {(extractedRaw ?? displayQuestions).length > 0 && (
             <div className="rounded-xl border border-green-100 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-3 border-b bg-gradient-to-r from-green-50 to-white">
                 <Zap className="h-4 w-4 text-green-600" /><div><h3 className="text-sm font-semibold">Répartition du barème par exercice</h3><p className="text-[10px] text-muted-foreground">Points attribués par exercice</p></div>
               </div>
-              <div className="p-5"><PointsPerExerciseChart questions={displayQuestions} /></div>
+              <div className="p-5"><PointsPerExerciseChart questions={extractedRaw ?? displayQuestions} /></div>
+            </div>
+          )}
+
+          {/* Alignement chapitres */}
+          {((exam.analysis_results as any)?.chapter_coverage_rate != null) && (
+            <div className="rounded-xl border border-indigo-100 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b bg-gradient-to-r from-indigo-50 to-white">
+                <BookOpen className="h-4 w-4 text-indigo-500" /><div><h3 className="text-sm font-semibold">Alignement avec les chapitres</h3><p className="text-[10px] text-muted-foreground">% questions couvertes par les documents des chapitres</p></div>
+              </div>
+              <div className="p-4">
+                {(() => {
+                  const rate = (exam.analysis_results as any)?.chapter_coverage_rate as number;
+                  const color = rate >= 70 ? 'bg-emerald-500' : rate >= 50 ? 'bg-amber-500' : 'bg-red-500';
+                  const textColor = rate >= 70 ? 'text-emerald-700' : rate >= 50 ? 'text-amber-700' : 'text-red-700';
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                        <span className="font-medium">Taux d&apos;alignement</span>
+                        <span className={`font-bold ${textColor}`}>{rate}%</span>
+                      </div>
+                      <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${Math.min(100, rate)}%` }} />
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {rate >= 70 ? '✓ Bon alignement avec les documents des chapitres.' :
+                         rate >= 50 ? '⚠ Alignement partiel — certaines questions ne sont pas couvertes par les chapitres.' :
+                         '✗ Alignement insuffisant — moins de 50% des questions trouvées dans les chapitres.'}
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           )}
 
@@ -5410,10 +5989,10 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
             </div>
           </div>
 
-          {/* Suggestions d'amélioration */}
+          {/* Suggestions d'amélioration (from AI analysis) */}
           <div className="rounded-xl border border-blue-200 bg-blue-50 overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-blue-200 bg-blue-100/50">
-              <Lightbulb className="h-4 w-4 text-blue-600" /><h3 className="text-sm font-semibold text-blue-800">Suggestions</h3>
+              <Lightbulb className="h-4 w-4 text-blue-600" /><h3 className="text-sm font-semibold text-blue-800">Suggestions IA</h3>
               <Badge className="ml-auto text-xs bg-blue-200 text-blue-800 border-0">{improvementProposals.length}</Badge>
             </div>
             <div className="p-4 space-y-3">
@@ -5432,6 +6011,28 @@ function EvaluationTab({ exam, courseId, onAnalyze, isAnalyzing }: { exam: TnExa
             </div>
           </div>
         </div>
+
+        {/* Actionable suggestions: questions to delete/add */}
+        {autoActionSuggestions.length > 0 && (
+          <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-violet-200 bg-violet-100/50">
+              <Lightbulb className="h-4 w-4 text-violet-600" />
+              <h3 className="text-sm font-semibold text-violet-800">Recommandations d&apos;actions</h3>
+              <Badge className="ml-auto text-xs bg-violet-200 text-violet-800 border-0">{autoActionSuggestions.length}</Badge>
+            </div>
+            <div className="p-4 space-y-2">
+              {autoActionSuggestions.map((s, i) => (
+                <div key={i} className={`rounded-lg border p-3 flex items-start gap-3 ${s.type === 'delete' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                  <span className="text-base mt-0.5 shrink-0">{s.type === 'delete' ? '🗑️' : '➕'}</span>
+                  <div>
+                    <p className={`text-sm font-medium ${s.type === 'delete' ? 'text-red-800' : 'text-green-800'}`}>{s.text}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{s.reason}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* AA Coverage breakdown */}
         {evalAACoverage.length > 0 && (

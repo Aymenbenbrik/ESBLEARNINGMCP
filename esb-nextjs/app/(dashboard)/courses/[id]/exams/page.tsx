@@ -156,6 +156,8 @@ export default function ExamsPage() {
 
   const isLoading = courseLoading || examsLoading;
   const isSubmitting = uploadMutation.isPending;
+
+  if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <Skeleton className="h-8 w-64 mb-2" />
@@ -216,20 +218,21 @@ export default function ExamsPage() {
                 <TableHead>Type</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="text-center">Questions</TableHead>
+                <TableHead className="text-center">Exercices</TableHead>
                 <TableHead className="text-center">Barème</TableHead>
+                <TableHead className="text-center">Couverture</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {exams.map((exam) => {
-                const meta = (exam.analysis_results as any)?.exam_metadata ?? {};
-                const examTypeKey =
-                  meta.exam_type ??
-                  (exam.analysis_results as any)?.exam_type ??
-                  'ds';
-                const totalPts =
-                  (exam.analysis_results as any)?.total_max_points ?? '—';
+                const ar = exam.analysis_results as any;
+                const examTypeKey = exam.exam_type ?? ar?.exam_header?.exam_type ?? ar?.exam_metadata?.exam_type ?? 'ds';
+                const totalPts = ar?.total_max_points ?? '—';
+                const nbQ = exam.total_questions ?? ar?.extracted_questions?.length ?? null;
+                const nbEx = exam.nb_exercises ?? null;
+                const coverage = exam.chapter_coverage_rate ?? ar?.chapter_coverage_rate ?? null;
                 return (
                   <TableRow
                     key={exam.id}
@@ -252,11 +255,21 @@ export default function ExamsPage() {
                         ? format(new Date(exam.created_at), 'dd MMM yyyy', { locale: fr })
                         : '—'}
                     </TableCell>
+                    <TableCell className="text-center font-semibold">
+                      {nbQ != null ? nbQ : '—'}
+                    </TableCell>
                     <TableCell className="text-center">
-                      {exam.total_questions ?? '—'}
+                      {nbEx != null ? nbEx : '—'}
                     </TableCell>
                     <TableCell className="text-center">
                       {totalPts !== '—' ? `${totalPts} pts` : '—'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {coverage != null ? (
+                        <Badge className={`text-xs ${coverage >= 70 ? 'bg-green-100 text-green-700' : coverage >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                          {Math.round(coverage)}%
+                        </Badge>
+                      ) : '—'}
                     </TableCell>
                     <TableCell>
                       <StatusBadge exam={exam} />

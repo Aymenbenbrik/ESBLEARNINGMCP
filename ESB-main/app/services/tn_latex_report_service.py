@@ -104,7 +104,8 @@ def validate_exam(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     Each result dict: {criterion, label, status (PASS|WARNING|FAIL), detail, ok (bool)}
     """
     meta = analysis.get("exam_metadata") or {}
-    questions = analysis.get("questions") or []
+    # Support both old format (questions) and new pipeline (extracted_questions)
+    questions = analysis.get("questions") or analysis.get("extracted_questions") or []
     time_info = analysis.get("time_analysis") or {}
     diff_pct = analysis.get("difficulty_percentages") or {}
     source_rate = float(analysis.get("source_coverage_rate") or 0)
@@ -134,7 +135,13 @@ def validate_exam(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     })
 
     # ── 2. Barème défini pour chaque question ─────────────────────────────
-    no_bareme = [str(q.get("Question#")) for q in questions if q.get("points") is None]
+    def _get_pts(q: dict):
+        return q.get("points") if q.get("points") is not None else q.get("Points")
+
+    def _get_qnum(q: dict) -> str:
+        return str(q.get("Question#") or q.get("question_number") or q.get("id") or "?")
+
+    no_bareme = [_get_qnum(q) for q in questions if _get_pts(q) is None]
     results.append({
         "criterion": "BAREME_MANQUANT",
         "label": "Barème défini pour chaque question",
@@ -145,7 +152,7 @@ def validate_exam(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     })
 
     # ── 3. Barème ≤ 20 pts ────────────────────────────────────────────────
-    excess_q = [str(q.get("Question#")) for q in questions if (q.get("points") or 0) > 20]
+    excess_q = [_get_qnum(q) for q in questions if (_get_pts(q) or 0) > 20]
     excess_total = bool(total_max and float(total_max) > 20)
     fail3 = bool(excess_q) or excess_total
     d3: List[str] = []
@@ -184,8 +191,8 @@ def validate_exam(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     # ── 6. Total points QCM ≤ 10 ─────────────────────────────────────────
     qcm_qs = [q for q in questions
-               if (q.get("Type") or "").strip().upper() in ("MCQ", "QCM")]
-    qcm_pts = sum((q.get("points") or 0) for q in qcm_qs)
+               if (q.get("Type") or q.get("question_type") or "").strip().upper() in ("MCQ", "QCM")]
+    qcm_pts = sum((_get_pts(q) or 0) for q in qcm_qs)
     results.append({
         "criterion": "QCM_POINTS_EXCESSIFS",
         "label": "Total points QCM ≤ 10",
@@ -196,19 +203,31 @@ def validate_exam(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     })
 
     # ── 7. Questions alignées aux documents fournis ───────────────────────
+    # Use chapter_coverage_rate when available (new pipeline), fall back to source_coverage_rate
+    chapter_rate = float(analysis.get("chapter_coverage_rate") or analysis.get("source_coverage_rate") or 0)
     results.append({
         "criterion": "QUESTIONS_SANS_SOURCE",
         "label": "Alignement aux documents fournis ≥ 70 %",
-        "status": ("FAIL" if source_rate < 50 else
-                   "WARNING" if source_rate < 70 else "PASS"),
-        "detail": (f"Taux d'alignement : {source_rate:.1f} %." +
-                   (" Insuffisant (seuil : 50 %)." if source_rate < 50 else
-                    " À améliorer (seuil : 70 %)." if source_rate < 70 else "")),
-        "ok": source_rate >= 70,
+        "status": ("FAIL" if chapter_rate < 50 else
+                   "WARNING" if chapter_rate < 70 else "PASS"),
+        "detail": (f"Taux d'alignement chapitres : {chapter_rate:.1f} %." +
+                   (" Insuffisant (seuil : 50 %)." if chapter_rate < 50 else
+                    " À améliorer (seuil : 70 %)." if chapter_rate < 70 else "")),
+        "ok": chapter_rate >= 70,
     })
 
     # ── 8. Toutes les questions reliées à un AA ───────────────────────────
-    no_aa = [str(q.get("Question#")) for q in questions if not (q.get("AA#") or [])]
+    # Support both old format (AA#) and new extracted format (aa_numbers / aa_codes)
+    def _has_aa(q: dict) -> bool:
+        aa = q.get("AA#") or q.get("aa_numbers") or q.get("aa_codes") or []
+        if isinstance(aa, int):
+            return True
+        return bool(aa)
+
+    no_aa = [
+        str(q.get("Question#") or q.get("question_number") or q.get("id") or "?")
+        for q in questions if not _has_aa(q)
+    ]
     results.append({
         "criterion": "QUESTIONS_SANS_AA",
         "label": "Toutes les questions reliées à un AA",
