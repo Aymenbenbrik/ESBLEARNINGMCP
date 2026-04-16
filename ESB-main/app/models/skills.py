@@ -3,6 +3,7 @@ Skills system models for ESB-Learning.
 Provides a registry of modular AI capabilities shared across agents.
 """
 from datetime import datetime
+from typing import Optional
 from app import db
 
 
@@ -143,3 +144,65 @@ class SkillExecution(db.Model):
 
     def __repr__(self):
         return f'<SkillExecution {self.id} skill:{self.skill_id} [{self.status}]>'
+
+
+# ── Prompt Versioning ─────────────────────────────────────────────────────────
+
+class PromptVersion(db.Model):
+    """Versioned prompts for A/B testing and rollback of skill system prompts."""
+    __tablename__ = 'prompt_version'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    skill_id   = db.Column(db.String(64), db.ForeignKey('skill.id'), nullable=False)
+
+    # A skill can have multiple named variants (e.g. 'default', 'v2', 'concise')
+    variant_name          = db.Column(db.String(64), default='default', nullable=False)
+    system_prompt         = db.Column(db.Text, nullable=False)
+    user_prompt_template  = db.Column(db.Text)   # Optional Jinja/str.format template
+    description           = db.Column(db.String(256))
+
+    is_active  = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    skill = db.relationship('Skill', backref=db.backref('prompt_versions', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('skill_id', 'variant_name', name='uq_prompt_skill_variant'),
+    )
+
+    @classmethod
+    def get_active(cls, skill_id: str, variant: str = 'default') -> Optional['PromptVersion']:
+        """Return the active PromptVersion for a skill/variant, or None."""
+        return cls.query.filter_by(
+            skill_id=skill_id, variant_name=variant, is_active=True
+        ).first()
+
+    def __repr__(self):
+        return f'<PromptVersion {self.skill_id}/{self.variant_name} active={self.is_active}>'
+
+
+# ── ReAct Agent Trace Logging ─────────────────────────────────────────────────
+
+class AgentTrace(db.Model):
+    """Records every ReAct agent reasoning step for debugging and observability."""
+    __tablename__ = 'agent_trace'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    user_id         = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    role            = db.Column(db.String(20))
+    message_preview = db.Column(db.String(200))  # First 200 chars of the user message
+
+    # JSON list of steps: [{"type": "thinking|tool_call|tool_result|final",
+    #                        "tool": "tool_name_if_applicable",
+    #                        "preview": "first 150 chars of content"}]
+    steps           = db.Column(db.JSON)
+    tools_used      = db.Column(db.JSON)   # Flat list of tool names invoked
+
+    duration_ms     = db.Column(db.Integer)
+    status          = db.Column(db.String(20), default='success')  # success | error
+    error_msg       = db.Column(db.Text)
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<AgentTrace {self.id} user:{self.user_id} role:{self.role} [{self.status}]>'

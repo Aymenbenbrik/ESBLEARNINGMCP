@@ -53,15 +53,15 @@ class PerformanceScorerSkill(BaseSkill):
                 ],
             }
 
-        # Build Bloom breakdown via LLM if we have scores
-        bloom_breakdown = None
+        # Self-consistency: run 3 independent calls and merge via median/majority
+        # to reduce variance on the numeric bloom score estimates.
         if aa_scores:
             scores_summary = [
                 {'aa_id': s.aa_id, 'score': s.score, 'course': s.course_id}
                 for s in aa_scores
             ]
             try:
-                bloom_breakdown = self.call_llm_json(
+                bloom_breakdown = self.call_llm_json_consistent(
                     system_prompt=(
                         "Tu es un analyste pédagogique.\n"
                         "À partir des scores AA d'un étudiant, estime sa performance par niveau de Bloom.\n"
@@ -69,7 +69,8 @@ class PerformanceScorerSkill(BaseSkill):
                         '"analyze": 0-100, "evaluate": 0-100, "create": 0-100}, "strongest": "...", "weakest": "..."}'
                     ),
                     user_prompt=f"Scores AA:\n{scores_summary}",
-                    temperature=0.2,
+                    n=3,
+                    temperature=0.4,
                 )
             except Exception:
                 bloom_breakdown = None

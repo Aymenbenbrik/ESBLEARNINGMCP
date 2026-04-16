@@ -871,3 +871,179 @@ def skills_analytics_api():
     except Exception as e:
         logger.exception("Error fetching skill analytics")
         return jsonify({'error': str(e)}), 500
+
+
+# ── Agent Trace endpoints ─────────────────────────────────────────────────────
+
+@admin_api_bp.route('/agents/traces', methods=['GET'])
+@jwt_required()
+@superuser_required
+def list_agent_traces():
+    """GET /api/v1/admin/agents/traces — Paginated ReAct trace log.
+
+    Query params:
+      page (int, default 1), per_page (int, default 20, max 100)
+      user_id (int, optional filter)
+      status  (str, optional: 'success' | 'error')
+    """
+    try:
+        from app.models.skills import AgentTrace
+        page = int(request.args.get('page', 1))
+        per_page = min(int(request.args.get('per_page', 20)), 100)
+        uid_filter = request.args.get('user_id', type=int)
+        status_filter = request.args.get('status')
+
+        q = AgentTrace.query
+        if uid_filter:
+            q = q.filter_by(user_id=uid_filter)
+        if status_filter:
+            q = q.filter_by(status=status_filter)
+        q = q.order_by(AgentTrace.created_at.desc())
+        paginated = q.paginate(page=page, per_page=per_page, error_out=False)
+
+        return jsonify({
+            'total': paginated.total,
+            'page': page,
+            'per_page': per_page,
+            'traces': [
+                {
+                    'id': t.id,
+                    'user_id': t.user_id,
+                    'role': t.role,
+                    'message_preview': t.message_preview,
+                    'steps_count': len(t.steps or []),
+                    'tools_used': t.tools_used,
+                    'duration_ms': t.duration_ms,
+                    'status': t.status,
+                    'error_msg': t.error_msg,
+                    'created_at': t.created_at.isoformat() if t.created_at else None,
+                }
+                for t in paginated.items
+            ],
+        }), 200
+    except Exception as e:
+        logger.exception("Error listing agent traces")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/agents/traces/<int:trace_id>', methods=['GET'])
+@jwt_required()
+@superuser_required
+def get_agent_trace(trace_id: int):
+    """GET /api/v1/admin/agents/traces/<id> — Full step-by-step trace detail."""
+    try:
+        from app.models.skills import AgentTrace
+        trace = AgentTrace.query.get_or_404(trace_id)
+        return jsonify({
+            'id': trace.id,
+            'user_id': trace.user_id,
+            'role': trace.role,
+            'message_preview': trace.message_preview,
+            'steps': trace.steps,
+            'tools_used': trace.tools_used,
+            'duration_ms': trace.duration_ms,
+            'status': trace.status,
+            'error_msg': trace.error_msg,
+            'created_at': trace.created_at.isoformat() if trace.created_at else None,
+        }), 200
+    except Exception as e:
+        logger.exception("Error fetching agent trace %d", trace_id)
+        return jsonify({'error': str(e)}), 500
+
+
+# ── Prompt Version endpoints ──────────────────────────────────────────────────
+
+@admin_api_bp.route('/prompts', methods=['GET'])
+@jwt_required()
+@superuser_required
+def list_prompt_versions():
+    """GET /api/v1/admin/prompts — List all prompt versions grouped by skill."""
+    try:
+        from app.models.skills import PromptVersion
+        versions = PromptVersion.query.order_by(
+            PromptVersion.skill_id, PromptVersion.created_at.desc()
+        ).all()
+        return jsonify([
+            {
+                'id': pv.id,
+                'skill_id': pv.skill_id,
+                'variant_name': pv.variant_name,
+                'description': pv.description,
+                'is_active': pv.is_active,
+                'system_prompt_preview': (pv.system_prompt or '')[:200],
+                'has_user_template': bool(pv.user_prompt_template),
+                'created_at': pv.created_at.isoformat() if pv.created_at else None,
+            }
+            for pv in versions
+        ]), 200
+    except Exception as e:
+        logger.exception("Error listing prompt versions")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/prompts', methods=['POST'])
+@jwt_required()
+@superuser_required
+def create_prompt_version():
+    """POST /api/v1/admin/prompts — Create or replace a prompt version.
+
+    Body (JSON):
+      skill_id, variant_name, system_prompt, user_prompt_template (opt), description (opt)
+
+    Automatically deactivates the previous active version for the same
+    skill/variant pair before inserting the new one.
+    """
+    try:
+        from app.models.skills import PromptVersion
+        data = request.get_json(force=True) or {}
+        skill_id = data.get('skill_id', '').strip()
+        variant = data.get('variant_name', 'default').strip()
+        system_prompt = data.get('system_prompt', '').strip()
+
+        if not skill_id or not system_prompt:
+            return jsonify({'error': 'skill_id and system_prompt are required'}), 400
+
+        # Deactivate existing active version for this slot
+        PromptVersion.query.filter_by(
+            skill_id=skill_id, variant_name=variant, is_active=True
+        ).update({'is_active': False})
+
+        user = get_current_user()
+        pv = PromptVersion(
+            skill_id=skill_id,
+            variant_name=variant,
+            system_prompt=system_prompt,
+            user_prompt_template=data.get('user_prompt_template'),
+            description=data.get('description'),
+            is_active=True,
+            created_by=user.id if user else None,
+        )
+        db.session.add(pv)
+        db.session.commit()
+        return jsonify({'id': pv.id, 'message': 'Prompt version created and activated'}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.exception("Error creating prompt version")
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_api_bp.route('/prompts/<int:pv_id>/activate', methods=['POST'])
+@jwt_required()
+@superuser_required
+def activate_prompt_version(pv_id: int):
+    """POST /api/v1/admin/prompts/<id>/activate — Rollback to a previous version."""
+    try:
+        from app.models.skills import PromptVersion
+        pv = PromptVersion.query.get_or_404(pv_id)
+        # Deactivate current active for same slot
+        PromptVersion.query.filter_by(
+            skill_id=pv.skill_id, variant_name=pv.variant_name, is_active=True
+        ).update({'is_active': False})
+        pv.is_active = True
+        db.session.commit()
+        return jsonify({'message': f'Prompt version {pv_id} activated for {pv.skill_id}/{pv.variant_name}'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.exception("Error activating prompt version %d", pv_id)
+        return jsonify({'error': str(e)}), 500
+

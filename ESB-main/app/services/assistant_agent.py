@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +22,75 @@ from langgraph.prebuilt import create_react_agent
 from app import db
 
 logger = logging.getLogger(__name__)
+
+
+# ── ReAct trace helpers ───────────────────────────────────────────────────────
+
+def _extract_react_steps(messages: list) -> List[Dict]:
+    """Convert the LangGraph message list into a compact, serialisable step log."""
+    steps = []
+    for m in messages:
+        if isinstance(m, HumanMessage):
+            steps.append({
+                "type": "input",
+                "preview": str(m.content)[:150],
+            })
+        elif isinstance(m, AIMessage):
+            if getattr(m, 'tool_calls', None):
+                for tc in m.tool_calls:
+                    steps.append({
+                        "type": "tool_call",
+                        "tool": tc.get("name", ""),
+                        "args_preview": str(tc.get("args", ""))[:150],
+                    })
+            else:
+                content_preview = (
+                    str(m.content)[:150]
+                    if isinstance(m.content, str)
+                    else str(m.content)[:150]
+                )
+                steps.append({"type": "thinking", "preview": content_preview})
+        else:
+            # ToolMessage — has .name and .content
+            tool_name = getattr(m, 'name', 'unknown_tool')
+            steps.append({
+                "type": "tool_result",
+                "tool": tool_name,
+                "preview": str(getattr(m, 'content', ''))[:150],
+            })
+    return steps
+
+
+def _save_agent_trace(
+    user_id: int,
+    role: str,
+    message: str,
+    steps: List[Dict],
+    tools_used: List[str],
+    duration_ms: int,
+    status: str = 'success',
+    error_msg: str = None,
+) -> None:
+    """Persist an AgentTrace record; silently swallows DB errors to avoid
+    disrupting the user-facing response."""
+    try:
+        from app.models.skills import AgentTrace
+        trace = AgentTrace(
+            user_id=user_id,
+            role=role,
+            message_preview=message[:200],
+            steps=steps,
+            tools_used=tools_used,
+            duration_ms=duration_ms,
+            status=status,
+            error_msg=error_msg,
+        )
+        db.session.add(trace)
+        db.session.commit()
+        logger.debug("AgentTrace saved: id=%s steps=%d", trace.id, len(steps))
+    except Exception as exc:
+        logger.warning("AgentTrace save failed (non-blocking): %s", exc)
+        db.session.rollback()
 
 
 # ── LLM helper ───────────────────────────────────────────────────────────────
@@ -809,11 +879,13 @@ def chat_with_assistant(
 
     messages.append(HumanMessage(content=enriched_message))
 
+    t0 = time.time()
     try:
         llm = _get_llm()
         agent = create_react_agent(llm, tools, prompt=system_prompt)
 
         result = agent.invoke({"messages": messages})
+        duration_ms = int((time.time() - t0) * 1000)
 
         # Extract the final AI response
         ai_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
@@ -837,6 +909,18 @@ def chat_with_assistant(
                     if name and name not in tools_used:
                         tools_used.append(name)
 
+        # ── Persist ReAct trace for observability ──────────────────────────
+        steps = _extract_react_steps(result.get("messages", []))
+        _save_agent_trace(
+            user_id=user_id,
+            role=role,
+            message=message,
+            steps=steps,
+            tools_used=tools_used,
+            duration_ms=duration_ms,
+            status='success',
+        )
+
         # Language already detected above (before TunBERT enrichment)
         tunbert_intents = []
         if language == "tn":
@@ -855,6 +939,12 @@ def chat_with_assistant(
 
     except Exception as e:
         logger.error(f"Assistant agent error: {e}", exc_info=True)
+        duration_ms = int((time.time() - t0) * 1000)
+        _save_agent_trace(
+            user_id=user_id, role=role, message=message,
+            steps=[], tools_used=[], duration_ms=duration_ms,
+            status='error', error_msg=str(e),
+        )
         # Provide a graceful fallback
         language = _detect_language(message)
         if language == 'tn':

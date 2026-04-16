@@ -130,6 +130,8 @@ from app.models.skills import (
     SkillCourseConfig,
     SkillDependency,
     SkillExecution,
+    PromptVersion,
+    AgentTrace,
 )
 
 __all__ = [
@@ -174,4 +176,5 @@ __all__ = [
     # skills
     'skill_agent_link', 'skill_role_link', 'AgentRegistry', 'Skill',
     'SkillCourseConfig', 'SkillDependency', 'SkillExecution',
+    'PromptVersion', 'AgentTrace',
 ]

@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import statistics
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from collections import Counter
+from typing import Any, Dict, List, Optional
 
 from cachetools import TTLCache
 from flask import current_app
@@ -30,6 +32,46 @@ _llm_response_cache: TTLCache = TTLCache(maxsize=512, ttl=86_400)
 def _cache_key(system_prompt: str, user_prompt: str) -> str:
     payload = f"{system_prompt}\x00{user_prompt}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+# ── Self-consistency helpers ──────────────────────────────────────────────────
+
+def _merge_consistent(results: List[Dict]) -> Dict:
+    """Merge N JSON dicts from self-consistency runs.
+
+    Strategy per leaf value type:
+    - int / float  → median (robust to outliers)
+    - str          → majority vote (most common value)
+    - list         → from the majority-vote result
+    - dict         → recursively merged
+    """
+    if not results:
+        return {}
+    merged: Dict = {}
+    keys = set()
+    for r in results:
+        keys.update(r.keys())
+
+    for key in keys:
+        values = [r[key] for r in results if key in r]
+        if not values:
+            continue
+
+        sample = values[0]
+        if isinstance(sample, (int, float)):
+            merged[key] = statistics.median(values)
+        elif isinstance(sample, str):
+            counter = Counter(values)
+            merged[key] = counter.most_common(1)[0][0]
+        elif isinstance(sample, dict):
+            merged[key] = _merge_consistent(values)
+        else:
+            # For lists or unknown types, use the majority-vote result
+            counter = Counter(json.dumps(v, sort_keys=True, default=str) for v in values)
+            best_json = counter.most_common(1)[0][0]
+            merged[key] = json.loads(best_json)
+
+    return merged
 
 
 class BaseSkill(ABC):
@@ -97,3 +139,77 @@ class BaseSkill(ABC):
         elif '```' in raw:
             raw = raw.split('```')[1].split('```')[0].strip()
         return json.loads(raw)
+
+    # ── Self-consistency ───────────────────────────────────────────────────
+
+    def call_llm_json_consistent(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        n: int = 3,
+        temperature: float = 0.7,
+        **kwargs,
+    ) -> Dict:
+        """Self-consistency decoding: run N independent LLM calls and merge.
+
+        For numeric leaf values the median is returned.
+        For string leaf values majority-vote wins.
+        Falls back to a single call if all N attempts fail.
+
+        Using ``temperature >= 0.6`` ensures diverse reasoning paths.
+        Cache is intentionally bypassed per attempt via a unique suffix.
+        """
+        results: List[Dict] = []
+        for i in range(n):
+            # Unique suffix bypasses the TTLCache so each call is independent
+            varied_prompt = f"{user_prompt}\n<!-- attempt {i + 1} -->"
+            try:
+                result = self.call_llm_json(
+                    system_prompt, varied_prompt, temperature=temperature, **kwargs
+                )
+                results.append(result)
+            except Exception as exc:
+                logger.warning(
+                    "Self-consistency attempt %d/%d failed for skill %s: %s",
+                    i + 1, n, getattr(self, 'skill_id', '?'), exc,
+                )
+
+        if not results:
+            raise RuntimeError(
+                f"All {n} self-consistency attempts failed for skill {getattr(self, 'skill_id', '?')}"
+            )
+        if len(results) == 1:
+            return results[0]
+
+        return _merge_consistent(results)
+
+    # ── Prompt versioning ──────────────────────────────────────────────────
+
+    def call_llm_versioned(
+        self,
+        user_prompt: str,
+        variant: str = 'default',
+        fallback_system: str = '',
+        **kwargs,
+    ) -> Dict:
+        """Call the LLM using a DB-versioned system prompt (PromptVersion).
+
+        Falls back to *fallback_system* (the hardcoded prompt) when no active
+        version is found in the database — ensuring zero downtime during
+        initial deployment before any versions have been seeded.
+        """
+        system_prompt = fallback_system
+        try:
+            from app.models.skills import PromptVersion
+            pv = PromptVersion.get_active(self.skill_id, variant)
+            if pv:
+                system_prompt = pv.system_prompt
+                if pv.user_prompt_template:
+                    user_prompt = pv.user_prompt_template.format(content=user_prompt)
+                logger.debug(
+                    "PromptVersion loaded for skill=%s variant=%s", self.skill_id, variant
+                )
+        except Exception as exc:
+            logger.debug("PromptVersion lookup skipped: %s", exc)
+
+        return self.call_llm_json(system_prompt, user_prompt, **kwargs)
