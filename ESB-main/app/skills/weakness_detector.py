@@ -35,18 +35,21 @@ class WeaknessDetectorSkill(BaseSkill):
                 'risk_level': 'low',
             }
 
-        result = self.call_llm_json(
-            system_prompt=(
-                "Tu es un expert en diagnostic pédagogique.\n"
-                "Analyse les lacunes d'un étudiant et donne un diagnostic structuré.\n"
-                'JSON: {"gaps": [{"area": "...", "severity": "high|medium|low", "description": "..."}], '
-                '"summary": "...", "risk_level": "high|medium|low", "priority_actions": ["..."]}'
-            ),
+        _SYSTEM = (
+            "Tu es un expert en diagnostic pédagogique.\n"
+            "Analyse les lacunes d'un étudiant et donne un diagnostic structuré.\n"
+            'JSON: {"gaps": [{"area": "...", "severity": "high|medium|low", "description": "..."}], '
+            '"summary": "...", "risk_level": "high|medium|low", "priority_actions": ["..."]}'
+        )
+
+        result = self.call_llm_json_consistent(
+            system_prompt=_SYSTEM,
             user_prompt=(
                 f"Zones faibles (score < {threshold}):\n{weak_areas}\n\n"
                 f"Répartition Bloom:\n{bloom}"
             ),
-            temperature=0.2,
+            n=3,
+            temperature=0.3,
         )
 
         return result

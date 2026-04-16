@@ -24,18 +24,21 @@ class StudyPlannerSkill(BaseSkill):
                 'message': 'Aucun exercice à planifier.',
             }
 
-        result = self.call_llm_json(
-            system_prompt=(
-                "Tu es un planificateur d'études expert.\n"
-                "Crée un planning d'étude hebdomadaire réaliste et motivant.\n"
-                f"L'étudiant dispose de {available_hours}h par semaine.\n"
-                f"{'Date limite: ' + deadline if deadline else 'Pas de date limite spécifique.'}\n"
-                f"Langue: {'français' if language == 'fr' else 'anglais'}.\n"
-                'JSON: {"schedule": [{"week": 1, "day": "lundi", "time_slot": "14h-16h", '
-                '"activity": "...", "exercise_ref": "...", "duration_minutes": 60, '
-                '"objective": "..."}], "total_weeks": N, "tips": ["..."]}'
-            ),
+        _SYSTEM = (
+            "Tu es un planificateur d'études expert.\n"
+            "Crée un planning d'étude hebdomadaire réaliste et motivant.\n"
+            f"L'étudiant dispose de {available_hours}h par semaine.\n"
+            f"{'Date limite: ' + deadline if deadline else 'Pas de date limite spécifique.'}\n"
+            f"Langue: {'français' if language == 'fr' else 'anglais'}.\n"
+            'JSON: {"schedule": [{"week": 1, "day": "lundi", "time_slot": "14h-16h", '
+            '"activity": "...", "exercise_ref": "...", "duration_minutes": 60, '
+            '"objective": "..."}], "total_weeks": N, "tips": ["..."]}'
+        )
+
+        result = self.call_llm_versioned(
             user_prompt=f"Exercices à planifier:\n{exercise_list}",
+            variant='default',
+            fallback_system=_SYSTEM,
             temperature=0.4,
         )
 

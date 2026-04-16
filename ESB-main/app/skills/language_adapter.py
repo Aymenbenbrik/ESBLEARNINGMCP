@@ -20,8 +20,10 @@ class LanguageAdapterSkill(BaseSkill):
         detect_only = input_data.get('detect_only', False)
 
         if detect_only:
-            result = self.call_llm_json(
-                system_prompt=(
+            result = self.call_llm_versioned(
+                user_prompt=f"Texte:\n{text}",
+                variant='detect',
+                fallback_system=(
                     "Tu es un expert en détection de langue.\n"
                     "Détecte la langue du texte: fr (français), en (anglais), tn (tunisien/darija).\n"
                     "Détecte aussi le ton émotionnel.\n"
@@ -29,7 +31,6 @@ class LanguageAdapterSkill(BaseSkill):
                     '"emotional_tone": "positive|neutral|negative|frustrated|confused", '
                     '"formality": "formal|casual|mixed"}'
                 ),
-                user_prompt=f"Texte:\n{text}",
                 temperature=0.1,
             )
             return result
@@ -43,14 +44,15 @@ class LanguageAdapterSkill(BaseSkill):
             'casual': 'Sois décontracté et accessible.',
         }
 
-        result = self.call_llm_json(
-            system_prompt=(
+        result = self.call_llm_versioned(
+            user_prompt=f"Texte original:\n{text}",
+            variant='default',
+            fallback_system=(
                 f"Adapte le texte suivant en {lang_names.get(target, target)}.\n"
                 f"Ton: {tone_instructions.get(tone, tone_instructions['neutral'])}\n"
                 'JSON: {"adapted_text": "...", "source_language": "fr|en|tn", '
                 '"target_language": "fr|en|tn", "tone_applied": "..."}'
             ),
-            user_prompt=f"Texte original:\n{text}",
             temperature=0.3,
         )
 

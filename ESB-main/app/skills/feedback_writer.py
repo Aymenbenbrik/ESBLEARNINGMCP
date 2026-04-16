@@ -25,18 +25,21 @@ class FeedbackWriterSkill(BaseSkill):
 
         lang_instr = self.LANG_INSTRUCTIONS.get(language, self.LANG_INSTRUCTIONS['fr'])
 
-        result = self.call_llm_json(
-            system_prompt=(
-                "Tu es un tuteur bienveillant en enseignement supérieur.\n"
-                "Génère un feedback pédagogique personnalisé et constructif.\n"
-                f"{lang_instr}\n"
-                'Réponds UNIQUEMENT en JSON: {"feedback": "...", "encouragements": "...", "next_steps": ["..."]}'
-            ),
+        _SYSTEM = (
+            "Tu es un tuteur bienveillant en enseignement supérieur.\n"
+            "Génère un feedback pédagogique personnalisé et constructif.\n"
+            f"{lang_instr}\n"
+            'Réponds UNIQUEMENT en JSON: {"feedback": "...", "encouragements": "...", "next_steps": ["..."]}'
+        )
+
+        result = self.call_llm_versioned(
             user_prompt=(
                 f"Type de feedback: {feedback_type}\n"
                 f"Performance: {performance}\n"
                 f"Analyse Bloom: {bloom_data}"
             ),
+            variant='default',
+            fallback_system=_SYSTEM,
             temperature=0.5,
         )
 

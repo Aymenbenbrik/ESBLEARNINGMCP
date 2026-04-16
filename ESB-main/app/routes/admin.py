@@ -201,8 +201,15 @@ def skills_analytics():
         skills=skills_map,
         days=days,
     )
-    flash('Affectations profs enregistrées.', 'success')
-    return redirect(url_for('admin.class_view', class_id=classe.id))
+
+
+@admin_bp.route('/agents/traces')
+@login_required
+def agent_traces():
+    """ReAct agent trace observability dashboard."""
+    if not _superuser_required():
+        return redirect(url_for('courses.index'))
+    return render_template('admin/agent_traces.html')
 
 
 @admin_bp.route('/classes/<int:class_id>/students', methods=['POST'])

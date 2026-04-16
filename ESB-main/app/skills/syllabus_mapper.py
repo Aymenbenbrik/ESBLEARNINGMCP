@@ -11,7 +11,7 @@ Role-aware behaviour
   content help you progress on?" — friendly, motivational framing that
   explains *why* the AA matters to the student's progress.
 """
-from app.skills.base import BaseSkill
+from app.skills.base import BaseSkill, compress_aa_list
 
 # JSON contract shared by both roles (same shape, different tone in justification)
 _JSON_CONTRACT = (
@@ -62,13 +62,14 @@ class SyllabusMapperSkill(BaseSkill):
             return {'mappings': [], 'error': 'No AA found in syllabus'}
 
         # Select prompt based on caller role
-        system_prompt = (
-            _STUDENT_SYSTEM if context.role == 'student' else _TEACHER_SYSTEM
-        )
+        _fallback = _STUDENT_SYSTEM if context.role == 'student' else _TEACHER_SYSTEM
+        _variant = 'student' if context.role == 'student' else 'default'
 
-        result = self.call_llm_json(
-            system_prompt=system_prompt,
-            user_prompt=f"AA disponibles:\n{aa_descriptions}\n\nContenu à mapper:\n{content}",
+        aa_raw = [{'code': aa.code, 'description': aa.description} for aa in aa_list]
+        result = self.call_llm_versioned(
+            user_prompt=f"AA disponibles:\n{compress_aa_list(aa_raw)}\n\nContenu à mapper:\n{content}",
+            variant=_variant,
+            fallback_system=_fallback,
             temperature=0.2,
         )
 

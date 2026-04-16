@@ -24,21 +24,24 @@ class ExerciseRecommenderSkill(BaseSkill):
                 'message': 'Aucune lacune détectée, pas de recommandation nécessaire.',
             }
 
-        result = self.call_llm_json(
-            system_prompt=(
-                "Tu es un concepteur pédagogique expert.\n"
-                "Propose des exercices ciblés pour combler les lacunes identifiées.\n"
-                "Chaque exercice doit être progressif (du plus simple au plus complexe).\n"
-                f"Propose maximum {max_exercises} exercices.\n"
-                f"Langue: {'français' if language == 'fr' else 'anglais'}.\n"
-                'JSON: {"exercises": [{"title": "...", "description": "...", '
-                '"bloom_level": "...", "target_gap": "...", "difficulty": 1-5, '
-                '"estimated_minutes": 10-60, "type": "qcm|code|redaction|analyse"}]}'
-            ),
+        _SYSTEM = (
+            "Tu es un concepteur pédagogique expert.\n"
+            "Propose des exercices ciblés pour combler les lacunes identifiées.\n"
+            "Chaque exercice doit être progressif (du plus simple au plus complexe).\n"
+            f"Propose maximum {max_exercises} exercices.\n"
+            f"Langue: {'français' if language == 'fr' else 'anglais'}.\n"
+            'JSON: {"exercises": [{"title": "...", "description": "...", '
+            '"bloom_level": "...", "target_gap": "...", "difficulty": 1-5, '
+            '"estimated_minutes": 10-60, "type": "qcm|code|redaction|analyse"}]}'
+        )
+
+        result = self.call_llm_versioned(
             user_prompt=(
                 f"Lacunes identifiées:\n{gap_list}\n\n"
                 f"Actions prioritaires:\n{priority}"
             ),
+            variant='default',
+            fallback_system=_SYSTEM,
             temperature=0.4,
         )
 

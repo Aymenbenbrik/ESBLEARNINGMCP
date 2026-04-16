@@ -65,6 +65,10 @@ class PerformanceScorerSkill(BaseSkill):
                     system_prompt=(
                         "Tu es un analyste pédagogique.\n"
                         "À partir des scores AA d'un étudiant, estime sa performance par niveau de Bloom.\n"
+                        "\nExemples de calibration (utilise ces ancres numériques):\n"
+                        "- Score AA moyen 85/100 → bloom_scores typique: {remember:90, understand:85, apply:80, analyze:75, evaluate:65, create:55}\n"
+                        "- Score AA moyen 60/100 → bloom_scores typique: {remember:72, understand:65, apply:58, analyze:50, evaluate:42, create:32}\n"
+                        "- Score AA moyen 35/100 → bloom_scores typique: {remember:50, understand:40, apply:30, analyze:22, evaluate:15, create:8}\n"
                         'JSON: {"bloom_scores": {"remember": 0-100, "understand": 0-100, "apply": 0-100, '
                         '"analyze": 0-100, "evaluate": 0-100, "create": 0-100}, "strongest": "...", "weakest": "..."}'
                     ),

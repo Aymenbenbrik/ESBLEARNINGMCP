@@ -30,16 +30,19 @@ class ContentSummarizerSkill(BaseSkill):
             'advanced': 'Sois technique et précis, inclus les nuances.',
         }
 
-        result = self.call_llm_json(
-            system_prompt=(
-                "Tu es un pédagogue expert en vulgarisation.\n"
-                f"Niveau de l'étudiant: {level}. {level_instructions.get(level, '')}\n"
-                f"Style: {style}. {style_instructions.get(style, '')}\n"
-                f"Limite: {max_words} mots maximum.\n"
-                f"Langue: {'français' if language == 'fr' else 'anglais'}.\n"
-                'JSON: {"summary": "...", "key_concepts": ["..."], "prerequisites": ["..."]}'
-            ),
+        _SYSTEM = (
+            "Tu es un pédagogue expert en vulgarisation.\n"
+            f"Niveau de l'étudiant: {level}. {level_instructions.get(level, '')}\n"
+            f"Style: {style}. {style_instructions.get(style, '')}\n"
+            f"Limite: {max_words} mots maximum.\n"
+            f"Langue: {'français' if language == 'fr' else 'anglais'}.\n"
+            'JSON: {"summary": "...", "key_concepts": ["..."], "prerequisites": ["..."]}'
+        )
+
+        result = self.call_llm_versioned(
             user_prompt=f"Contenu à résumer:\n{content}",
+            variant='default',
+            fallback_system=_SYSTEM,
             temperature=0.4,
         )
 

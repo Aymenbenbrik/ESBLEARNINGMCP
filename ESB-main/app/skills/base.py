@@ -213,3 +213,98 @@ class BaseSkill(ABC):
             logger.debug("PromptVersion lookup skipped: %s", exc)
 
         return self.call_llm_json(system_prompt, user_prompt, **kwargs)
+
+    # ── Structured output (native Gemini schema) ───────────────────────────
+
+    def call_llm_structured(
+        self,
+        schema: type,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        robust: bool = False,
+    ) -> Any:
+        """Call the LLM with a Pydantic schema for native structured output.
+
+        Uses Gemini's ``with_structured_output()`` which enforces JSON schema
+        at the API level — eliminating manual JSON parsing and markdown-block
+        extraction entirely.  Falls back to ``call_llm_json()`` if the schema
+        binding fails (e.g. model doesn't support structured output).
+
+        Example usage::
+
+            from pydantic import BaseModel, Field
+
+            class BloomResult(BaseModel):
+                level: str = Field(description="Bloom level name")
+                confidence: float = Field(ge=0.0, le=1.0)
+                justification: str
+
+            result = self.call_llm_structured(BloomResult, system, user, temperature=0.1)
+            # result is a BloomResult instance, not a raw dict
+        """
+        try:
+            llm = self.get_llm(temperature=temperature, robust=robust)
+            structured_llm = llm.with_structured_output(schema)
+            return structured_llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ])
+        except Exception as exc:
+            logger.warning(
+                "Structured output failed for skill %s (falling back to JSON): %s",
+                getattr(self, 'skill_id', '?'), exc,
+            )
+            raw = self.call_llm(system_prompt, user_prompt, temperature=temperature, robust=robust)
+            if '```json' in raw:
+                raw = raw.split('```json')[1].split('```')[0].strip()
+            elif '```' in raw:
+                raw = raw.split('```')[1].split('```')[0].strip()
+            return json.loads(raw)
+
+
+# ── AA list compression utility ───────────────────────────────────────────────
+
+_MAX_AA_TOKENS = 400   # Rough token budget for AA context in a prompt
+
+
+def compress_aa_list(aa_descriptions: list, max_chars: int = _MAX_AA_TOKENS * 4) -> str:
+    """Compress a list of AA dicts/strings to fit within a token budget.
+
+    Each AA is expected to be a dict ``{"code": ..., "description": ...}`` or
+    a pre-formatted string.  When the combined text exceeds *max_chars*, the
+    descriptions are truncated at word boundaries and a summary note is added.
+
+    This prevents prompt bloat when a course has 20+ AAs with long descriptions.
+    """
+    if not aa_descriptions:
+        return ''
+
+    lines: list[str] = []
+    for aa in aa_descriptions:
+        if isinstance(aa, dict):
+            code = aa.get('code', '')
+            desc = aa.get('description', '')
+            lines.append(f"- {code}: {desc}")
+        else:
+            lines.append(str(aa))
+
+    full_text = '\n'.join(lines)
+    if len(full_text) <= max_chars:
+        return full_text
+
+    # Truncate: keep as many full lines as fit
+    budget = max_chars - 60   # Reserve space for the truncation note
+    kept: list[str] = []
+    used = 0
+    for line in lines:
+        if used + len(line) + 1 > budget:
+            break
+        kept.append(line)
+        used += len(line) + 1
+
+    omitted = len(lines) - len(kept)
+    kept.append(
+        f"... [{omitted} AA(s) omitted — utilise les AA listés ci-dessus pour l'alignement]"
+    )
+    return '\n'.join(kept)
