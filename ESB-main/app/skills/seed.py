@@ -46,8 +46,8 @@ def seed_skills():
             'category': 'analysis',
             'module_path': 'app.skills.syllabus_mapper',
             'temperature': 0.2,
-            'agents': ['exam', 'tp', 'coach'],
-            'roles': ['teacher', 'admin'],
+            'agents': ['exam', 'tp', 'coach', 'assistant'],
+            'roles': ['student', 'teacher', 'admin'],
         },
         {
             'id': 'feedback-writer',
@@ -155,22 +155,34 @@ def seed_skills():
         agent_ids = sd.pop('agents', [])
         roles = sd.pop('roles', [])
 
-        if Skill.query.get(sd['id']):
-            continue
+        skill = Skill.query.get(sd['id'])
+        if not skill:
+            skill = Skill(**sd)
+            db.session.add(skill)
+            db.session.flush()
 
-        skill = Skill(**sd)
-
+        # ── Upsert agent links (idempotent) ───────────────────────────────
+        existing_agent_ids = {a.id for a in skill.agents}
         for aid in agent_ids:
-            agent = AgentRegistry.query.get(aid)
-            if agent:
-                skill.agents.append(agent)
+            if aid not in existing_agent_ids:
+                agent = AgentRegistry.query.get(aid)
+                if agent:
+                    skill.agents.append(agent)
 
-        db.session.add(skill)
         db.session.flush()
 
+        # ── Upsert role links (idempotent) ────────────────────────────────
+        from sqlalchemy import text as _text
+        existing_roles = {
+            r[0] for r in db.session.execute(
+                _text("SELECT role FROM skill_role_link WHERE skill_id = :sid"),
+                {'sid': skill.id},
+            ).fetchall()
+        }
         for role in roles:
-            db.session.execute(
-                skill_role_link.insert().values(skill_id=skill.id, role=role)
-            )
+            if role not in existing_roles:
+                db.session.execute(
+                    skill_role_link.insert().values(skill_id=skill.id, role=role)
+                )
 
     db.session.commit()

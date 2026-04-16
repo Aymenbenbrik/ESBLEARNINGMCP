@@ -1,0 +1,782 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+% fontawesome5 removed
+\usepackage{amsmath}
+\usepackage{amssymb}
+% microtype removed
+\usepackage{setspace}
+\usepackage{float}
+
+\geometry{
+  left=2.5cm, right=2.5cm,
+  top=3cm, bottom=3cm,
+  headheight=14pt
+}
+
+\definecolor{espritblue}{RGB}{0,71,171}
+\definecolor{espritred}{RGB}{180,0,0}
+\definecolor{agentgreen}{RGB}{34,139,34}
+\definecolor{mcpgold}{RGB}{184,134,11}
+\definecolor{ragpurple}{RGB}{128,0,128}
+\definecolor{lightgray}{RGB}{245,245,245}
+\definecolor{codelightbg}{RGB}{248,248,248}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=espritblue,
+  urlcolor=espritblue,
+  citecolor=espritblue,
+  pdftitle={Rapport Audit ESB-Learning Agentic AI},
+  pdfauthor={GitHub Copilot},
+  pdfsubject={Architecture Agentic AI -- ESB-Learning}
+}
+
+\lstset{
+  backgroundcolor=\color{codelightbg},
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{lightgray},
+  keywordstyle=\color{espritblue},
+  commentstyle=\color{gray},
+  stringstyle=\color{espritred},
+  showstringspaces=false
+}
+
+\tcbuselibrary{skins,breakable}
+
+\newtcolorbox{agentbox}[2][]{
+  colback=lightgray,
+  colframe=espritblue,
+  fonttitle=\bfseries\color{white},
+  colbacktitle=espritblue,
+  title={#2},
+  #1
+}
+
+\newtcolorbox{warningbox}{
+  colback=yellow!10,
+  colframe=mcpgold,
+  fonttitle=\bfseries,
+  title={Remarque}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{espritblue}{\textbf{ESB-Learning}} -- Audit Agentic AI}
+\fancyhead[R]{\textcolor{gray}{16 Avril 2026}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{1pt}
+
+\titleformat{\section}{\Large\bfseries\color{espritblue}}{}{0em}{\thesection\quad}[\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{espritblue!80}}{}{0em}{\thesubsection\quad}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{agentgreen}}{}{0em}{\thesubsubsection\quad}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\begin{document}
+
+% ============================================================
+% TITLE PAGE
+% ============================================================
+\begin{titlepage}
+  \centering
+  \vspace*{1cm}
+
+  {\Huge\bfseries\color{espritblue} Rapport d'Audit Complet}\\[0.5cm]
+  {\LARGE\color{espritred} ESB-Learning Agentic AI Platform}\\[2cm]
+
+  \begin{tcolorbox}[colback=espritblue!5,colframe=espritblue,width=12cm]
+    \centering
+    \textbf{Plateforme e-learning adaptative pour ESPRIT}\\
+    École Supérieure Privée d'Ingénierie et de Technologies
+  \end{tcolorbox}
+
+  \vspace{2cm}
+
+  \begin{tabular}{ll}
+    \textbf{Date :}         & 16 Avril 2026 \\[4pt]
+    \textbf{Auditeur :}     & GitHub Copilot (Analyse automatique) \\[4pt]
+    \textbf{Projet :}       & ESB-Learning v2.0 \\[4pt]
+    \textbf{Score global :} & \textcolor{agentgreen}{\textbf{B+ (79/100)}} \\[4pt]
+    \textbf{LLM principal :}& Gemini 2.5-Flash / 2.5-Pro \\[4pt]
+    \textbf{Framework :}    & LangGraph + LangChain + Flask \\
+  \end{tabular}
+
+  \vspace{2cm}
+
+  \begin{tcolorbox}[colback=agentgreen!10,colframe=agentgreen]
+    \centering
+    \textbf{4 Agents Agentic AI} \quad|\quad
+    \textbf{12 Skills} \quad|\quad
+    \textbf{21 MCP Tools} \quad|\quad
+    \textbf{RAG Hybride 5 couches}
+  \end{tcolorbox}
+
+  \vfill
+  {\small\color{gray} Rapport généré automatiquement par analyse statique du code source}
+\end{titlepage}
+
+% ============================================================
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Vue d'Ensemble du Projet}
+% ============================================================
+
+ESB-Learning est une plateforme d'e-learning adaptative pour ESPRIT (École Supérieure Privée d'Ingénierie et de Technologies, Tunis). Elle combine intelligence artificielle agentic, retrieval augmenté et gestion pédagogique complète.
+
+\subsection{Architecture Générale}
+
+\begin{tcolorbox}[colback=lightgray,colframe=espritblue,title=Stack Technique]
+\begin{itemize}[noitemsep]
+  \item \textbf{Backend :} Python 3.11+ / Flask 3.1.0 / SQLAlchemy 2.0 / PostgreSQL
+  \item \textbf{Frontend :} Next.js 15 / TypeScript / React / Tailwind CSS
+  \item \textbf{AI Framework :} LangGraph + LangChain + Google Gemini 2.5
+  \item \textbf{Vector DB :} ChromaDB + FAISS + SentenceTransformer (all-MiniLM-L6-v2)
+  \item \textbf{Protocole :} MCP (Model Context Protocol), JSON-RPC 2.0
+  \item \textbf{NLP :} TunBERT (dialecte tunisien), BM25, transformers HuggingFace
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{Personas Utilisateurs}
+
+\begin{longtable}{lll}
+\toprule
+\textbf{Rôle} & \textbf{Description} & \textbf{Agents accessibles} \\
+\midrule
+Étudiant & Apprentissage actif, quiz, TP & Assistant, Coach \\
+Enseignant & Création examens/TP, analytics & Assistant, Exam, TP \\
+Admin & Supervision globale & Tous les agents \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Architectures Agentic AI}
+% ============================================================
+
+Le projet implémente \textbf{4 architectures Agentic AI distinctes}, chacune adaptée à son cas d'usage.
+
+% ------ Architecture 1 ------
+\subsection{Architecture 1 --- ReAct Agent (Assistant Pédagogique)}
+
+\begin{agentbox}[breakable]{Agent Assistant --- create\_react\_agent (LangGraph prebuilt)}
+\begin{itemize}[noitemsep]
+  \item \textbf{Fichier :} \texttt{app/services/assistant\_agent.py} (\textasciitilde893 lignes)
+  \item \textbf{LLM :} Gemini 2.5-Flash, temperature=0.4
+  \item \textbf{Pattern :} ReAct (Reason $\rightarrow$ Act $\rightarrow$ Observe)
+  \item \textbf{Tools :} 9 base tools + N skills dynamiques
+  \item \textbf{Trilinguisme :} FR / EN / Tunisien (Derja) via TunBERT
+\end{itemize}
+\end{agentbox}
+
+\textbf{Boucle ReAct :}
+
+\begin{lstlisting}[language=Python]
+skill_tools = skill_manager.as_langchain_tools(
+    agent_id='assistant', role=role, user_id=user_id)
+all_tools = base_tools + skill_tools
+agent = create_react_agent(llm, all_tools, prompt=system_prompt)
+result = agent.invoke({"messages": messages})
+# --> L'agent DECIDE autonomement quels tools/skills appeler
+\end{lstlisting}
+
+\begin{center}
+\begin{tabular}{ccc}
+  \fbox{User Message} & $\rightarrow$ & \fbox{LLM: Think}\\
+  & & $\downarrow$ \\
+  \fbox{Final Response} & $\leftarrow$ & \fbox{Tool Call \& Observe}\\
+\end{tabular}
+\end{center}
+
+% ------ Architecture 2 ------
+\subsection{Architecture 2 --- StateGraph + nœuds ReAct (Coach)}
+
+\begin{agentbox}[breakable]{Agent Coach --- StateGraph 5 nœuds}
+\begin{itemize}[noitemsep]
+  \item \textbf{Fichier :} \texttt{app/services/coach\_agent.py}
+  \item \textbf{Nœuds :} 1 déterministe + 3 ReAct sub-agents + 1 déterministe
+  \item \textbf{State :} \texttt{CoachState} (TypedDict)
+\end{itemize}
+\end{agentbox}
+
+\textbf{Pipeline :}
+\[
+\text{START} \to \underbrace{\text{collect\_data}}_{\text{DB}} \to \underbrace{\text{analyze}}_{\text{ReAct}} \to \underbrace{\text{detect\_gaps}}_{\text{ReAct}} \to \underbrace{\text{gen\_plan}}_{\text{ReAct}} \to \underbrace{\text{finalize}}_{\text{assemblage}} \to \text{END}
+\]
+
+% ------ Architecture 3 ------
+\subsection{Architecture 3 --- StateGraph 11 nœuds hybrides (Exam Agent)}
+
+\begin{agentbox}[breakable]{Exam Agent --- StateGraph hybride}
+\begin{itemize}[noitemsep]
+  \item \textbf{Fichier :} \texttt{app/services/exam\_agent\_graph.py} (\textasciitilde384 lignes)
+  \item \textbf{Nœuds :} 5 nœuds ReAct + 6 nœuds déterministes
+  \item \textbf{Bridge :} \texttt{mcp\_langchain\_bridge.py} (MCP $\to$ LangChain StructuredTools)
+  \item \textbf{Output :} Analyse JSON + Document \LaTeX{} + PDF compilé
+\end{itemize}
+\end{agentbox}
+
+\begin{lstlisting}
+extract_text -> extract_questions -> [classify_aa*] -> [classify_bloom*]
+-> assess_difficulty -> compare_content -> [analyze_feedback*]
+-> [suggest_adjustments*] -> [generate_corrections*]
+-> generate_latex -> evaluate_proposal -> END
+(* = noeuds ReAct autonomes)
+\end{lstlisting}
+
+% ------ Architecture 4 ------
+\subsection{Architecture 4 --- Dual StateGraph (TP Agent)}
+
+\begin{agentbox}[breakable]{TP Agent --- 2 StateGraphs avec fallback}
+\begin{itemize}[noitemsep]
+  \item \textbf{Fichier :} \texttt{app/services/tp\_agent\_graph.py} (\textasciitilde361 lignes)
+  \item \textbf{Workflow Enseignant :} 5 nœuds (1 déterministe + 4 ReAct)
+  \item \textbf{Workflow Étudiant :} 2 nœuds ReAct (correction + notation)
+  \item \textbf{Langages :} Python, SQL, R, Java, C, C++
+  \item \textbf{Fallback :} Chaque nœud ReAct a un fallback déterministe MCP
+\end{itemize}
+\end{agentbox}
+
+\textbf{Workflow Enseignant :}
+\[
+\text{START} \to \underbrace{\text{get\_context}}_{\text{det.}} \to \underbrace{\text{gen\_statement}}_{\text{ReAct}} \to \underbrace{\text{parse\_q.}}_{\text{ReAct}} \to \underbrace{\text{suggest\_aa}}_{\text{ReAct}} \to \underbrace{\text{gen\_ref}}_{\text{ReAct}} \to \text{END}
+\]
+
+\textbf{Workflow Étudiant :}
+\[
+\text{START} \to \underbrace{\text{auto\_correct}}_{\text{ReAct}} \to \underbrace{\text{propose\_grade}}_{\text{ReAct}} \to \text{END}
+\]
+
+% ============================================================
+\section{Agents et leurs Descriptions}
+% ============================================================
+
+\begin{longtable}{lllll}
+\toprule
+\textbf{ID} & \textbf{Nom} & \textbf{Type} & \textbf{Lignes} & \textbf{Pattern} \\
+\midrule
+\texttt{assistant} & Assistant Pédagogique & ReAct & \textasciitilde893 & create\_react\_agent \\
+\texttt{coach} & Coach Étudiant & StateGraph & \textasciitilde342 & 5 nœuds hybrides \\
+\texttt{exam} & Évaluateur d'Examens & StateGraph & \textasciitilde384 & 11 nœuds hybrides \\
+\texttt{tp} & Agent Travaux Pratiques & StateGraph & \textasciitilde361 & Dual StateGraph \\
+\bottomrule
+\end{longtable}
+
+\subsection{Agent 1 : Assistant Pédagogique}
+
+\textbf{Tools de base (9) :}
+
+\begin{longtable}{lll}
+\toprule
+\textbf{Tool} & \textbf{Rôle cible} & \textbf{Description} \\
+\midrule
+\texttt{get\_my\_courses} & Tous & Cours de l'utilisateur (étudiant/enseignant) \\
+\texttt{get\_calendar\_activities} & Tous & Quiz, examens, séances, devoirs à venir \\
+\texttt{get\_course\_details} & Tous & Chapitres, sections, documents d'un cours \\
+\texttt{get\_my\_performance} & Étudiant & Scores quiz + analyse Bloom par niveau \\
+\texttt{get\_my\_grades\_summary} & Étudiant & Résumé notes par module \\
+\texttt{get\_recommendations} & Étudiant & Plan d'étude + exercices recommandés \\
+\texttt{get\_at\_risk\_students} & Enseignant & Étudiants à risque (scores/absences) \\
+\texttt{get\_class\_performance} & Enseignant & Performance globale de la classe \\
+\texttt{suggest\_quiz\_for\_student} & Enseignant & Quiz ciblés sur faiblesses Bloom \\
+\bottomrule
+\end{longtable}
+
+\textbf{Skills injectés dynamiquement} via \texttt{SkillManager.as\_langchain\_tools()} selon rôle.
+
+\textbf{Feature TunBERT :} Enrichissement dialecte tunisien --- classification d'intentions NLP avant envoi au LLM.
+
+\subsection{Agent 2 : Coach Étudiant}
+
+\begin{longtable}{llll}
+\toprule
+\textbf{Nœud} & \textbf{Type} & \textbf{Skills utilisés} & \textbf{Action} \\
+\midrule
+\texttt{collect\_data} & Déterministe & --- & Agrégation scores DB \\
+\texttt{analyze\_performance} & ReAct & performance-scorer, bloom-classifier & Analyse quantitative \\
+\texttt{detect\_gaps} & ReAct & weakness-detector, syllabus-mapper & Identification lacunes \\
+\texttt{generate\_plan} & ReAct & exercise-recommender, study-planner, feedback-writer, language-adapter & Plan personnalisé \\
+\texttt{finalize} & Déterministe & --- & Assemblage réponse \\
+\bottomrule
+\end{longtable}
+
+\subsection{Agent 3 : Évaluateur d'Examens}
+
+Pipeline complet 11 étapes :
+
+\begin{longtable}{lllll}
+\toprule
+\textbf{Étape} & \textbf{Nœud} & \textbf{Type} & \textbf{MCP Tool} & \textbf{Skill} \\
+\midrule
+1 & extract\_text & Déterministe & extract\_exam\_text & --- \\
+2 & extract\_questions & Déterministe & extract\_exam\_questions & --- \\
+3 & classify\_aa & ReAct & classify\_questions\_aa & syllabus-mapper \\
+4 & classify\_bloom & ReAct & classify\_questions\_bloom & bloom-classifier \\
+5 & assess\_difficulty & Déterministe & assess\_question\_difficulty & --- \\
+6 & compare\_content & Déterministe & compare\_module\_vs\_exam & --- \\
+7 & analyze\_feedback & ReAct & generate\_exam\_feedback & feedback-writer, rubric-builder \\
+8 & suggest\_adjustments & ReAct & suggest\_exam\_adjustments & syllabus-mapper, bloom-classifier \\
+9 & generate\_corrections & ReAct & generate\_question\_correction & rubric-builder, feedback-writer \\
+10 & generate\_latex & Déterministe & generate\_exam\_latex & --- \\
+11 & evaluate\_proposal & Déterministe & evaluate\_exam\_proposal & --- \\
+\bottomrule
+\end{longtable}
+
+\subsection{Agent 4 : Agent Travaux Pratiques}
+
+\begin{longtable}{lllll}
+\toprule
+\textbf{Workflow} & \textbf{Nœud} & \textbf{Type} & \textbf{MCP Tool} & \textbf{Skill} \\
+\midrule
+\multirow{5}{*}{Enseignant} & get\_context & Déterministe & get\_section\_context & --- \\
+& generate\_statement & ReAct & generate\_tp\_statement & quiz-generator \\
+& parse\_questions & ReAct & parse\_tp\_questions & bloom-classifier \\
+& suggest\_aa & ReAct & suggest\_aa\_codes & syllabus-mapper \\
+& generate\_reference & ReAct & generate\_reference\_solution & rubric-builder \\
+\midrule
+\multirow{2}{*}{Étudiant} & auto\_correct & ReAct & auto\_correct\_submission & code-reviewer \\
+& propose\_grade & ReAct & propose\_grade & feedback-writer \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Tools Disponibles}
+% ============================================================
+
+\subsection{MCP Tools --- TP Agent (10 tools)}
+
+Fichier : \texttt{app/services/mcp\_tools.py} --- Registre : \texttt{MCP\_TOOL\_DEFINITIONS}
+
+\begin{longtable}{lp{7cm}l}
+\toprule
+\textbf{Tool} & \textbf{Description} & \textbf{Inputs requis} \\
+\midrule
+get\_section\_context & Récupère contenu pédagogique d'une section & section\_id \\
+generate\_tp\_statement & Génère énoncé TP dans le langage spécifié & context, language \\
+suggest\_aa\_codes & Suggère codes AA pertinents pour un énoncé & section\_id, statement \\
+generate\_reference\_solution & Génère solution de référence + grille & statement, language \\
+auto\_correct\_submission & Correction automatique code étudiant & statement, student\_code, language \\
+propose\_grade & Propose note numérique (0--max) & correction\_report \\
+parse\_tp\_questions & Parse énoncé et extrait questions/barème & statement, language \\
+generate\_question\_starter & Génère template code étudiant & question\_text, language \\
+chat\_with\_student & Chatbot socratique (sans donner réponses) & question\_text, student\_message \\
+generate\_correction\_criteria & Génère critères de correction détaillés & statement, language \\
+\bottomrule
+\end{longtable}
+
+\subsection{MCP Tools --- Exam Agent (11 tools)}
+
+Fichier : \texttt{app/services/exam\_mcp\_tools.py} --- Registre : \texttt{EXAM\_MCP\_TOOL\_DEFINITIONS}
+
+\begin{longtable}{lp{6.5cm}l}
+\toprule
+\textbf{Tool} & \textbf{Description} & \textbf{Inputs requis} \\
+\midrule
+extract\_exam\_text & Extrait texte brut (PDF, DOCX, TXT) & file\_path \\
+extract\_exam\_questions & Parse et extrait questions structurées & exam\_text \\
+classify\_questions\_aa & Classifie par Apprentissages Attendus & questions, aa\_list \\
+classify\_questions\_bloom & Classifie par niveau de Bloom & questions \\
+assess\_question\_difficulty & Évalue difficulté relative au cours & questions \\
+compare\_module\_vs\_exam & Compare syllabus vs examen & questions, aa\_list \\
+generate\_exam\_feedback & Génère feedback pédagogique détaillé & comparison\_report, questions \\
+suggest\_exam\_adjustments & Suggère ajustements équilibre/couverture & feedback, questions, aa\_list \\
+generate\_exam\_latex & Génère \LaTeX{} + compile PDF & questions \\
+evaluate\_exam\_proposal & Évalue proposition sur critères péd. & latex\_source \\
+generate\_question\_correction & Génère correction modèle & question\_text, question\_type, points \\
+\bottomrule
+\end{longtable}
+
+\textbf{Constantes pédagogiques :}
+\begin{itemize}[noitemsep]
+  \item Niveaux Bloom : Mémoriser (10\%) / Comprendre (20\%) / Appliquer (30\%) / Analyser (20\%) / Évaluer (15\%) / Créer (5\%)
+  \item Difficultés : Très facile / Facile / Moyen / Difficile / Très difficile
+  \item Types questions : QCM, Ouvert, Pratique, Vrai/Faux, Calcul, Étude de cas
+\end{itemize}
+
+\subsection{Tools LangChain (@tool) --- Assistant (9 tools)}
+
+Voir tableau en section~\ref{sec:agents}.
+
+\subsection{Serveur MCP (JSON-RPC 2.0)}
+
+Fichier : \texttt{app/services/tp\_mcp\_server.py}
+Transport : \texttt{stdio} (JSON-RPC 2.0)
+\textbf{Status :} Implémenté mais \textcolor{espritred}{non intégré en production}.
+
+% ============================================================
+\section{Skills Disponibles}
+% ============================================================
+\label{sec:skills}
+
+Le \textbf{SkillManager} orchestre \textbf{12 skills modulaires}.
+
+\subsection{Architecture du SkillManager}
+
+\begin{lstlisting}[language=Python]
+# Cycle de vie complet d'un skill
+SkillContext(user_id, course_id, role, agent_id, params)
+    -> SkillManager.execute(skill_id, context, input_data)
+       |-- Validation acces (role check)
+       |-- Course config override
+       |-- SkillExecution tracking (DB)
+       |-- Dependances resolution
+       |-- _load_skill_function() -> module dynamique
+       --> SkillResult(success, data, error, metadata)
+\end{lstlisting}
+
+\textbf{Méthodes clés :}
+\begin{itemize}[noitemsep]
+  \item \texttt{execute()} --- Exécution d'un skill unique avec lifecycle complet
+  \item \texttt{compose([ids])} --- Chaîne séquentielle (output N $\to$ input N+1)
+  \item \texttt{as\_langchain\_tools()} --- Conversion skills $\to$ LangChain StructuredTools
+  \item \texttt{resolve\_for\_agent(agent\_id, role)} --- Résolution dynamique
+  \item \texttt{list\_skills(agent\_id, role, course\_id)} --- Liste filtrée
+\end{itemize}
+
+\subsection{Catalogue des 12 Skills}
+
+\begin{longtable}{llllll}
+\toprule
+\textbf{ID} & \textbf{Nom} & \textbf{Catégorie} & \textbf{Agents} & \textbf{Temp.} \\
+\midrule
+bloom-classifier & Bloom Classifier & analysis & exam, tp, coach, assist. & 0.1 \\
+syllabus-mapper & Syllabus Mapper & analysis & exam, tp, coach & 0.2 \\
+feedback-writer & Feedback Writer & generation & exam, tp, coach, assist. & 0.5 \\
+performance-scorer & Perf. Scorer & scoring & coach, assistant & 0.1 \\
+weakness-detector & Gap Detector & analysis & coach, assistant & 0.2 \\
+exercise-recommender & Exercise Rec. & generation & coach, assistant & 0.4 \\
+study-planner & Study Planner & planning & coach & 0.4 \\
+quiz-generator & Quiz Generator & generation & assistant, tp & 0.5 \\
+content-summarizer & Summarizer & generation & assistant & 0.4 \\
+code-reviewer & Code Reviewer & analysis & tp & 0.3 \\
+rubric-builder & Rubric Builder & generation & exam, tp & 0.3 \\
+language-adapter & Lang. Adapter & generation & assistant, coach & 0.3 \\
+\bottomrule
+\end{longtable}
+
+\subsection{Descriptions Détaillées}
+
+\begin{description}
+  \item[\texttt{bloom-classifier}] Classifie tout contenu selon les 6 niveaux de Bloom. Input: \texttt{content}, \texttt{content\_type}. Output: \texttt{\{bloom\_level, confidence, justification\}}. Le skill le plus réutilisé (4 agents).
+
+  \item[\texttt{syllabus-mapper}] Mappe le contenu aux Acquis d'Apprentissage (AA/CLO) du cours. Réservé aux rôles teacher/admin.
+
+  \item[\texttt{feedback-writer}] Génère un feedback pédagogique constructif et personnalisé. Temperature 0.5 pour créativité. Accessible à tous les rôles.
+
+  \item[\texttt{performance-scorer}] Calcule les scores de performance par AA, Bloom et module. Low temperature (0.1) pour précision.
+
+  \item[\texttt{weakness-detector}] Détecte et prioritise les lacunes par compétence. Utilisé par le Coach pour cibler les interventions.
+
+  \item[\texttt{exercise-recommender}] Suggère des exercices ciblés pour combler les lacunes identifiées.
+
+  \item[\texttt{study-planner}] Crée un planning hebdomadaire adaptatif. Réservé aux étudiants via le Coach.
+
+  \item[\texttt{quiz-generator}] Génère des questions de quiz alignées aux AA et niveaux de Bloom. Pour enseignants et admins.
+
+  \item[\texttt{content-summarizer}] Résume les chapitres adapté au niveau de l'étudiant. Assistant uniquement.
+
+  \item[\texttt{code-reviewer}] Review pédagogique de code étudiant. TP uniquement. Supporte Python, Java, C, C++.
+
+  \item[\texttt{rubric-builder}] Crée des grilles d'évaluation alignées aux objectifs. Pour Exam et TP.
+
+  \item[\texttt{language-adapter}] Adapte le registre de langue (FR/EN/Tunisien). Température 0.3.
+\end{description}
+
+% ============================================================
+\section{Architecture Globale}
+% ============================================================
+
+\subsection{Vue d'ensemble du système}
+
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
++==============================================================+
+|                   ESB-LEARNING PLATFORM                      |
++==============================================================+
+|                                                              |
+|  [ FRONTEND Next.js / TypeScript ]                           |
+|  Pages: cours, quiz, TP, examens, chatbot, analytics         |
+|              |  HTTP/REST API                                 |
+|              v                                               |
+|  [ BACKEND Flask (Python) ]                                  |
+|  Routes: auth, courses, quiz, documents, ai, evaluate        |
+|              |                                               |
+|    +-----------+-----------+-----------+                     |
+|    |           |           |           |                     |
+|  [AGENT 1]  [AGENT 2]  [AGENT 3]  [AGENT 4]                 |
+|  Assistant   Coach       Exam        TP                      |
+|  ReAct       StateGraph  StateGraph  Dual StateGraph         |
+|    |           |           |           |                     |
+|    +-----+-----+-----+-----+           |                     |
+|          |                             |                     |
+|  [ SKILL MANAGER (12 skills) ]         |                     |
+|  bloom | syllabus | feedback | perf    |                     |
+|  gaps  | exercise | planner  | quiz    |                     |
+|  summary | code | rubric | language    |                     |
+|                                        |                     |
+|  [ MCP TOOLS (21 tools) ]              |                     |
+|  TP Tools (10) + Exam Tools (11)       |                     |
+|  MCP-LangChain Bridge                  |                     |
+|                                        |                     |
+|  [ AI LAYER ]                          |                     |
+|  Gemini 2.5-Flash / 2.5-Pro            |                     |
+|  LangGraph + LangChain                 |                     |
+|  TunBERT (NLP tunisien)                |                     |
+|                                        |                     |
+|  [ RAG PIPELINE ]                      |                     |
+|  ChromaDB + all-MiniLM-L6-v2           |                     |
+|  FAISS (dense) + BM25 (sparse)         |                     |
+|  YouTube RAG (Gemini vision)           |                     |
+|  CAG (section summaries)               |                     |
+|                                        |                     |
+|  [ DATABASE PostgreSQL ]               |                     |
+|  Users, Courses, Quizzes, Exams        |                     |
+|  Skills, SkillExecution, Enrollment    |                     |
++==============================================================+
+\end{lstlisting}
+
+% ============================================================
+\section{Services Disponibles}
+% ============================================================
+
+\subsection{Services IA Principaux}
+
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Service} & \textbf{Description} \\
+\midrule
+assistant\_agent & Agent conversationnel trilingue ReAct \\
+coach\_agent & Coach performance + planning étudiant \\
+exam\_agent\_graph & Évaluation et génération d'examens (11 étapes) \\
+tp\_agent\_graph & Génération et correction de TP (dual workflow) \\
+skill\_manager & Orchestrateur centralisé des 12 skills \\
+mcp\_langchain\_bridge & Bridge MCP tools $\to$ LangChain StructuredTools \\
+\bottomrule
+\end{longtable}
+
+\subsection{Services RAG / Documents}
+
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Service} & \textbf{Description} \\
+\midrule
+vector\_store & ChromaDB + SentenceTransformer (all-MiniLM-L6-v2) \\
+document\_pipeline & Pipeline complet traitement PDF (texte+images) \\
+document\_processor & Extraction texte, tableaux, images multi-format \\
+youtube\_rag\_service & RAG YouTube (transcript + Gemini vision multimodal) \\
+summarizer & Génération résumés sections pour CAG \\
+smart\_extraction\_service & Extraction intelligente (PDF, DOCX, PPTX, TXT) \\
+\bottomrule
+\end{longtable}
+
+\subsection{Services Pédagogiques}
+
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Service} & \textbf{Description} \\
+\midrule
+evaluate\_service & Évaluation quiz et soumissions TP \\
+feedback\_service & Génération feedback formatif \\
+practice\_quiz\_service & Quiz de pratique adaptatifs \\
+exercise\_extractor\_agent & Extraction exercices depuis documents \\
+chat\_service & Service de chat pédagogique \\
+\bottomrule
+\end{longtable}
+
+\subsection{Services Syllabus / Format Tunisie}
+
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Service} & \textbf{Description} \\
+\midrule
+syllabus\_service & Gestion syllabus standard \\
+syllabus\_tn\_service & Syllabus format Tunisie (AA/CLO) \\
+tn\_exam\_evaluation\_service & Évaluation examens format Ministère TN \\
+tn\_latex\_report\_service & Génération \LaTeX{}/PDF rapports TN \\
+aap\_definitions & Définitions AAP (Activités d'Apprentissage) \\
+program\_extraction\_service & Extraction programmes pédagogiques \\
+\bottomrule
+\end{longtable}
+
+\subsection{Services Utilitaires}
+
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Service} & \textbf{Description} \\
+\midrule
+tunbert\_service & NLP dialecte tunisien (TunBERT transformer) \\
+piston\_service & Exécution code multi-langages (sandbox) \\
+video\_service & Traitement vidéos pédagogiques \\
+file\_service & Gestion upload/download fichiers \\
+mcp\_tools & 10 MCP tools pour les TP (JSON-RPC) \\
+exam\_mcp\_tools & 11 MCP tools pour les examens (JSON-RPC) \\
+tp\_mcp\_server & Serveur MCP stdio (JSON-RPC 2.0) \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Techniques RAG Utilisées}
+% ============================================================
+
+Le projet implémente une \textbf{architecture RAG hybride à 5 couches}.
+
+\subsection{Couche 1 --- RAG Standard (ChromaDB + Dense Embeddings)}
+
+\begin{agentbox}{Vector Store --- ChromaDB + all-MiniLM-L6-v2}
+\begin{itemize}[noitemsep]
+  \item \textbf{Fichier :} \texttt{app/services/vector\_store.py}
+  \item \textbf{Modèle :} SentenceTransformer \texttt{all-MiniLM-L6-v2}
+  \item \textbf{DB :} ChromaDB persistent (\texttt{instance/chroma\_db})
+  \item \textbf{Collection :} une par document (\texttt{doc\_\{id\}})
+  \item \textbf{Batch size :} 100 chunks par insertion
+\end{itemize}
+\end{agentbox}
+
+\textbf{Types de contenu indexé :}
+\begin{itemize}[noitemsep]
+  \item \texttt{text} --- chunks de texte brut
+  \item \texttt{summary} --- résumés de sections (CAG)
+  \item \texttt{image} --- descriptions d'images/figures (AI-generated)
+  \item \texttt{overview} --- vue d'ensemble du document
+\end{itemize}
+
+\subsection{Couche 2 --- CAG (Cached Augmented Generation)}
+
+Les résumés de sections sont indexés séparément pour un accès rapide.
+
+\[
+\text{context} = \underbrace{\text{summaries}}_{\text{CAG fast}} + \underbrace{\text{text\_chunks}}_{\text{detail}} + \underbrace{\text{images}}_{\text{multimodal}} \quad (\text{max\_chars}=8000)
+\]
+
+\subsection{Couche 3 --- Hybrid RAG (Dense + Sparse)}
+
+\begin{itemize}
+  \item \textbf{FAISS} (\texttt{faiss-cpu}) : Recherche vectorielle dense haute performance
+  \item \textbf{BM25} (\texttt{rank-bm25}) : Recherche par mots-clés (TF-IDF sparse)
+  \item \textbf{Fusion} : Les scores dense + sparse sont combinés pour une meilleure couverture
+\end{itemize}
+
+\subsection{Couche 4 --- YouTube RAG (Multimodal)}
+
+\begin{agentbox}{YouTube RAG --- Fichier : \texttt{youtube\_rag\_service.py}}
+\begin{enumerate}[noitemsep]
+  \item \textbf{Transcript} : \texttt{youtube-transcript-api} (SRT multi-langues FR/EN/AR)
+  \item \textbf{Vision} : Gemini 2.5 traitement natif URL YouTube (audio + frames)
+  \item \textbf{Fallback} : Analyse textuelle si vidéo native échoue
+  \item \textbf{Chunking} : CHUNK\_SIZE=1400, CHUNK\_OVERLAP=250
+  \item \textbf{Index} : ChromaDB (transcript + enrichissement Gemini + résumé + visuel)
+\end{enumerate}
+\end{agentbox}
+
+\textbf{Contenu extrait :} \texttt{visual\_summary}, \texttt{key\_moments}, \texttt{visual\_elements}, \texttt{topics\_covered}, \texttt{pedagogical\_summary}
+
+\subsection{Couche 5 --- Multi-Format Processing}
+
+\textbf{Formats supportés :} PDF, DOCX, TXT, PPTX, images (vision LLM)\\
+\textbf{Librairies :} \texttt{pdfplumber}, \texttt{pypdf}, \texttt{python-docx}, \texttt{camelot-py} (tableaux), \texttt{opencv}
+
+\subsection{Résumé des Techniques RAG}
+
+\begin{longtable}{llll}
+\toprule
+\textbf{Technique} & \textbf{Technologie} & \textbf{Cas d'usage} \\
+\midrule
+Dense Retrieval & ChromaDB + all-MiniLM-L6-v2 & Recherche sémantique documents \\
+Sparse Retrieval & BM25 (rank-bm25) & Recherche mots-clés exacts \\
+Fast Retrieval & CAG (summaries) & Vue d'ensemble rapide \\
+Video RAG & YouTube API + Gemini Vision & Vidéos pédagogiques \\
+Similarity Search & FAISS (faiss-cpu) & Index vectoriel haute perf. \\
+Multi-type indexing & text + summary + image & Contenu multimodal unifié \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Matrice Skills × Agents}
+% ============================================================
+
+\begin{longtable}{lccccl}
+\toprule
+\textbf{Skill} & \textbf{Assist.} & \textbf{Coach} & \textbf{Exam} & \textbf{TP} & \textbf{Mode} \\
+\midrule
+bloom-classifier & \checkmark & \checkmark & \checkmark & \checkmark & Tool autonome (tous) \\
+syllabus-mapper & --- & \checkmark & \checkmark & \checkmark & Teacher/Admin \\
+feedback-writer & \checkmark & \checkmark & \checkmark & \checkmark & Tool autonome (tous) \\
+performance-scorer & \checkmark & \checkmark & --- & --- & Coach-centric \\
+weakness-detector & \checkmark & \checkmark & --- & --- & Coach-centric \\
+exercise-recommender & \checkmark & \checkmark & --- & --- & Coach-centric \\
+study-planner & --- & \checkmark & --- & --- & Student only \\
+quiz-generator & \checkmark & --- & --- & \checkmark & Teacher/Admin \\
+content-summarizer & \checkmark & --- & --- & --- & Student only \\
+code-reviewer & --- & --- & --- & \checkmark & TP only \\
+rubric-builder & --- & --- & \checkmark & \checkmark & Teacher/Admin \\
+language-adapter & \checkmark & \checkmark & --- & --- & FR/EN/Tunisien \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Scores d'Audit et Recommandations}
+% ============================================================
+
+\subsection{Scores Détaillés}
+
+\begin{longtable}{lrl}
+\toprule
+\textbf{Critère} & \textbf{Score} & \textbf{Commentaire} \\
+\midrule
+MCP Tools définis & 9/10 & Schémas JSON complets (21 tools) \\
+MCP Server production & 4/10 & Existe mais non intégré \\
+Agent Assistant (ReAct) & 10/10 & ReAct parfait, autonomie totale \\
+Agent Coach (StateGraph) & 8/10 & 3 nœuds ReAct sur 5 \\
+Agent Exam (hybride) & 7/10 & 5/11 nœuds ReAct, fallback robuste \\
+Agent TP (dual) & 7/10 & ReAct + fallback déterministe \\
+Skills comme Tools & 8/10 & \texttt{as\_langchain\_tools()} partout \\
+State Management & 9/10 & TypedDict bien structurés \\
+Execution Tracking & 8/10 & SkillExecution model complet \\
+RAG Architecture & 9/10 & Pipeline hybride 5 couches \\
+\midrule
+\textbf{TOTAL} & \textbf{79/100} & \textbf{B+ --- Architecture hybride solide} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Recommandations}
+
+\begin{warningbox}
+Priorité Haute : Intégrer le serveur MCP en production (HTTP/SSE) et unifier \texttt{mcp\_server.py} + \texttt{tp\_mcp\_server.py} pour couvrir les 21 tools.
+\end{warningbox}
+
+\begin{enumerate}
+  \item \textbf{MCP Server en production} : Exposer le serveur JSON-RPC via HTTP/SSE pour interopérabilité avec d'autres clients MCP.
+  \item \textbf{Étendre syllabus-mapper à l'Assistant} : Actuellement limité à teacher/admin. Le rendre accessible aux étudiants.
+  \item \textbf{Unifier les serveurs MCP} : \texttt{mcp\_server.py} + \texttt{tp\_mcp\_server.py} $\to$ un serveur unique couvrant les 21 tools.
+  \item \textbf{Dashboard Analytics SkillExecution} : Le modèle capture tout mais pas de UI. Créer \texttt{/admin/skills/analytics}.
+  \item \textbf{Cache LLM} : Utiliser Redis pour cacher les appels skills répétitifs (\texttt{bloom-classifier} sur le même contenu).
+  \item \textbf{Streaming SSE} : Les pipelines longs (Exam 11 nœuds) devraient streamer les résultats intermédiaires.
+  \item \textbf{Tests d'intégration agents} : Ajouter des tests automatisés pour les pipelines StateGraph complets.
+\end{enumerate}
+
+% ============================================================
+\vfill
+\begin{center}
+\rule{0.8\textwidth}{0.4pt}\\[6pt]
+{\small\color{gray} Rapport généré par GitHub Copilot --- Analyse automatique du code source ESB-Learning --- 16 Avril 2026}
+\end{center}
+
+\end{document}
+

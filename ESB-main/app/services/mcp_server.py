@@ -165,7 +165,7 @@ def handle_chat_with_student(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Exam Tool Handlers  (10 tools from exam_mcp_tools.EXAM_MCP_TOOL_DEFINITIONS)
+# Exam Tool Handlers  (13 tools from exam_mcp_tools.EXAM_MCP_TOOL_DEFINITIONS)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @mcp_tool("extract_exam_text")
@@ -289,6 +289,81 @@ def handle_evaluate_exam_proposal(
         latex_source=latex_source,
         original_feedback=original_feedback,
         aa_list=aa_list or [],
+    )
+
+
+@mcp_tool("generate_question_correction")
+def handle_generate_question_correction(
+    question_text: str,
+    question_type: str,
+    points: float,
+    bloom_level: str = "",
+    difficulty: str = "",
+    aa_codes: list = None,
+    course_context: str = "",
+    correction_rules: str = "",
+    **kwargs,
+) -> dict:
+    """Generate a model correction for a single exam question."""
+    _init_flask_context()
+    from app.services.exam_mcp_tools import generate_question_correction
+    return generate_question_correction(
+        question_text=question_text,
+        question_type=question_type,
+        points=points,
+        bloom_level=bloom_level,
+        difficulty=difficulty,
+        aa_codes=aa_codes or [],
+        course_context=course_context,
+        correction_rules=correction_rules,
+    )
+
+
+@mcp_tool("correct_student_answer")
+def handle_correct_student_answer(
+    question_text: str,
+    reference_correction: str,
+    student_answer: str,
+    max_points: float,
+    question_type: str = "open_ended",
+    grading_criteria: list = None,
+    **kwargs,
+) -> dict:
+    """Evaluate a student answer against a reference correction."""
+    _init_flask_context()
+    from app.services.exam_mcp_tools import correct_student_answer
+    return correct_student_answer(
+        question_text=question_text,
+        reference_correction=reference_correction,
+        student_answer=student_answer,
+        max_points=max_points,
+        question_type=question_type,
+        grading_criteria=grading_criteria or [],
+    )
+
+
+@mcp_tool("sync_question_tags")
+def handle_sync_question_tags(
+    question_text: str,
+    question_type: str = "",
+    current_bloom: str = "",
+    current_difficulty: str = "",
+    current_aa_codes: list = None,
+    aa_list: list = None,
+    course_context: str = "",
+    **kwargs,
+) -> dict:
+    """Re-classify a question's Bloom/difficulty/AA tags for consistency."""
+    _init_flask_context()
+    from app.services.exam_mcp_tools import sync_question_tags
+    return sync_question_tags(
+        question_text=question_text,
+        question_type=question_type,
+        current_bloom=current_bloom,
+        current_difficulty=current_difficulty,
+        current_aa_codes=current_aa_codes or [],
+        aa_list=aa_list or [],
+        course_context=course_context,
     )
 
 

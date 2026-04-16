@@ -1,9 +1,39 @@
 """
 Skill: syllabus-mapper
 Maps any content to the course's AA/CLO/AAP learning outcomes.
-Shared across: Exam Agent, TP Agent, Coach Agent.
+Shared across: Exam Agent, TP Agent, Coach Agent, Assistant Agent.
+
+Role-aware behaviour
+--------------------
+- teacher / admin : technical classification prompt — "which AAs does this
+  content cover?" — suitable for curriculum design and exam analysis.
+- student         : learning-journey prompt — "which objectives does this
+  content help you progress on?" — friendly, motivational framing that
+  explains *why* the AA matters to the student's progress.
 """
 from app.skills.base import BaseSkill
+
+# JSON contract shared by both roles (same shape, different tone in justification)
+_JSON_CONTRACT = (
+    '{"mappings": [{"aa_code": "...", "relevance": 0.0-1.0, "justification": "..."}]}'
+)
+
+_TEACHER_SYSTEM = (
+    "Tu es un expert en ingénierie pédagogique.\n"
+    "Mappe le contenu donné aux Acquis d'Apprentissage (AA) du cours.\n"
+    f"Réponds UNIQUEMENT en JSON: {_JSON_CONTRACT}"
+)
+
+_STUDENT_SYSTEM = (
+    "Tu es un tuteur pédagogique bienveillant qui aide les étudiants à comprendre "
+    "leur progression d'apprentissage.\n"
+    "À partir du contenu fourni, identifie quels Acquis d'Apprentissage (AA) du cours "
+    "l'étudiant est en train de travailler ou de développer.\n"
+    "Dans le champ 'justification', explique de façon encourageante et claire "
+    "pourquoi ce contenu contribue à cet AA — aide l'étudiant à comprendre "
+    "la valeur de ce qu'il apprend.\n"
+    f"Réponds UNIQUEMENT en JSON: {_JSON_CONTRACT}"
+)
 
 
 class SyllabusMapperSkill(BaseSkill):
@@ -31,12 +61,13 @@ class SyllabusMapperSkill(BaseSkill):
         if not aa_descriptions:
             return {'mappings': [], 'error': 'No AA found in syllabus'}
 
+        # Select prompt based on caller role
+        system_prompt = (
+            _STUDENT_SYSTEM if context.role == 'student' else _TEACHER_SYSTEM
+        )
+
         result = self.call_llm_json(
-            system_prompt=(
-                "Tu es un expert en ingénierie pédagogique.\n"
-                "Mappe le contenu donné aux Acquis d'Apprentissage (AA) du cours.\n"
-                'Réponds UNIQUEMENT en JSON: {"mappings": [{"aa_code": "...", "relevance": 0.0-1.0, "justification": "..."}]}'
-            ),
+            system_prompt=system_prompt,
             user_prompt=f"AA disponibles:\n{aa_descriptions}\n\nContenu à mapper:\n{content}",
             temperature=0.2,
         )
