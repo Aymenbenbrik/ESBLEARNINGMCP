@@ -5,6 +5,10 @@ from functools import lru_cache
 class Config:
     # Flask configuration
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-for-development-only')
+
+    @staticmethod
+    def init_app(app):
+        pass
     
     # Database configuration
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -59,6 +63,7 @@ class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
+    SQLALCHEMY_ENGINE_OPTIONS = {}
 
 
 class ProductionConfig(Config):

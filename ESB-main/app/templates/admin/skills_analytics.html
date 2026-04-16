@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics · Skills{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  {# ── Header ────────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1">
+          <li class="breadcrumb-item"><a href="{{ url_for('admin.index') }}">Admin</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Analytics · Skills</li>
+        </ol>
+      </nav>
+      <h2 class="mb-0">Analytics · Skills</h2>
+      <div class="text-muted small">Période : {{ stats.period_days }} derniers jours</div>
+    </div>
+
+    {# ── Period selector ──────────────────────────────────────────────── #}
+    <form method="GET" action="" class="d-flex align-items-center gap-2">
+      <label class="form-label mb-0 text-muted small">Période</label>
+      <select name="days" class="form-select form-select-sm" onchange="this.form.submit()" style="width:auto">
+        <option value="7"  {% if stats.period_days == 7  %}selected{% endif %}>7 jours</option>
+        <option value="30" {% if stats.period_days == 30 %}selected{% endif %}>30 jours</option>
+        <option value="90" {% if stats.period_days == 90 %}selected{% endif %}>90 jours</option>
+      </select>
+    </form>
+  </div>
+
+  {# ── Compute aggregates ───────────────────────────────────────────── #}
+  {% set total_calls   = stats.skills | sum(attribute='total_calls') %}
+  {% set total_tokens  = stats.skills | sum(attribute='total_tokens') %}
+  {% set total_errors  = stats.skills | sum(attribute='error_count') %}
+
+  {# Weighted average duration #}
+  {% set weighted_dur_sum = namespace(value=0) %}
+  {% for s in stats.skills %}
+    {% set weighted_dur_sum.value = weighted_dur_sum.value + (s.avg_duration_ms * s.total_calls) %}
+  {% endfor %}
+  {% set avg_duration = (weighted_dur_sum.value / total_calls) | round | int if total_calls > 0 else 0 %}
+
+  {% set overall_error_rate = (total_errors / total_calls * 100) | round(1) if total_calls > 0 else 0 %}
+
+  {# ── KPI Cards ────────────────────────────────────────────────────── #}
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Total exécutions</div>
+          <div class="fs-3 fw-bold">{{ total_calls }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Durée moyenne (ms)</div>
+          <div class="fs-3 fw-bold">{{ avg_duration }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Tokens consommés</div>
+          <div class="fs-3 fw-bold">{{ total_tokens | int }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Taux d'erreur global</div>
+          <div class="fs-3 fw-bold
+            {% if overall_error_rate > 5 %} text-danger
+            {% elif overall_error_rate > 2 %} text-warning
+            {% else %} text-success{% endif %}">
+            {{ overall_error_rate }}%
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Skills usage table ───────────────────────────────────────────── #}
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Utilisation par skill</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Skill</th>
+              <th class="text-end">Total appels</th>
+              <th class="text-end">Durée moy. (ms)</th>
+              <th class="text-end">Tokens</th>
+              <th class="text-end">Erreurs</th>
+              <th class="text-end">Taux d'erreur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set sorted_skills = stats.skills | sort(attribute='total_calls', reverse=True) %}
+            {% for s in sorted_skills %}
+            <tr>
+              <td>
+                <span class="fw-medium">{{ skills.get(s.skill_id, s.skill_id) }}</span>
+                <div class="text-muted small">{{ s.skill_id }}</div>
+              </td>
+              <td class="text-end">{{ s.total_calls }}</td>
+              <td class="text-end">{{ s.avg_duration_ms }}</td>
+              <td class="text-end">{{ s.total_tokens }}</td>
+              <td class="text-end">{{ s.error_count }}</td>
+              <td class="text-end fw-semibold
+                {% if s.error_rate > 5 %} text-danger
+                {% elif s.error_rate > 2 %} text-warning
+                {% else %} text-success{% endif %}">
+                {{ s.error_rate }}%
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-3">Aucune donnée pour cette période.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Recent executions ────────────────────────────────────────────── #}
+  <div class="card shadow-sm">
+    <div class="card-header bg-white fw-semibold">Exécutions récentes (20 dernières)</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Skill</th>
+              <th>Agent</th>
+              <th>Statut</th>
+              <th class="text-end">Durée (ms)</th>
+              <th class="text-end">Tokens</th>
+              <th>Date / heure</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ex in recent %}
+            <tr {% if ex.status == 'error' and ex.error_msg %}title="{{ ex.error_msg | truncate(120) }}"{% endif %}>
+              <td class="text-muted small">{{ ex.id }}</td>
+              <td>{{ skills.get(ex.skill_id, ex.skill_id) }}</td>
+              <td class="text-muted small">{{ ex.agent_id or '—' }}</td>
+              <td>
+                {% if ex.status == 'success' %}
+                  <span class="badge bg-success">success</span>
+                {% elif ex.status == 'error' %}
+                  <span class="badge bg-danger">error</span>
+                {% elif ex.status == 'running' %}
+                  <span class="badge bg-warning text-dark">running</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ ex.status }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ ex.duration_ms if ex.duration_ms is not none else '—' }}</td>
+              <td class="text-end">{{ ex.tokens_used if ex.tokens_used is not none else '—' }}</td>
+              <td class="text-muted small">
+                {{ ex.started_at.strftime('%d/%m/%Y %H:%M') if ex.started_at else '—' }}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-3">Aucune exécution récente.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

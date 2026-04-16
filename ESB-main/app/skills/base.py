@@ -6,16 +6,30 @@ supported by SkillManager.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+from cachetools import TTLCache
 from flask import current_app
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
+
+# ── LLM response cache ────────────────────────────────────────────────────────
+# Process-local TTL cache (512 entries, 24 h TTL).
+# Keyed by sha256(system_prompt + "\x00" + user_prompt) so identical LLM calls
+# made by different skill executions (e.g. bloom-classifier on the same content)
+# are served from cache without hitting the Gemini API.
+_llm_response_cache: TTLCache = TTLCache(maxsize=512, ttl=86_400)
+
+
+def _cache_key(system_prompt: str, user_prompt: str) -> str:
+    payload = f"{system_prompt}\x00{user_prompt}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 class BaseSkill(ABC):
@@ -55,13 +69,20 @@ class BaseSkill(ABC):
         temperature: float = 0.3,
         robust: bool = False,
     ) -> str:
-        """Single LLM call returning raw text."""
+        """Single LLM call returning raw text. Responses are cached for 24 h."""
+        key = _cache_key(system_prompt, user_prompt)
+        if key in _llm_response_cache:
+            logger.debug("LLM cache hit for skill %s", getattr(self, 'skill_id', '?'))
+            return _llm_response_cache[key]
+
         llm = self.get_llm(temperature=temperature, robust=robust)
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ])
-        return response.content.strip()
+        result = response.content.strip()
+        _llm_response_cache[key] = result
+        return result
 
     def call_llm_json(
         self,

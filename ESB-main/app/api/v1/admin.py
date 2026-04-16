@@ -790,3 +790,84 @@ def get_syllabus_status():
     except Exception as e:
         logger.exception("Error fetching syllabus status")
         return jsonify({'error': str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Skills Analytics API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@admin_api_bp.route('/skills/analytics', methods=['GET'])
+@jwt_required()
+@superuser_required
+def skills_analytics_api():
+    """
+    GET /api/v1/admin/skills/analytics?days=30
+
+    Returns aggregated skill execution statistics and recent execution log.
+    Useful for frontend dashboards or external monitoring tools.
+    """
+    from app.services.skill_manager import SkillManager
+    from app.models.skills import SkillExecution, Skill, AgentRegistry
+
+    days = request.args.get('days', 30, type=int)
+    if days not in (7, 30, 90, 180):
+        days = 30
+
+    try:
+        # Aggregated stats per skill
+        stats = SkillManager().get_usage_stats(days=days)
+
+        # Per-agent breakdown (how many executions per agent in the period)
+        from sqlalchemy import func, text as _text
+        from datetime import datetime, timedelta
+        since = datetime.utcnow() - timedelta(days=days)
+        agent_rows = (
+            SkillExecution.query
+            .with_entities(
+                SkillExecution.agent_id,
+                func.count(SkillExecution.id).label('calls'),
+                func.sum(func.case((SkillExecution.status == 'error', 1), else_=0)).label('errors'),
+            )
+            .filter(SkillExecution.started_at >= since)
+            .group_by(SkillExecution.agent_id)
+            .all()
+        )
+        by_agent = [
+            {'agent_id': r.agent_id or 'unknown', 'calls': r.calls, 'errors': int(r.errors or 0)}
+            for r in agent_rows
+        ]
+
+        # Recent 50 executions
+        recent_execs = (
+            SkillExecution.query
+            .order_by(SkillExecution.started_at.desc())
+            .limit(50)
+            .all()
+        )
+        skills_map = {s.id: s.name for s in Skill.query.all()}
+        recent = [
+            {
+                'id': e.id,
+                'skill_id': e.skill_id,
+                'skill_name': skills_map.get(e.skill_id, e.skill_id),
+                'agent_id': e.agent_id,
+                'user_id': e.user_id,
+                'status': e.status,
+                'duration_ms': e.duration_ms,
+                'tokens_used': e.tokens_used,
+                'started_at': e.started_at.isoformat() if e.started_at else None,
+                'error_msg': e.error_msg,
+            }
+            for e in recent_execs
+        ]
+
+        return jsonify({
+            'period_days': days,
+            'aggregate': stats,
+            'by_agent': by_agent,
+            'recent': recent,
+        }), 200
+
+    except Exception as e:
+        logger.exception("Error fetching skill analytics")
+        return jsonify({'error': str(e)}), 500

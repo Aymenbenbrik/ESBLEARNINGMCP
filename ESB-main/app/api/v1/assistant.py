@@ -4,8 +4,9 @@ Conversational AI assistant with TTS and STT endpoints.
 """
 
 import io
+import json
 import logging
-from flask import Blueprint, jsonify, request, Response, current_app
+from flask import Blueprint, jsonify, request, Response, stream_with_context, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,65 @@ def chat():
             'error': 'An error occurred while processing your request.',
             'details': str(e),
         }), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /assistant/chat/stream  — SSE streaming version
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@assistant_api_bp.route('/chat/stream', methods=['POST'])
+@jwt_required()
+def chat_stream():
+    """
+    Server-Sent Events streaming version of /chat.
+
+    Same request body as POST /chat.
+    Emits SSE events with the following structure::
+
+        data: {"type": "tool_call",   "content": "get_my_courses"}
+        data: {"type": "thinking",    "content": "D'après tes cours..."}
+        data: {"type": "tool_result", "content": "get_my_courses"}
+        data: {"type": "done",        "content": "{\"response\":\"...\",\"tools_used\":[...]}"}
+        data: {"type": "error",       "content": "Error message"}
+
+    The ``done`` event's ``content`` is a JSON string containing the full
+    ``{"response", "language", "tools_used"}`` dict (same as /chat).
+    """
+    user = _get_current_user()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get('message') or '').strip()
+    if not message:
+        return jsonify({'error': 'Message is required'}), 400
+
+    history = data.get('history', [])
+    if not isinstance(history, list):
+        history = []
+
+    role = _determine_role(user)
+    user_id = user.id
+
+    def _generate():
+        try:
+            from app.services.assistant_agent import stream_assistant
+            for event_type, content in stream_assistant(user_id, message, history, role):
+                payload = json.dumps({'type': event_type, 'content': content}, ensure_ascii=False)
+                yield f"data: {payload}\n\n"
+        except Exception as e:
+            logger.error(f"Assistant stream error: {e}", exc_info=True)
+            payload = json.dumps({'type': 'error', 'content': str(e)})
+            yield f"data: {payload}\n\n"
+
+    return Response(
+        stream_with_context(_generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        },
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

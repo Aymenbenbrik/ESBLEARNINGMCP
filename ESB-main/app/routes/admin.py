@@ -165,6 +165,42 @@ def class_assign_teachers(class_id: int):
             db.session.add(ClassCourseAssignment(class_id=classe.id, course_id=course_id, teacher_id=teacher_id))
 
     db.session.commit()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Skills Analytics Dashboard
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@admin_bp.route('/skills/analytics')
+@login_required
+def skills_analytics():
+    """Skills execution analytics dashboard."""
+    if not _superuser_required():
+        return redirect(url_for('courses.index'))
+
+    days = request.args.get('days', 30, type=int)
+    if days not in (7, 30, 90):
+        days = 30
+
+    from app.services.skill_manager import SkillManager
+    from app.models.skills import SkillExecution, Skill
+
+    stats = SkillManager().get_usage_stats(days=days)
+    recent = (
+        SkillExecution.query
+        .order_by(SkillExecution.started_at.desc())
+        .limit(20)
+        .all()
+    )
+    skills_map = {s.id: s.name for s in Skill.query.all()}
+
+    return render_template(
+        'admin/skills_analytics.html',
+        stats=stats,
+        recent=recent,
+        skills=skills_map,
+        days=days,
+    )
     flash('Affectations profs enregistrées.', 'success')
     return redirect(url_for('admin.class_view', class_id=classe.id))
 

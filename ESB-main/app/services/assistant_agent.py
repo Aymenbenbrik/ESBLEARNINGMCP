@@ -871,7 +871,119 @@ def chat_with_assistant(
         }
 
 
-# ── Language detection helper ────────────────────────────────────────────────
+def stream_assistant(
+    user_id: int,
+    message: str,
+    conversation_history: list[dict],
+    role: str = "student",
+):
+    """
+    Streaming version of chat_with_assistant.
+
+    Yields (event_type: str, data: str) tuples as the LangGraph ReAct agent
+    processes the request.  Consumers should send each tuple as an SSE event.
+
+    Event types
+    -----------
+    ``thinking``   — the LLM is reasoning / writing a response chunk
+    ``tool_call``  — the agent is calling a tool (data = tool name)
+    ``tool_result``— a tool returned a result (data = tool name)
+    ``done``       — final assembled response (data = JSON string with
+     ``{"response": ..., "language": ..., "tools_used": [...]}`` )
+    ``error``      — unrecoverable error (data = error message)
+    """
+    from app.models.users import User
+
+    user = User.query.get(user_id)
+    user_name = user.username if user else f"User#{user_id}"
+
+    common_tools = [get_my_courses, get_calendar_activities, get_course_details]
+    student_tools = [get_my_performance, get_my_grades_summary, get_recommendations]
+    teacher_tools = [get_at_risk_students, get_class_performance, suggest_quiz_for_student]
+
+    if role == 'teacher':
+        tools = common_tools + teacher_tools
+    elif role == 'admin':
+        tools = common_tools + student_tools + teacher_tools
+    else:
+        tools = common_tools + student_tools
+
+    try:
+        from app.services.skill_manager import SkillManager
+        skill_tools = SkillManager().as_langchain_tools(
+            agent_id='assistant', role=role, user_id=user_id,
+        )
+        tools = tools + skill_tools
+    except Exception as e:
+        logger.warning("Skills injection skipped in stream: %s", e)
+
+    system_prompt = _build_system_prompt(role, user_name, user_id)
+
+    messages: list = []
+    for turn in conversation_history[-20:]:
+        r = turn.get('role', 'user')
+        content = turn.get('content', '')
+        if r == 'user':
+            messages.append(HumanMessage(content=content))
+        elif r == 'assistant':
+            messages.append(AIMessage(content=content))
+
+    language = _detect_language(message)
+    enriched_message = message
+    if language == "tn":
+        try:
+            from app.services.tunbert_service import enhance_tunisian_prompt
+            enriched_message = f"{message}\n\n{enhance_tunisian_prompt(message, language)}"
+        except Exception:
+            pass
+
+    messages.append(HumanMessage(content=enriched_message))
+
+    try:
+        llm = _get_llm()
+        agent = create_react_agent(llm, tools, prompt=system_prompt)
+
+        tools_used: list[str] = []
+        final_text: str = ""
+
+        for event in agent.stream({"messages": messages}):
+            for node_name, node_output in event.items():
+                for msg in node_output.get("messages", []):
+                    # Tool calls from the LLM
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            name = tc.get('name') or tc.get('function', {}).get('name', '')
+                            if name:
+                                if name not in tools_used:
+                                    tools_used.append(name)
+                                yield ('tool_call', name)
+
+                    # AI response text
+                    if isinstance(msg, AIMessage):
+                        content = msg.content
+                        if isinstance(content, list):
+                            content = " ".join(
+                                p.get("text", "") if isinstance(p, dict) else str(p)
+                                for p in content
+                            ).strip()
+                        if content:
+                            final_text = content
+                            yield ('thinking', content)
+
+                    # Tool results
+                    elif hasattr(msg, 'name') and node_name == 'tools':
+                        yield ('tool_result', msg.name or 'tool')
+
+        # Emit the final done event with full metadata
+        yield ('done', json.dumps({
+            "response": final_text,
+            "language": language,
+            "tools_used": tools_used,
+        }, ensure_ascii=False))
+
+    except Exception as e:
+        logger.error("stream_assistant error: %s", e, exc_info=True)
+        yield ('error', str(e))
 
 _TUNISIAN_MARKERS = {
     'chnou', 'chnowa', 'kifech', 'winou', 'bech', 'mouch', 'ey', 'ena',
